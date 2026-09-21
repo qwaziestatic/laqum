@@ -32,6 +32,10 @@ function databaseUrl(): string {
   return url;
 }
 
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
 function report(results: readonly MigrationResult[], verb: string): void {
   for (const result of results) {
     if (result.status === 'Success') {
@@ -51,7 +55,9 @@ async function run(): Promise<void> {
   try {
     if (command === 'status') {
       for (const m of await migrator.getMigrations()) {
-        console.warn(`${m.name}  ${m.executedAt ? `applied ${m.executedAt.toISOString()}` : 'pending'}`);
+        console.warn(
+          `${m.name}  ${m.executedAt ? `applied ${m.executedAt.toISOString()}` : 'pending'}`,
+        );
       }
       return;
     }
@@ -62,7 +68,8 @@ async function run(): Promise<void> {
       command === 'up' ? await migrator.migrateToLatest() : await migrator.migrateDown();
 
     report(results ?? [], command === 'up' ? 'applied' : 'rolled back');
-    if (error) throw error;
+    // Kysely types the failure as `unknown`, and it is not always an Error.
+    if (error !== undefined) throw asError(error);
     if ((results ?? []).length === 0) {
       console.warn(command === 'up' ? 'No pending migrations.' : 'Nothing to roll back.');
     }

@@ -27,7 +27,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await ctx?.close();
+  await ctx.close();
 });
 
 describe('enum types', () => {
@@ -314,9 +314,7 @@ describe('the double-booking guard', () => {
     expect(rows).toHaveLength(4);
 
     for (const row of rows) {
-      const statuses = [...row.indexdef.matchAll(/'([A-Z_]+)'::booking_status/gu)].map(
-        (m) => m[1],
-      );
+      const statuses = [...row.indexdef.matchAll(/'([A-Z_]+)'::booking_status/gu)].map((m) => m[1]);
       expect(statuses, `index ${row.indexname}`).toEqual([...LIVE_STATUSES]);
     }
   });

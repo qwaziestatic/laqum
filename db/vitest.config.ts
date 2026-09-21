@@ -10,9 +10,7 @@ export default defineConfig({
       // exists after a build. Aliasing to source keeps `pnpm test` independent
       // of build order. CI additionally runs `pnpm build`, so the dist path is
       // exercised too, and the api Docker image only ever uses dist.
-      '@laqum/shared': fileURLToPath(
-        new URL('../packages/shared/src/index.ts', import.meta.url),
-      ),
+      '@laqum/shared': fileURLToPath(new URL('../packages/shared/src/index.ts', import.meta.url)),
     },
   },
   test: {

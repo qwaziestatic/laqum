@@ -9,9 +9,7 @@ import { createMigrator } from '../src/migrator.js';
  * mocked in any case: the whole point is that Postgres enforces it.
  */
 export function testDatabaseUrl(): string {
-  return (
-    process.env['TEST_DATABASE_URL'] ?? 'postgres://laqum:laqum@localhost:55432/laqum_test'
-  );
+  return process.env['TEST_DATABASE_URL'] ?? 'postgres://laqum:laqum@localhost:55432/laqum_test';
 }
 
 export interface TestDb {
@@ -40,14 +38,19 @@ export async function resetSchema(db: Kysely<unknown>): Promise<void> {
   await sql.raw('DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;').execute(db);
 }
 
+/** Kysely types a migration failure as `unknown`, and it is not always an Error. */
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
 export async function migrateToLatest(db: Kysely<unknown>): Promise<void> {
   const { error } = await createMigrator(db).migrateToLatest();
-  if (error) throw error;
+  if (error !== undefined) throw asError(error);
 }
 
 export async function migrateDown(db: Kysely<unknown>): Promise<void> {
   const { error } = await createMigrator(db).migrateDown();
-  if (error) throw error;
+  if (error !== undefined) throw asError(error);
 }
 
 /** A clean, fully migrated database. */

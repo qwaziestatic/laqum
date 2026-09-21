@@ -133,9 +133,7 @@ export function buildSlots(spec: LotSpec): SlotRow[] {
   const labels = new Set(slots.map((s) => s.label));
   for (const label of [...spec.notAppBookable, ...spec.outOfService]) {
     if (!labels.has(label)) {
-      throw new Error(
-        `Lot "${spec.name}" flags slot "${label}", which its grid does not contain.`,
-      );
+      throw new Error(`Lot "${spec.name}" flags slot "${label}", which its grid does not contain.`);
     }
   }
 
@@ -201,10 +199,7 @@ export async function seed(db: Kysely<Database>): Promise<void> {
         .execute();
 
       // The attendant works both lots.
-      await trx
-        .insertInto('lot_staff')
-        .values({ lot_id: lot.id, user_id: attendant.id })
-        .execute();
+      await trx.insertInto('lot_staff').values({ lot_id: lot.id, user_id: attendant.id }).execute();
     }
   });
 }

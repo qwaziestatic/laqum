@@ -9,12 +9,7 @@ import {
 
 describe('LIVE_STATUSES', () => {
   it('is exactly the four statuses that hold a slot', () => {
-    expect([...LIVE_STATUSES]).toEqual([
-      'PENDING_PAYMENT',
-      'RESERVED',
-      'CHECKED_IN',
-      'OVERSTAY',
-    ]);
+    expect([...LIVE_STATUSES]).toEqual(['PENDING_PAYMENT', 'RESERVED', 'CHECKED_IN', 'OVERSTAY']);
   });
 
   it('partitions the booking statuses with no overlap and no gap', () => {

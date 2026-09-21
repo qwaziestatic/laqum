@@ -11,7 +11,7 @@ import { createRedis } from './redis.js';
  * in-flight BullMQ jobs and Socket.io connections is Phase 5, when there is
  * something to drain.
  */
-async function main(): Promise<void> {
+function main(): void {
   const config = loadConfig();
   const logger = createLogger(config);
 
@@ -27,10 +27,7 @@ async function main(): Promise<void> {
 
   const app = createApp({ db, redis });
   const server = app.listen(config.PORT, () => {
-    logger.info(
-      { port: config.PORT, env: config.NODE_ENV },
-      'ላቁም? API listening',
-    );
+    logger.info({ port: config.PORT, env: config.NODE_ENV }, 'ላቁም? API listening');
   });
 
   let shuttingDown = false;
@@ -68,9 +65,11 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((err: unknown) => {
+try {
+  main();
+} catch (err: unknown) {
   // The logger may not exist yet (bad config is the usual cause), so this
   // writes to stderr directly.
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
-});
+}

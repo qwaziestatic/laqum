@@ -16,7 +16,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await ctx?.close();
+  await ctx.close();
 });
 
 describe('seed data', () => {
@@ -25,10 +25,7 @@ describe('seed data', () => {
     expect(operators).toHaveLength(1);
 
     const lots = await db.selectFrom('lots').select(['name']).orderBy('name').execute();
-    expect(lots.map((l) => l.name)).toEqual([
-      'Bole Medhanialem Parking',
-      'Piassa Central Parking',
-    ]);
+    expect(lots.map((l) => l.name)).toEqual(['Bole Medhanialem Parking', 'Piassa Central Parking']);
 
     const users = await db.selectFrom('users').select(['phone', 'role']).orderBy('phone').execute();
     expect(users).toEqual([
@@ -151,7 +148,7 @@ describe('slot_status view over seeded data', () => {
     }
   });
 
-  it('joins only live bookings, per the shared status list', async () => {
+  it('joins only live bookings, per the shared status list', () => {
     // The view's LEFT JOIN predicate is what makes a CHECKED_OUT booking stop
     // occupying its slot. Phase 1 exercises this with real transitions; here we
     // just pin that the view was built against the same four statuses.

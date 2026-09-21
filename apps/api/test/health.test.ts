@@ -4,8 +4,14 @@ import type { Kysely } from 'kysely';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
+import type { ReadinessReport } from '../src/health.js';
 import { createRedis } from '../src/redis.js';
 import { loadConfig } from '../src/config.js';
+
+interface LivenessBody {
+  status: string;
+  uptimeSeconds: number;
+}
 
 const DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ?? 'postgres://laqum:laqum@localhost:55432/laqum_test';
@@ -47,10 +53,11 @@ describe('GET /health (liveness)', () => {
     // Liveness must not depend on Postgres or Redis, or an orchestrator will
     // restart a process that is working fine.
     const res = await request(createApp({ db, redis })).get('/health');
+    const body = res.body as LivenessBody;
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: 'ok' });
-    expect(res.body.uptimeSeconds).toBeGreaterThanOrEqual(0);
+    expect(body.status).toBe('ok');
+    expect(body.uptimeSeconds).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -71,12 +78,13 @@ describe('GET /ready (readiness)', () => {
 
   it('is 200 with both dependencies up', async () => {
     const res = await request(createApp({ db, redis })).get('/ready');
+    const body = res.body as ReadinessReport;
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('ready');
-    expect(res.body.checks.postgres.status).toBe('up');
-    expect(res.body.checks.redis.status).toBe('up');
-    expect(res.body.checks.postgres.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(body.status).toBe('ready');
+    expect(body.checks['postgres']?.status).toBe('up');
+    expect(body.checks['redis']?.status).toBe('up');
+    expect(body.checks['postgres']?.latencyMs).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -88,13 +96,16 @@ describe('GET /ready with a dependency down', () => {
 
     try {
       const res = await request(createApp({ db, redis })).get('/ready');
+      const body = res.body as ReadinessReport;
 
       expect(res.status).toBe(503);
-      expect(res.body.status).toBe('not_ready');
-      expect(res.body.checks.postgres.status).toBe('down');
-      expect(res.body.checks.postgres.error).toBeTruthy();
+      expect(body.status).toBe('not_ready');
+      expect(body.checks['postgres']?.status).toBe('down');
+      // An empty string here would mean the probe reported a failure with no
+      // reason, which is what describeError exists to prevent.
+      expect(body.checks['postgres']?.error).toBeTruthy();
       // Redis is fine, so the report must not blame it.
-      expect(res.body.checks.redis.status).toBe('up');
+      expect(body.checks['redis']?.status).toBe('up');
     } finally {
       await db.destroy();
       redis.disconnect();
@@ -110,11 +121,12 @@ describe('GET /ready with a dependency down', () => {
 
     try {
       const res = await request(createApp({ db, redis })).get('/ready');
+      const body = res.body as ReadinessReport;
 
       expect(res.status).toBe(503);
-      expect(res.body.status).toBe('not_ready');
-      expect(res.body.checks.redis.status).toBe('down');
-      expect(res.body.checks.postgres.status).toBe('up');
+      expect(body.status).toBe('not_ready');
+      expect(body.checks['redis']?.status).toBe('down');
+      expect(body.checks['postgres']?.status).toBe('up');
     } finally {
       await db.destroy();
       redis.disconnect();

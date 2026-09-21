@@ -8,9 +8,7 @@ type Json = Record<string, unknown>;
 function keyPaths(value: Json, prefix = ''): string[] {
   return Object.entries(value).flatMap(([key, child]) => {
     const path = prefix ? `${prefix}.${key}` : key;
-    return typeof child === 'object' && child !== null
-      ? keyPaths(child as Json, path)
-      : [path];
+    return typeof child === 'object' && child !== null ? keyPaths(child as Json, path) : [path];
   });
 }
 
@@ -34,9 +32,7 @@ describe('translation bundles', () => {
     for (const locale of LOCALES) {
       const bundle = resources[locale].translation as unknown as Json;
       for (const path of keyPaths(bundle)) {
-        const value = path
-          .split('.')
-          .reduce<unknown>((acc, key) => (acc as Json)[key], bundle);
+        const value = path.split('.').reduce<unknown>((acc, key) => (acc as Json)[key], bundle);
         expect(typeof value, `${locale}.${path}`).toBe('string');
         expect((value as string).trim().length, `${locale}.${path}`).toBeGreaterThan(0);
       }
@@ -56,8 +52,6 @@ describe('translation bundles', () => {
 
   it('actually differs between Amharic and English', () => {
     // Guards against a bundle copied and never translated.
-    expect(resources.am.translation.app.tagline).not.toBe(
-      resources.en.translation.app.tagline,
-    );
+    expect(resources.am.translation.app.tagline).not.toBe(resources.en.translation.app.tagline);
   });
 });
