@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# The reference schema is a byte-for-byte copy of the reviewed DDL in the
+# project brief. Formatting it would break the equality test in
+# apps/api/test/schema-copy.test.ts.
+db/schema.sql

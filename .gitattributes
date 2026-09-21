@@ -1,0 +1,13 @@
+# Normalize all text files to LF in the repository.
+# Development happens on Windows; scripts, Dockerfiles and CI run on Linux.
+* text=auto eol=lf
+
+# Binary files must never be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary

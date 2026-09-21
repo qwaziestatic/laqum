@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Secrets. .env.example is committed; .env and its variants are not.
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local scratch
+tmp/
