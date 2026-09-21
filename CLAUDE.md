@@ -1,5 +1,12 @@
 # ላቁም? (Laqum) — Engineering Charter
 
+> **[docs/BRIEF.md](docs/BRIEF.md) is the authoritative specification and must be
+> read before any phase.** It is the product owner's brief, stored verbatim.
+> Where this file and the brief disagree, the brief wins — except for
+> deviations explicitly approved by the product owner, which are recorded here
+> and marked as such. This file is the working charter; the brief is the
+> contract.
+
 Real-time parking for Addis Ababa. Drivers find nearby lots on a map, see live
 free-slot counts, book a slot with a small deposit, navigate there, and check in
 and out with a QR code. Attendants run a web dashboard showing each lot as a
