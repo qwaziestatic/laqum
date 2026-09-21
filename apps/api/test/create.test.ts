@@ -144,13 +144,14 @@ describe('slot assignment', () => {
     ).rejects.toMatchObject({ code: 'LOT_FULL', status: 409 });
   });
 
-  it('gives up after the retry budget rather than scanning the whole lot', async () => {
-    // More free slots than attempts, all of which will lose their race.
+  it('does not spend its retry budget on slots that are already taken', async () => {
+    // Committed bookings are filtered out by the candidate query, so they cost
+    // no attempts and raise no violation. The retry budget is for slots taken
+    // BETWEEN the candidate read and the insert — see create-retry.test.ts,
+    // which drives that path with real unique violations.
     const lot = await createLot(db, { slots: MAX_SLOT_ATTEMPTS + 3 });
     expect(MAX_SLOT_ATTEMPTS).toBe(4);
 
-    // Take exactly the first MAX_SLOT_ATTEMPTS slots, so every candidate the
-    // query returns raises a REAL 23505 on insert. Nothing is pre-checked.
     for (let i = 0; i < MAX_SLOT_ATTEMPTS; i++) {
       const holder = await createUser(db, 'driver', `+25191100020${String(i)}`);
       await seedBooking(db, {
@@ -161,8 +162,6 @@ describe('slot assignment', () => {
       });
     }
 
-    // The candidate query sees the remaining free slots, so this succeeds —
-    // proving the budget applies to failed attempts, not to slots scanned.
     const userId = await createUser(db, 'driver', '+251911000210');
     const result = await createBooking(deps(), {
       lotId: lot.lotId,
