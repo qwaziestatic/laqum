@@ -147,7 +147,21 @@ describe('20 parallel bookings for a lot with one free slot', () => {
       ),
     );
 
-    const succeeded = settled.filter((r) => r.status === 'fulfilled').length;
+    const fulfilled = settled.filter((r) => r.status === 'fulfilled');
+    const rejected = settled.filter((r) => r.status === 'rejected');
+
+    // EVERY slot is filled. Requests do not herd onto the lot's first free
+    // slot: FOR UPDATE SKIP LOCKED gives each concurrent request a different
+    // one, so the lot fills completely and only genuinely unlucky requests are
+    // turned away.
+    expect(fulfilled).toHaveLength(slots);
+    expect(rejected).toHaveLength(CONCURRENCY - slots);
+
+    for (const failure of rejected) {
+      const err: unknown = failure.reason;
+      expect(isAppError(err), `unexpected error: ${String(err)}`).toBe(true);
+      if (isAppError(err)) expect(err.code).toBe('LOT_FULL');
+    }
 
     const booked = await db
       .selectFrom('bookings')
@@ -155,18 +169,18 @@ describe('20 parallel bookings for a lot with one free slot', () => {
       .where('status', '=', 'RESERVED')
       .execute();
 
-    // THE guarantee: no slot is ever double-booked, and no more bookings exist
-    // than slots. This holds no matter how the race is scheduled.
-    expect(booked).toHaveLength(succeeded);
-    expect(new Set(booked.map((b) => b.slot_id)).size).toBe(succeeded);
-    expect(succeeded).toBeLessThanOrEqual(slots);
-    expect(succeeded).toBeGreaterThan(0);
+    expect(booked).toHaveLength(slots);
+    expect(new Set(booked.map((b) => b.slot_id)).size).toBe(slots);
+    expect(new Set(booked.map((b) => b.slot_id))).toEqual(new Set(lot.slotIds));
 
-    // Filling every slot is NOT guaranteed, and that is deliberate. Each
-    // request gets MAX_SLOT_ATTEMPTS candidates ("retry the next free slot up
-    // to 3 times before returning LOT_FULL"), so under a burst this large a
-    // driver can be told LOT_FULL while a slot is still free. Bounded work per
-    // request is the trade the brief chose; the driver simply retries.
+    // Nothing free is left behind.
+    const free = await db
+      .selectFrom('slot_status')
+      .select('slot_id')
+      .where('lot_id', '=', lot.lotId)
+      .where('display_status', '=', 'free')
+      .execute();
+    expect(free).toEqual([]);
   }, 60_000);
 
   it('refuses a second live booking from the same driver', async () => {

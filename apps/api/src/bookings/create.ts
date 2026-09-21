@@ -3,10 +3,11 @@ import {
   AppError,
   type BookingStatus,
   type Clock,
+  LIVE_STATUSES,
   addMinutes,
   haversineMeters,
 } from '@laqum/shared';
-import type { Kysely, Selectable } from 'kysely';
+import type { Kysely, Selectable, Transaction } from 'kysely';
 import type { Logger } from 'pino';
 import { CONSTRAINTS, isUniqueViolation } from '../db/pgError.js';
 import { type JobScheduler, jobIdFor } from '../jobs/scheduler.js';
@@ -130,18 +131,34 @@ async function assertNoOutstandingBalance(db: Kysely<Database>, userId: string):
 }
 
 /**
- * Assign a slot by attempting the insert, never by checking first.
+ * Assign a slot by LOCKING one, then inserting.
  *
- * The candidate list is an ORDERING HINT, not a guard: between reading it and
- * inserting, another driver may take the slot. That is precisely what
- * one_live_booking_per_slot is for, and a 23505 simply means we move on. This
- * is why the brief forbids check-then-insert.
+ * The naive form — read the first free slot, then insert — makes every
+ * concurrent request pick the SAME slot and collide in a herd. With a bounded
+ * retry budget that produces LOT_FULL for drivers while slots sit free: a
+ * 20-way burst on a 5-slot lot filled only 4 slots.
+ *
+ * SELECT ... FOR UPDATE SKIP LOCKED fixes the cause. Each request locks a
+ * different free slot row, so concurrent requests spread across the lot
+ * instead of piling onto its first slot. The lock is held until the
+ * transaction commits, which is why the candidate is selected INSIDE the
+ * insert transaction rather than before it.
+ *
+ * one_live_booking_per_slot remains the backstop: a writer that does not take
+ * the slot lock can still collide, and the bounded retry covers that. It is no
+ * longer the common path.
  *
  * Each attempt runs in its OWN transaction. A failed statement aborts its
  * transaction, and an aborted transaction cannot continue — so retrying inside
  * one transaction would fail with "current transaction is aborted" instead of
  * trying the next slot.
  */
+type AttemptOutcome =
+  | { kind: 'created'; booking: BookingRow }
+  | { kind: 'no-free-slot' }
+  | { kind: 'slot-taken' }
+  | { kind: 'code-collision' };
+
 async function insertIntoFirstFreeSlot(
   deps: CreateBookingDeps,
   input: CreateBookingInput,
@@ -149,122 +166,143 @@ async function insertIntoFirstFreeSlot(
   status: BookingStatus,
   holdMinutes: number,
 ): Promise<BookingRow> {
-  const candidates = await freeSlotCandidates(deps.db, lot.id, MAX_SLOT_ATTEMPTS);
+  let slotConflicts = 0;
+  let codeConflicts = 0;
 
-  for (const slotId of candidates) {
-    const booking = await tryInsert(deps, input, lot, status, holdMinutes, slotId);
-    if (booking) return booking;
+  while (slotConflicts < MAX_SLOT_ATTEMPTS && codeConflicts < MAX_CODE_ATTEMPTS) {
+    const outcome = await attemptOnce(deps, input, lot, status, holdMinutes);
+
+    if (outcome.kind === 'created') return outcome.booking;
+
+    // Every free slot is either taken or locked by another request in flight.
+    // Retrying cannot help: a locked slot is about to become a booked one.
+    if (outcome.kind === 'no-free-slot') break;
+
+    if (outcome.kind === 'slot-taken') slotConflicts++;
+    else codeConflicts++;
   }
 
   throw new AppError('LOT_FULL', 'No slot is available in this lot right now');
 }
 
-/**
- * Free, app-bookable, in-service slots in the brief's order.
- *
- * Read through slot_status so "free" has exactly one definition, the view's.
- */
-async function freeSlotCandidates(
-  db: Kysely<Database>,
-  lotId: string,
-  limit: number,
-): Promise<string[]> {
-  const rows = await db
-    .selectFrom('slot_status')
-    .select('slot_id')
-    .where('lot_id', '=', lotId)
-    .where('display_status', '=', 'free')
-    .where('app_bookable', '=', true)
-    .orderBy('zone')
-    .orderBy('grid_row')
-    .orderBy('grid_col')
-    .limit(limit)
-    .execute();
-
-  return rows.flatMap((row) => (row.slot_id === null ? [] : [row.slot_id]));
-}
-
-/** Null when this slot was taken by someone else; throws for anything else. */
-async function tryInsert(
+/** One transaction: lock a free slot, insert the booking, record the event. */
+async function attemptOnce(
   deps: CreateBookingDeps,
   input: CreateBookingInput,
   lot: LotRow,
   status: BookingStatus,
   holdMinutes: number,
-  slotId: string,
-): Promise<BookingRow | null> {
-  for (let codeAttempt = 0; codeAttempt < MAX_CODE_ATTEMPTS; codeAttempt++) {
-    const now = deps.clock.now();
-    const holdExpiresAt = addMinutes(now, holdMinutes);
+): Promise<AttemptOutcome> {
+  const now = deps.clock.now();
+  const holdExpiresAt = addMinutes(now, holdMinutes);
 
-    try {
-      return await inTransaction(deps.db, deps.logger, async (trx, effects) => {
-        const booking = await trx
-          .insertInto('bookings')
-          .values({
-            lot_id: lot.id,
-            slot_id: slotId,
-            user_id: input.userId,
-            source: 'app',
-            status,
-            vehicle_plate: input.vehiclePlate ?? null,
-            planned_minutes: input.plannedMinutes,
-            qr_token: generateQrToken(),
-            short_code: generateShortCode(),
-            hold_expires_at: holdExpiresAt,
-            created_at: now,
-            updated_at: now,
-          })
-          .returningAll()
-          .executeTakeFirstOrThrow();
+  try {
+    return await inTransaction(deps.db, deps.logger, async (trx, effects) => {
+      const slot = await lockFreeSlot(trx, lot.id);
+      if (!slot) return { kind: 'no-free-slot' };
 
-        await trx
-          .insertInto('booking_events')
-          .values({
-            booking_id: booking.id,
-            from_status: null,
-            to_status: status,
-            actor_id: input.userId,
-            note: null,
-            at: now,
-          })
-          .execute();
+      const booking = await trx
+        .insertInto('bookings')
+        .values({
+          lot_id: lot.id,
+          slot_id: slot.id,
+          user_id: input.userId,
+          source: 'app',
+          status,
+          vehicle_plate: input.vehiclePlate ?? null,
+          planned_minutes: input.plannedMinutes,
+          qr_token: generateQrToken(),
+          short_code: generateShortCode(),
+          hold_expires_at: holdExpiresAt,
+          created_at: now,
+          updated_at: now,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
 
-        // INVARIANT 5: registered here, run only after the commit returns.
-        effects.add(jobIdFor('expire-hold', booking.id), async () => {
-          await deps.scheduler.schedule({
-            queue: 'expire-hold',
-            bookingId: booking.id,
-            runAt: holdExpiresAt,
-          });
+      await trx
+        .insertInto('booking_events')
+        .values({
+          booking_id: booking.id,
+          from_status: null,
+          to_status: status,
+          actor_id: input.userId,
+          note: null,
+          at: now,
+        })
+        .execute();
+
+      // INVARIANT 5: registered here, run only after the commit returns.
+      effects.add(jobIdFor('expire-hold', booking.id), async () => {
+        await deps.scheduler.schedule({
+          queue: 'expire-hold',
+          bookingId: booking.id,
+          runAt: holdExpiresAt,
         });
-
-        return booking;
       });
-    } catch (err) {
-      // Someone else took this slot. Move to the next candidate.
-      if (isUniqueViolation(err, CONSTRAINTS.liveBookingPerSlot)) return null;
 
-      // Another slot will not help: this driver already holds a live booking.
-      if (isUniqueViolation(err, CONSTRAINTS.liveBookingPerUser)) {
-        throw new AppError('ALREADY_HAS_ACTIVE_BOOKING', 'You already have an active booking');
-      }
+      return { kind: 'created', booking };
+    });
+  } catch (err) {
+    // A writer that did not hold the slot lock beat us to it.
+    if (isUniqueViolation(err, CONSTRAINTS.liveBookingPerSlot)) return { kind: 'slot-taken' };
 
-      // A generated code collided. Regenerate and retry the SAME slot.
-      if (
-        isUniqueViolation(err, CONSTRAINTS.liveBookingPerShortCode) ||
-        isUniqueViolation(err, CONSTRAINTS.qrToken)
-      ) {
-        deps.logger.warn({ slotId, codeAttempt }, 'booking code collision; regenerating');
-        continue;
-      }
-
-      throw err;
+    // Another slot will not help: this driver already holds a live booking.
+    if (isUniqueViolation(err, CONSTRAINTS.liveBookingPerUser)) {
+      throw new AppError('ALREADY_HAS_ACTIVE_BOOKING', 'You already have an active booking');
     }
-  }
 
-  throw new AppError(
-    'INTERNAL',
-    `Could not generate a unique booking code after ${MAX_CODE_ATTEMPTS} attempts`,
+    if (
+      isUniqueViolation(err, CONSTRAINTS.liveBookingPerShortCode) ||
+      isUniqueViolation(err, CONSTRAINTS.qrToken)
+    ) {
+      deps.logger.warn({ lotId: lot.id }, 'booking code collision; regenerating');
+      return { kind: 'code-collision' };
+    }
+
+    throw err;
+  }
+}
+
+/**
+ * Lock the first free, app-bookable, in-service slot, skipping any row another
+ * transaction already holds.
+ *
+ * This cannot read through slot_status: FOR UPDATE is not permitted on a view
+ * with an outer join. The liveness condition is therefore spelled out here,
+ * but from LIVE_STATUSES — the same constant the view and the partial indexes
+ * are built from, which db/test/schema.test.ts pins to the database.
+ */
+async function lockFreeSlot(
+  trx: Transaction<Database>,
+  lotId: string,
+): Promise<{ id: string } | undefined> {
+  return (
+    trx
+      .selectFrom('slots')
+      .select('slots.id')
+      .where('slots.lot_id', '=', lotId)
+      .where('slots.app_bookable', '=', true)
+      .where('slots.in_service', '=', true)
+      // Not destructured: pulling `not`/`exists`/`selectFrom` off the builder
+      // detaches them from their `this`.
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('bookings')
+              .select('bookings.id')
+              .whereRef('bookings.slot_id', '=', 'slots.id')
+              .where('bookings.status', 'in', [...LIVE_STATUSES]),
+          ),
+        ),
+      )
+      .orderBy('slots.zone')
+      .orderBy('slots.grid_row')
+      .orderBy('slots.grid_col')
+      .limit(1)
+      .forUpdate('slots')
+      .skipLocked()
+      .executeTakeFirst()
   );
 }

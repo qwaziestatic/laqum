@@ -125,8 +125,11 @@ describe('slot retry on a real unique violation', () => {
     expect(scheduler.scheduled[0]?.bookingId).toBe(result.booking.id);
   }, 30_000);
 
-  it('returns LOT_FULL after the retry budget, even with free slots left', async () => {
-    // More slots than the budget, so exhaustion cannot be the explanation.
+  it('never returns LOT_FULL while a slot is still free', async () => {
+    // The old failure mode: with a candidate list read once up front, these
+    // violations burned the whole retry budget on stale slots and the driver
+    // was told LOT_FULL with two slots free. The candidate is now re-selected
+    // (and locked) on every attempt, so the retry lands on real free capacity.
     const lot = await createLot(db, { slots: MAX_SLOT_ATTEMPTS + 2, depositSantim: 0 });
     const userId = await createUser(db, 'driver', '+251911400002');
     const scheduler = new RecordingScheduler();
@@ -147,39 +150,45 @@ describe('slot retry on a real unique violation', () => {
       },
     );
 
-    // Attach the rejection handler NOW, not after the commits. `pending`
-    // rejects part-way through the loop below, and a promise that rejects with
-    // no handler attached is an unhandled rejection even if it is awaited
-    // later.
-    const rejects = expect(pending).rejects.toMatchObject({
-      code: 'LOT_FULL',
-      status: 409,
-    });
-
     await sleep(250);
     for (const holder of holders) {
       await holder.commit().execute();
       await sleep(50);
     }
 
-    await rejects;
+    const result = await pending;
 
-    // Two slots are still free: the budget ran out, the lot did not.
-    const free = await db
-      .selectFrom('slot_status')
-      .select('slot_id')
-      .where('lot_id', '=', lot.lotId)
-      .where('display_status', '=', 'free')
-      .execute();
-    expect(free).toHaveLength(2);
+    // It landed on one of the two slots that were genuinely free.
+    expect([lot.slotIds[MAX_SLOT_ATTEMPTS], lot.slotIds[MAX_SLOT_ATTEMPTS + 1]]).toContain(
+      result.booking.slot_id,
+    );
+    expect(scheduler.scheduled).toHaveLength(1);
+  }, 30_000);
 
-    // Nothing was created, and nothing was scheduled.
-    const mine = await db
-      .selectFrom('bookings')
-      .selectAll()
-      .where('user_id', '=', userId)
-      .execute();
-    expect(mine).toHaveLength(0);
+  it('returns LOT_FULL only when every slot really is occupied', async () => {
+    const lot = await createLot(db, { slots: 3, depositSantim: 0 });
+    const userId = await createUser(db, 'driver', '+251911400004');
+    const scheduler = new RecordingScheduler();
+
+    // Committed, so the lot is genuinely full rather than momentarily locked.
+    for (const slotId of lot.slotIds) {
+      const holder = await holdSlotUncommitted(lot.lotId, slotId);
+      await holder.commit().execute();
+    }
+
+    await expect(
+      createBooking(
+        { db, clock: testClock(), logger, scheduler },
+        {
+          lotId: lot.lotId,
+          userId,
+          plannedMinutes: 30,
+          latitude: lot.latitude,
+          longitude: lot.longitude,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'LOT_FULL', status: 409 });
+
     expect(scheduler.scheduled).toEqual([]);
   }, 30_000);
 

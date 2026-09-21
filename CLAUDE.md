@@ -321,6 +321,23 @@ Gate on each phase's 🛑 before advancing.
 - **Phase 5 — hardening.** Push notifications, rate limiting, pino request IDs,
   graceful shutdown, production Dockerfile, deployment README.
 
+### Phase 1 open items
+
+Deferred work, tracked so it cannot be quietly dropped. **The Phase 1 🛑
+report must show this list fully ticked.**
+
+- [ ] **Extend-then-stale-overstay scenario test.** `transition()`'s `DueGuard`
+      is implemented and unit-tested (early → `NOT_DUE`, exactly at the
+      deadline → fires, null column → `NOT_DUE`). The end-to-end case — extend
+      a booking, then run the _old_ overstay handler at the _old_ deadline and
+      assert it is a no-op with the booking still `CHECKED_IN` — needs the
+      extend endpoint and the overstay handler, so it lands with the jobs
+      commit.
+- [ ] **`removeOnComplete` / `removeOnFail` on every queue**, with the real
+      BullMQ test. Without them a completed job's id lingers and blocks
+      re-adding the same deterministic id, so a rescheduled `expire-hold` or
+      `mark-overstay` would be silently dropped. Lands with the jobs commit.
+
 ### What `packages/shared` does NOT contain yet
 
 Phase 0 ships only enums, `LIVE_STATUSES`, constants and money helpers. The
