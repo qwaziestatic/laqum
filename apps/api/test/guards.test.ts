@@ -58,13 +58,20 @@ describe('INVARIANT 3: one writer for bookings.status', () => {
       if (STATUS_WRITERS.includes(file.path)) continue;
       const code = stripComments(file.text);
 
-      // An update or insert touching bookings, that also mentions `status:`.
-      const writesBookings =
-        /\.updateTable\(\s*['"]bookings['"]\s*\)/u.test(code) ||
-        /\.insertInto\(\s*['"]bookings['"]\s*\)/u.test(code);
-      const setsStatus = /\bstatus\s*:/u.test(code) || /\bstatus\s*=/u.test(code);
-
-      if (writesBookings && setsStatus) offenders.push(file.path);
+      /*
+       * Scan FORWARD from each write to the bookings table, not the whole
+       * file. Checking the file as a whole flagged bookings/service.ts for a
+       * `{ status: existing.status }` inside an AppError payload, which is a
+       * read, not a write — a false positive that would train someone to
+       * silence this test.
+       */
+      const writes = /\.(?:updateTable|insertInto)\(\s*['"]bookings['"]\s*\)/gu;
+      for (const match of code.matchAll(writes)) {
+        const chain = code.slice(match.index, match.index + 800);
+        // `status:` is an object key in .set({...}) or .values({...}).
+        // `.where('status', ...)` is a predicate and is perfectly fine.
+        if (/\bstatus\s*:/u.test(chain)) offenders.push(file.path);
+      }
 
       // Raw SQL is the other way round the query builder.
       if (/UPDATE\s+bookings[\s\S]{0,200}?\bSET\b[\s\S]{0,200}?\bstatus\b/iu.test(code)) {
@@ -73,6 +80,26 @@ describe('INVARIANT 3: one writer for bookings.status', () => {
     }
 
     expect(offenders, 'only transition.ts and create.ts may write bookings.status').toEqual([]);
+  });
+
+  it('flags a status write while ignoring a status read', () => {
+    // Negative-test of the rule, so it cannot rot into a regex matching
+    // nothing. The first two are writes; the last two are not.
+    const flags = (code: string): boolean => {
+      const writes = /\.(?:updateTable|insertInto)\(\s*['"]bookings['"]\s*\)/gu;
+      return [...code.matchAll(writes)].some((m) =>
+        /\bstatus\s*:/u.test(code.slice(m.index, m.index + 800)),
+      );
+    };
+
+    expect(flags(".updateTable('bookings').set({ status: 'PAID' })")).toBe(true);
+    expect(flags(".insertInto('bookings').values({ status: 'CHECKED_IN' })")).toBe(true);
+    expect(
+      flags(".updateTable('bookings').set({ updated_at: now }).where('status', '=', 'X')"),
+    ).toBe(false);
+    expect(flags("throw new AppError('STATE_CONFLICT', 'nope', { status: row.status })")).toBe(
+      false,
+    );
   });
 
   it('keeps status out of the patch type, so the compiler enforces it too', async () => {

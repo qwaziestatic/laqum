@@ -306,3 +306,70 @@ async function lockFreeSlot(
       .executeTakeFirst()
   );
 }
+
+export interface CreateWalkInInput {
+  lotId: string;
+  slotId: string;
+  attendantId: string;
+  vehiclePlate?: string | null;
+}
+
+/**
+ * Park a walk-in on a slot the attendant chose.
+ *
+ * Lives here, beside createBooking, because it is the OTHER way a booking is
+ * born — and because keeping every status-writing INSERT in one file is what
+ * makes the single-writer guard in guards.test.ts meaningful. The staff
+ * service calls this rather than inserting its own row.
+ *
+ * Walk-ins have no user, no planned end and no entry credentials: the
+ * attendant is standing at the car. They never enter OVERSTAY, so no overstay
+ * job is scheduled.
+ */
+export async function createWalkIn(
+  deps: CreateBookingDeps,
+  input: CreateWalkInInput,
+): Promise<BookingRow> {
+  const now = deps.clock.now();
+
+  try {
+    return await inTransaction(deps.db, deps.logger, async (trx) => {
+      const booking = await trx
+        .insertInto('bookings')
+        .values({
+          lot_id: input.lotId,
+          slot_id: input.slotId,
+          user_id: null,
+          source: 'walk_in',
+          status: 'CHECKED_IN',
+          vehicle_plate: input.vehiclePlate ?? null,
+          planned_minutes: null,
+          checked_in_at: now,
+          created_by: input.attendantId,
+          created_at: now,
+          updated_at: now,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      await trx
+        .insertInto('booking_events')
+        .values({
+          booking_id: booking.id,
+          from_status: null,
+          to_status: 'CHECKED_IN',
+          actor_id: input.attendantId,
+          note: 'walk-in',
+          at: now,
+        })
+        .execute();
+
+      return booking;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err, CONSTRAINTS.liveBookingPerSlot)) {
+      throw new AppError('SLOT_TAKEN', 'That slot already has a live booking');
+    }
+    throw err;
+  }
+}

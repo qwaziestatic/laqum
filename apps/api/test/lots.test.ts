@@ -176,7 +176,7 @@ describe('GET /v1/lots/nearby', () => {
 });
 
 describe('GET /v1/lots/:id/layout', () => {
-  it('returns the grid without any other driver's data', async () => {
+  it("returns the grid without any other driver's data", async () => {
     const lot = await createLot(t.db.db, { slots: 2, ...BOLE });
     const other = await createUser(t.db.db, 'driver', '+251911770010');
     await seedBooking(t.db.db, {

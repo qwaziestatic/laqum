@@ -129,9 +129,31 @@ export const createLotSchema = z.object({
 });
 export type CreateLotRequest = z.infer<typeof createLotSchema>;
 
-export const updateLotSchema = createLotSchema
-  .partial()
-  .omit({ operatorId: true })
+/**
+ * Spelled out rather than derived from createLotSchema with .partial().
+ *
+ * .partial() makes a field optional but does NOT remove its .default(), so
+ * parsing `{}` would yield every defaulted field populated — and a PATCH with
+ * an empty body would silently RESET blockMinutes, holdMinutes,
+ * paymentWindowMinutes, depositAmountSantim and maxBookingDistanceM to their
+ * defaults. Every field here is optional with no default, so an absent field
+ * means "leave it alone".
+ */
+export const updateLotSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    address: z.string().trim().max(500).optional(),
+    latitude: latitudeSchema.optional(),
+    longitude: longitudeSchema.optional(),
+    contactPhone: phoneSchema.optional(),
+    blockMinutes: z.int().positive().optional(),
+    ratePerBlockSantim: z.int().nonnegative().optional(),
+    overstayRatePerBlockSantim: z.int().nonnegative().optional(),
+    depositAmountSantim: z.int().nonnegative().optional(),
+    paymentWindowMinutes: z.int().positive().optional(),
+    holdMinutes: z.int().positive().optional(),
+    maxBookingDistanceM: z.int().positive().optional(),
+  })
   .refine((v) => Object.keys(v).length > 0, 'at least one field must be provided');
 export type UpdateLotRequest = z.infer<typeof updateLotSchema>;
 
