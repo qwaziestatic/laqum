@@ -1,5 +1,7 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { authRouter } from './auth/routes.js';
+import { bookingsRouter } from './bookings/routes.js';
+import { lotsRouter } from './lots/routes.js';
 import type { AppContext } from './context.js';
 import { checkReadiness } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
@@ -44,6 +46,8 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   });
 
   app.use('/v1/auth', authRouter(ctx));
+  app.use('/v1/lots', lotsRouter(ctx));
+  app.use('/v1/bookings', bookingsRouter(ctx));
 
   app.use(notFoundHandler());
   app.use(errorHandler(ctx.logger));
