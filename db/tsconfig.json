@@ -1,8 +1,15 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "./dist"
+    // Typecheck-only config: it covers tests, which must not be emitted.
+    // tsconfig.build.json sets rootDir/outDir for the real build.
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "migrations/**/*.ts", "seed/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "migrations/**/*.ts",
+    "seed/**/*.ts",
+    "test/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

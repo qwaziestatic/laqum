@@ -1,4 +1,14 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    // rootDir is the package root because migrations/ and seed/ live beside
+    // src/, per the brief's layout. Emitted output therefore mirrors that:
+    // dist/src/index.js, dist/migrations/001_initial.js, dist/seed/seed.js.
+    // package.json "exports" points at dist/src/index.js for that reason.
+    "rootDir": ".",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*.ts", "migrations/**/*.ts", "seed/**/*.ts"],
   "exclude": ["**/*.test.ts"]
 }

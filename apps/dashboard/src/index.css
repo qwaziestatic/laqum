@@ -1,0 +1,15 @@
+/* Tailwind CSS v4 is configured from CSS, not a tailwind.config.js. */
+@import 'tailwindcss';
+
+@theme {
+  /*
+   * Slot status colours. Status is never conveyed by colour alone in the UI —
+   * every tile also carries an icon and a text label — but these are the
+   * canonical hues the dashboard grid uses in Phase 3.
+   */
+  --color-slot-free: oklch(0.72 0.17 145);
+  --color-slot-reserved: oklch(0.78 0.16 75);
+  --color-slot-occupied: oklch(0.62 0.21 25);
+  --color-slot-overstay: oklch(0.55 0.23 340);
+  --color-slot-out-of-service: oklch(0.6 0.02 260);
+}

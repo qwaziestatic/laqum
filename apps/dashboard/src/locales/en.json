@@ -1,0 +1,18 @@
+{
+  "app": {
+    "name": "Laqum",
+    "tagline": "Real-time parking for Addis Ababa",
+    "attendantConsole": "Attendant console"
+  },
+  "slot": {
+    "free": "Free",
+    "reserved": "Reserved",
+    "occupied": "Occupied",
+    "overstay": "Overstay",
+    "out_of_service": "Out of service"
+  },
+  "common": {
+    "language": "Language",
+    "phase": "Phase 0: foundation"
+  }
+}

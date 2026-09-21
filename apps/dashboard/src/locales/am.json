@@ -1,0 +1,18 @@
+{
+  "app": {
+    "name": "ላቁም?",
+    "tagline": "ለአዲስ አበባ የቅጽበት የመኪና ማቆሚያ",
+    "attendantConsole": "የአስተናጋጅ ማዕከል"
+  },
+  "slot": {
+    "free": "ነፃ",
+    "reserved": "ተይዟል",
+    "occupied": "ተይዞ ነው",
+    "overstay": "ጊዜ አልፏል",
+    "out_of_service": "ከአገልግሎት ውጭ"
+  },
+  "common": {
+    "language": "ቋንቋ",
+    "phase": "ምዕራፍ 0: መሠረት"
+  }
+}
