@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Service containers are reachable on localhost from the job, on their
+  # standard ports. These differ from docker-compose.test.yml, which shifts
+  # ports to avoid colliding with a developer's running dev stack.
+  TEST_DATABASE_URL: postgres://laqum:laqum@localhost:5432/laqum_test
+  TEST_REDIS_URL: redis://localhost:6379
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: laqum
+          POSTGRES_PASSWORD: laqum
+          POSTGRES_DB: laqum_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U laqum -d laqum_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Migrate
+        run: pnpm --filter @laqum/db migrate up
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      # The generated types are committed. If the schema and the checked-in
+      # types disagree, someone changed a migration without regenerating, and
+      # every later typecheck would be lying about the database.
+      - name: Check generated DB types are up to date
+        run: pnpm --filter @laqum/db codegen:verify
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      # Exercises the dist/ resolution path that production uses, which the
+      # test aliases deliberately bypass.
+      - name: Build
+        run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test
+
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t laqum-api:ci .
