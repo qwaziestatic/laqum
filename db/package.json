@@ -26,7 +26,6 @@
     "pg": "8.23.0"
   },
   "devDependencies": {
-    "@faker-js/faker": "10.6.0",
     "@types/pg": "8.23.1",
     "kysely-codegen": "0.20.0",
     "tsx": "4.23.15",
