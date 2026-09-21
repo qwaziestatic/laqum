@@ -65,6 +65,14 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
 
+  // Tests may assert that a fixture they just created exists. A wrong
+  // assumption fails the test immediately and locally, which is the desired
+  // behaviour; production code keeps the rule.
+  {
+    files: ['**/test/**/*.ts', '**/*.test.ts'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+
   // Must stay last: turns off every rule that fights Prettier.
   prettier,
 );
