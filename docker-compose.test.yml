@@ -1,0 +1,31 @@
+# Throwaway Postgres and Redis for integration tests.
+#
+# Ports are deliberately non-default so a running `docker compose up` (dev) and
+# a test run cannot collide, and so a mistyped DATABASE_URL cannot point tests
+# at the dev database. Data is tmpfs: every `down -v` starts clean.
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: laqum
+      POSTGRES_PASSWORD: laqum
+      POSTGRES_DB: laqum_test
+    ports:
+      - '55432:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U laqum -d laqum_test']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - '56379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20

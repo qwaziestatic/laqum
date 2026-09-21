@@ -1,3 +1,13 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  # db/ is a workspace package so that migrations and the seed script can
+  # resolve `kysely` and `pg` under pnpm's isolated node-linker. Its on-disk
+  # layout still follows the brief: db/migrations/ and db/seed/.
+  - 'db'
+
+# pnpm 12 blocks dependency build scripts until each is explicitly allowed.
+# esbuild's postinstall links the platform-native binary that tsx and Vitest
+# execute; without it neither runs. Every other build script stays blocked.
+allowBuilds:
+  esbuild: true
