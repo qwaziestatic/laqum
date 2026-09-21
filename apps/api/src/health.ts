@@ -1,3 +1,4 @@
+import type { Database } from '@laqum/db';
 import type { Redis } from 'ioredis';
 import { type Kysely, sql } from 'kysely';
 
@@ -80,7 +81,7 @@ async function probe(check: () => Promise<unknown>): Promise<DependencyResult> {
 }
 
 export interface HealthDeps {
-  db: Kysely<unknown>;
+  db: Kysely<Database>;
   redis: Redis;
 }
 

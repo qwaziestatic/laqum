@@ -1,9 +1,11 @@
-import { createPool, createUntypedDb } from '@laqum/db';
+import { createDb, createPool } from '@laqum/db';
 import type { Redis } from 'ioredis';
+import type { Database } from '@laqum/db';
 import type { Kysely } from 'kysely';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
+import { contextFor } from './helpers/context.js';
 import type { ReadinessReport } from '../src/health.js';
 import { createRedis } from '../src/redis.js';
 import { loadConfig } from '../src/config.js';
@@ -34,13 +36,13 @@ function config(overrides: Record<string, string> = {}): ReturnType<typeof loadC
 }
 
 describe('GET /health (liveness)', () => {
-  let db: Kysely<unknown>;
+  let db: Kysely<Database>;
   let redis: Redis;
   let pool: ReturnType<typeof createPool>;
 
   beforeAll(() => {
     pool = createPool({ connectionString: DEAD_DATABASE_URL });
-    db = createUntypedDb(pool);
+    db = createDb(pool);
     redis = createRedis(config({ REDIS_URL: DEAD_REDIS_URL }));
   });
 
@@ -52,7 +54,7 @@ describe('GET /health (liveness)', () => {
   it('is 200 even when every dependency is unreachable', async () => {
     // Liveness must not depend on Postgres or Redis, or an orchestrator will
     // restart a process that is working fine.
-    const res = await request(createApp({ db, redis })).get('/health');
+    const res = await request(createApp(contextFor(db, redis))).get('/health');
     const body = res.body as LivenessBody;
 
     expect(res.status).toBe(200);
@@ -62,11 +64,11 @@ describe('GET /health (liveness)', () => {
 });
 
 describe('GET /ready (readiness)', () => {
-  let db: Kysely<unknown>;
+  let db: Kysely<Database>;
   let redis: Redis;
 
   beforeAll(async () => {
-    db = createUntypedDb(createPool({ connectionString: DATABASE_URL }));
+    db = createDb(createPool({ connectionString: DATABASE_URL }));
     redis = createRedis(config());
     await redis.connect();
   }, 30_000);
@@ -77,7 +79,7 @@ describe('GET /ready (readiness)', () => {
   });
 
   it('is 200 with both dependencies up', async () => {
-    const res = await request(createApp({ db, redis })).get('/ready');
+    const res = await request(createApp(contextFor(db, redis))).get('/ready');
     const body = res.body as ReadinessReport;
 
     expect(res.status).toBe(200);
@@ -90,12 +92,12 @@ describe('GET /ready (readiness)', () => {
 
 describe('GET /ready with a dependency down', () => {
   it('is 503 and names Postgres when Postgres is unreachable', async () => {
-    const db = createUntypedDb(createPool({ connectionString: DEAD_DATABASE_URL }));
+    const db = createDb(createPool({ connectionString: DEAD_DATABASE_URL }));
     const redis = createRedis(config());
     await redis.connect();
 
     try {
-      const res = await request(createApp({ db, redis })).get('/ready');
+      const res = await request(createApp(contextFor(db, redis))).get('/ready');
       const body = res.body as ReadinessReport;
 
       expect(res.status).toBe(503);
@@ -113,14 +115,14 @@ describe('GET /ready with a dependency down', () => {
   }, 30_000);
 
   it('is 503 and names Redis when Redis is unreachable', async () => {
-    const db = createUntypedDb(createPool({ connectionString: DATABASE_URL }));
+    const db = createDb(createPool({ connectionString: DATABASE_URL }));
     const redis = createRedis(config({ REDIS_URL: DEAD_REDIS_URL }));
     redis.connect().catch(() => {
       // Expected: nothing is listening. /ready is what reports it.
     });
 
     try {
-      const res = await request(createApp({ db, redis })).get('/ready');
+      const res = await request(createApp(contextFor(db, redis))).get('/ready');
       const body = res.body as ReadinessReport;
 
       expect(res.status).toBe(503);

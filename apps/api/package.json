@@ -16,6 +16,7 @@
     "@laqum/shared": "workspace:*",
     "express": "5.2.1",
     "ioredis": "5.11.1",
+    "jose": "6.2.12",
     "kysely": "0.29.6",
     "pino": "10.3.1",
     "zod": "4.6.5"

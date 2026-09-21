@@ -44,6 +44,12 @@ export default tseslint.config(
       ],
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
       'no-console': ['error', { allow: ['warn', 'error'] }],
+      // Express detects error middleware by ARITY, so the fourth parameter
+      // must be declared even when unused. Leading underscore marks intent.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
     },
   },
 

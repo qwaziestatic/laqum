@@ -1,20 +1,22 @@
 import express, { type Express, type Request, type Response } from 'express';
-import { checkReadiness, type HealthDeps } from './health.js';
+import { authRouter } from './auth/routes.js';
+import type { AppContext } from './context.js';
+import { checkReadiness } from './health.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
-export interface AppDeps extends HealthDeps {
+export interface AppOptions {
   startedAt?: number;
 }
 
-/**
- * Phase 0 serves only the two probes. Routers, auth, the error model and the
- * /v1 surface arrive in Phase 1.
- */
-export function createApp(deps: AppDeps): Express {
+export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   const app = express();
-  const startedAt = deps.startedAt ?? Date.now();
+  const startedAt = options.startedAt ?? Date.now();
 
   app.disable('x-powered-by');
-  app.use(express.json());
+  // Behind a proxy in production, so req.ip reflects the client rather than
+  // the load balancer. Per-IP rate limiting depends on this being right.
+  app.set('trust proxy', true);
+  app.use(express.json({ limit: '64kb' }));
 
   // Liveness. Deliberately dependency-free: it must stay 200 while Postgres is
   // down, or an orchestrator will restart a process that is working fine.
@@ -28,7 +30,7 @@ export function createApp(deps: AppDeps): Express {
   // Readiness. 503 when a dependency is unreachable, with per-dependency
   // detail so an operator can see which one without opening a shell.
   app.get('/ready', (_req: Request, res: Response) => {
-    checkReadiness(deps)
+    checkReadiness({ db: ctx.db, redis: ctx.redis })
       .then((report) => {
         res.status(report.status === 'ready' ? 200 : 503).json(report);
       })
@@ -40,6 +42,11 @@ export function createApp(deps: AppDeps): Express {
         });
       });
   });
+
+  app.use('/v1/auth', authRouter(ctx));
+
+  app.use(notFoundHandler());
+  app.use(errorHandler(ctx.logger));
 
   return app;
 }

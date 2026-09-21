@@ -1,0 +1,149 @@
+import { z } from 'zod';
+import { SHORT_CODE_PATTERN } from './constants.js';
+import { userRoleSchema } from './enums.js';
+
+/**
+ * Request and response schemas, shared by the API and both clients so a
+ * contract change breaks compilation on every side at once.
+ */
+
+/** E.164: a leading +, then 8-15 digits. Ethiopian numbers are +251... */
+export const phoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+[1-9]\d{7,14}$/u, 'must be an E.164 phone number, for example +251911234567');
+
+export const uuidSchema = z.uuid();
+
+export const latitudeSchema = z.coerce.number().min(-90).max(90);
+export const longitudeSchema = z.coerce.number().min(-180).max(180);
+
+// ─── Auth ─────────────────────────────────────────────────────────────────
+
+export const otpRequestSchema = z.object({
+  phone: phoneSchema,
+});
+export type OtpRequest = z.infer<typeof otpRequestSchema>;
+
+export const otpVerifySchema = z.object({
+  phone: phoneSchema,
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/u, 'must be six digits'),
+});
+export type OtpVerify = z.infer<typeof otpVerifySchema>;
+
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+export type RefreshRequest = z.infer<typeof refreshSchema>;
+
+export const sessionResponseSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+  accessExpiresAt: z.iso.datetime(),
+  refreshExpiresAt: z.iso.datetime(),
+  user: z.object({
+    id: uuidSchema,
+    phone: phoneSchema,
+    role: userRoleSchema,
+    fullName: z.string().nullable(),
+  }),
+});
+export type SessionResponse = z.infer<typeof sessionResponseSchema>;
+
+// ─── Lots ─────────────────────────────────────────────────────────────────
+
+export const nearbyQuerySchema = z.object({
+  lat: latitudeSchema,
+  lng: longitudeSchema,
+  radius_m: z.coerce.number().int().positive().max(100_000).default(5_000),
+});
+export type NearbyQuery = z.infer<typeof nearbyQuerySchema>;
+
+// ─── Bookings ─────────────────────────────────────────────────────────────
+
+export const createBookingSchema = z.object({
+  lotId: uuidSchema,
+  plannedMinutes: z.coerce.number().int().positive(),
+  vehiclePlate: z.string().trim().min(1).max(32).optional(),
+  lat: latitudeSchema,
+  lng: longitudeSchema,
+});
+export type CreateBookingRequest = z.infer<typeof createBookingSchema>;
+
+export const extendBookingSchema = z.object({
+  additionalBlocks: z.coerce.number().int().positive().max(48),
+});
+export type ExtendBookingRequest = z.infer<typeof extendBookingSchema>;
+
+// ─── Staff ────────────────────────────────────────────────────────────────
+
+export const walkInSchema = z.object({
+  slotId: uuidSchema,
+  vehiclePlate: z.string().trim().min(1).max(32).optional(),
+});
+export type WalkInRequest = z.infer<typeof walkInSchema>;
+
+/**
+ * One field for both credentials: a scan yields a QR token, a manual entry
+ * yields a short code. They are told apart by shape, not by a separate
+ * endpoint, because the attendant is doing the same thing either way.
+ */
+export const checkInSchema = z.object({
+  code: z.string().trim().min(1),
+});
+export type CheckInRequest = z.infer<typeof checkInSchema>;
+
+export function looksLikeShortCode(code: string): boolean {
+  return SHORT_CODE_PATTERN.test(code.trim().toUpperCase());
+}
+
+export const cashPaymentSchema = z.object({
+  amountSantim: z.int().positive(),
+});
+export type CashPaymentRequest = z.infer<typeof cashPaymentSchema>;
+
+export const slotServiceSchema = z.object({
+  inService: z.boolean(),
+});
+export type SlotServiceRequest = z.infer<typeof slotServiceSchema>;
+
+// ─── Admin ────────────────────────────────────────────────────────────────
+
+export const createLotSchema = z.object({
+  operatorId: uuidSchema,
+  name: z.string().trim().min(1).max(200),
+  address: z.string().trim().max(500).optional(),
+  latitude: latitudeSchema,
+  longitude: longitudeSchema,
+  contactPhone: phoneSchema,
+  blockMinutes: z.int().positive().default(30),
+  ratePerBlockSantim: z.int().nonnegative(),
+  overstayRatePerBlockSantim: z.int().nonnegative(),
+  depositAmountSantim: z.int().nonnegative().default(0),
+  paymentWindowMinutes: z.int().positive().default(3),
+  holdMinutes: z.int().positive().default(15),
+  maxBookingDistanceM: z.int().positive().default(10_000),
+});
+export type CreateLotRequest = z.infer<typeof createLotSchema>;
+
+export const updateLotSchema = createLotSchema
+  .partial()
+  .omit({ operatorId: true })
+  .refine((v) => Object.keys(v).length > 0, 'at least one field must be provided');
+export type UpdateLotRequest = z.infer<typeof updateLotSchema>;
+
+export const bulkSlotsSchema = z.object({
+  zone: z.string().trim().min(1).max(50).default('main'),
+  rows: z.int().positive().max(50),
+  cols: z.int().positive().max(50),
+  labelPrefix: z
+    .string()
+    .trim()
+    .regex(/^[A-Z]$/u, 'must be a single uppercase letter')
+    .default('A'),
+  appBookable: z.boolean().default(true),
+});
+export type BulkSlotsRequest = z.infer<typeof bulkSlotsSchema>;

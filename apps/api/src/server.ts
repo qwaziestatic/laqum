@@ -1,31 +1,44 @@
-import { createPool, createUntypedDb } from '@laqum/db';
+import { createDb, createPool } from '@laqum/db';
+import { systemClock } from '@laqum/shared';
 import { createApp } from './app.js';
+import { RateLimiter } from './auth/rateLimit.js';
+import { ConsoleSmsProvider } from './auth/sms.js';
 import { loadConfig } from './config.js';
+import type { AppContext } from './context.js';
+import { NoopScheduler } from './jobs/scheduler.js';
 import { createLogger } from './logger.js';
 import { createRedis } from './redis.js';
 
 /**
  * Process entry point.
  *
- * Shutdown here closes the HTTP server and the two connection pools. Draining
- * in-flight BullMQ jobs and Socket.io connections is Phase 5, when there is
- * something to drain.
+ * Shutdown here closes the HTTP server and the connection pools. Draining
+ * in-flight BullMQ jobs and Socket.io connections is Phase 5.
  */
 function main(): void {
   const config = loadConfig();
   const logger = createLogger(config);
 
   const pool = createPool({ connectionString: config.DATABASE_URL });
-  const db = createUntypedDb(pool);
+  const db = createDb(pool);
   const redis = createRedis(config);
 
-  // lazyConnect: connect once at startup so readiness reflects a real
-  // connection rather than the first probe paying the connect cost.
   redis.connect().catch((err: unknown) => {
     logger.warn({ err }, 'Redis is not reachable at startup; /ready will report it');
   });
 
-  const app = createApp({ db, redis });
+  const ctx: AppContext = {
+    db,
+    redis,
+    clock: systemClock,
+    config,
+    logger,
+    scheduler: new NoopScheduler(),
+    sms: new ConsoleSmsProvider(logger),
+    rateLimiter: new RateLimiter({ redis, clock: systemClock }),
+  };
+
+  const app = createApp(ctx);
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT, env: config.NODE_ENV }, 'ላቁም? API listening');
   });
@@ -50,7 +63,6 @@ function main(): void {
       })();
     });
 
-    // Do not let a stuck connection hold the process open forever.
     setTimeout(() => {
       logger.error('forced exit after shutdown timeout');
       process.exit(1);
