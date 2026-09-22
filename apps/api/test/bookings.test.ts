@@ -262,7 +262,7 @@ describe('POST /v1/bookings/:id/extend', () => {
 
     expect(overstay).toHaveLength(1);
     expect(overstay[0]?.runAt.toISOString()).toBe('2026-03-01T09:30:00.000Z');
-    expect(overstay[0]?.jobId).toBe(`mark-overstay:${id}`);
+    expect(overstay[0]?.jobId).toBe(`mark-overstay.${id}`);
 
     // Ten minutes before the new planned end.
     expect(reminder[0]?.runAt.toISOString()).toBe('2026-03-01T09:20:00.000Z');

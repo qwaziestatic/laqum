@@ -7,6 +7,22 @@ import type { Config } from './config.js';
  * make the readiness probe hang instead of reporting "down", so the probe
  * client is configured to fail fast.
  */
+/**
+ * A SEPARATE connection for BullMQ.
+ *
+ * BullMQ's blocking commands require `maxRetriesPerRequest: null`, and warn
+ * (then misbehave) with anything else — the exact opposite of what the
+ * readiness probe needs, which is to fail fast rather than block. The two
+ * cannot share a client, so they do not.
+ */
+export function createQueueRedis(config: Config): Redis {
+  return new Redis(config.REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: true,
+    retryStrategy: (attempt) => Math.min(attempt * 200, 5_000),
+  });
+}
+
 export function createRedis(config: Config): Redis {
   return new Redis(config.REDIS_URL, {
     // Report the failure rather than buffering the command.

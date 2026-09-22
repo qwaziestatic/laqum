@@ -382,7 +382,7 @@ describe('the two birth states', () => {
     expect(scheduler.scheduled[0]).toMatchObject({
       queue: 'expire-hold',
       bookingId: result.booking.id,
-      jobId: `expire-hold:${result.booking.id}`,
+      jobId: `expire-hold.${result.booking.id}`,
     });
     expect(scheduler.scheduled[0]?.runAt.toISOString()).toBe('2026-03-01T08:15:00.000Z');
   });

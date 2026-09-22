@@ -16,9 +16,19 @@ export interface ScheduledJob {
   runAt: Date;
 }
 
-/** Deterministic, so rescheduling replaces rather than duplicates. */
+/**
+ * Deterministic, so rescheduling replaces rather than duplicates.
+ *
+ * DEVIATION FROM THE BRIEF, forced by the library. The brief specifies
+ * `expire-hold:{bookingId}`, but BullMQ 6 rejects a custom job id containing
+ * a colon — "Custom Id cannot contain :" — because ':' is its Redis key
+ * separator. The separator is a '.' instead; the id stays deterministic and
+ * per-booking, which is the property the brief is actually after.
+ */
+export const JOB_ID_SEPARATOR = '.';
+
 export function jobIdFor(queue: JobQueue, bookingId: string): string {
-  return `${queue}:${bookingId}`;
+  return `${queue}${JOB_ID_SEPARATOR}${bookingId}`;
 }
 
 export interface JobScheduler {

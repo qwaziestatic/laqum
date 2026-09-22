@@ -124,8 +124,11 @@ These are the core of the system. Test every one.
    compare-and-set: `UPDATE bookings SET status = $to, ... WHERE id = $id AND
 status = ANY($allowedFrom) RETURNING *`. Zero rows means someone else won the
    race → 409 `STATE_CONFLICT`. The same transaction inserts the
-   `booking_events` row. **No code anywhere else may write `bookings.status`** —
-   Phase 1 adds a lint rule or grep test enforcing this.
+   `booking_events` row. **No code anywhere else may write `bookings.status`.**
+   Enforced by `apps/api/test/guards.test.ts`, which greps the source; only
+   `bookings/transition.ts` and `bookings/create.ts` may. Walk-in creation
+   lives in create.ts for exactly this reason. `BookingPatch` also excludes
+   `status` at the type level.
 4. **Slot status is derived** from live bookings via the `slot_status` view.
    There is no status column on `slots`, and there must never be one.
 5. **Side effects happen after commit.** Socket emits, push notifications and
@@ -282,6 +285,31 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
    execute its native binary; everything else stays blocked.
 8. **`import.meta.main`** (Node 24) is the reliable "is this the entry module?"
    check. Comparing `process.argv[1]` to a file URL is fragile on Windows.
+9. **`UPDATE ... FROM bookings old` reports a STALE previous status.** Under
+   READ COMMITTED, when the update blocks on a concurrent writer Postgres
+   re-checks only the TARGET row against its newest version; the joined copy
+   stays on the original snapshot. `transition()` therefore locks with
+   `SELECT ... FOR UPDATE` and re-reads. Verified directly against Postgres.
+10. **BullMQ forbids `:` in a custom job id** — "Custom Id cannot contain :",
+    because `:` is its Redis key separator. The brief specifies
+    `expire-hold:{bookingId}`, so the separator is a `.` instead. See
+    `JOB_ID_SEPARATOR`.
+11. **BullMQ `add()` with an existing jobId is a NO-OP**, keeping the original
+    delay. Rescheduling must `remove()` first, or an extension leaves the
+    overstay job on the old deadline.
+12. **A retained finished BullMQ job keeps its id reserved.** With
+    deterministic ids that silently blocks the next schedule, so every queue
+    sets `removeOnComplete`/`removeOnFail`.
+13. **BullMQ needs `maxRetriesPerRequest: null`**, which is the opposite of
+    what the readiness probe wants. They use separate Redis connections
+    (`createQueueRedis` vs `createRedis`).
+14. **zod's `.partial()` does NOT strip `.default()`.** A PATCH schema derived
+    that way silently resets every defaulted field on an empty body. Update
+    schemas are spelled out.
+15. **Advancing a FakeClock expires access tokens.** Tests that time-travel
+    past `ACCESS_TOKEN_TTL_MINUTES` must re-issue (`reissue()` in
+    test/helpers/auth.ts), which is incidental proof JWT expiry uses the
+    injected clock.
 
 ---
 
@@ -310,9 +338,10 @@ Gate on each phase's 🛑 before advancing.
 
 - **Phase 0 — foundation.** ✅ Delivered. Monorepo, tooling, docker compose,
   env handling, initial migration, codegen + drift check, seed, CI, this file.
-- **Phase 1 — API core.** Auth (phone + OTP), lots/layout endpoints, booking
-  creation with slot assignment, `transition()`, staff actions, `computeBill`,
-  BullMQ jobs + sweeper, error model.
+- **Phase 1 — API core.** ✅ Delivered. Auth (phone + OTP, rotating refresh
+  tokens), lots/layout endpoints, booking creation with `FOR UPDATE SKIP
+LOCKED` slot assignment, `transition()`, all staff actions, admin endpoints,
+  `computeBill`, BullMQ jobs + sweeper, error model.
 - **Phase 2 — payments.** PaymentProvider interface, Chapa test mode, fake
   provider, webhook + verify, deposit and final-payment flows.
 - **Phase 3 — realtime + dashboard.** Socket.io with Redis adapter and auth,
@@ -326,21 +355,20 @@ Gate on each phase's 🛑 before advancing.
 Deferred work, tracked so it cannot be quietly dropped. **The Phase 1 🛑
 report must show this list fully ticked.**
 
-- [ ] **Extend-then-stale-overstay scenario test.** `transition()`'s `DueGuard`
-      is implemented and unit-tested (early → `NOT_DUE`, exactly at the
-      deadline → fires, null column → `NOT_DUE`). The end-to-end case — extend
-      a booking, then run the _old_ overstay handler at the _old_ deadline and
-      assert it is a no-op with the booking still `CHECKED_IN` — needs the
-      extend endpoint and the overstay handler, so it lands with the jobs
-      commit.
-- [ ] **`removeOnComplete` / `removeOnFail` on every queue**, with the real
-      BullMQ test. Without them a completed job's id lingers and blocks
-      re-adding the same deterministic id, so a rescheduled `expire-hold` or
-      `mark-overstay` would be silently dropped. Lands with the jobs commit.
+- [x] **Extend-then-stale-overstay scenario test.** Done —
+      `apps/api/test/jobs.test.ts`, "a stale overstay job after an extension".
+      Extends through the real endpoint, fires the overstay handler at the
+      ORIGINAL deadline, asserts `NOT_DUE`, still `CHECKED_IN`, and no phantom
+      event; then asserts it still applies at the new deadline.
+- [x] **`removeOnComplete` / `removeOnFail` on every queue**, with the real
+      BullMQ test. Done — `DEFAULT_JOB_OPTIONS` in `apps/api/src/jobs/bullmq.ts`,
+      covered by `apps/api/test/bullmq.test.ts` against real Redis, including
+      "frees the deterministic id, so the same booking can be scheduled again".
 
-### What `packages/shared` does NOT contain yet
+### What `packages/shared` contains
 
-Phase 0 ships only enums, `LIVE_STATUSES`, constants and money helpers. The
-**state-machine transition table** and **`computeBill`** belong to Phase 1 —
-they are listed in the brief's description of `packages/shared`, but building
-them in Phase 0 would be inventing scope.
+Enums and `LIVE_STATUSES`, constants, money helpers, the `Clock`, the error
+model, the **state-machine transition table**, **`computeBill`**, the haversine,
+and the zod request/response schemas. It is imported by the browser dashboard,
+so it must stay free of `node:` builtins — short-code and QR generation live in
+`apps/api/src/bookings/codes.ts` for that reason.

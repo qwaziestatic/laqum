@@ -11,3 +11,7 @@ packages:
 # execute; without it neither runs. Every other build script stays blocked.
 allowBuilds:
   esbuild: true
+  # Optional native accelerator for msgpackr, which BullMQ uses to serialise
+  # job data. msgpackr falls back to pure JS without it, so there is no reason
+  # to run a native build in CI or on a developer machine.
+  msgpackr-extract: false
