@@ -1,5 +1,6 @@
 import type { Database } from '@laqum/db';
 import {
+  type BookingUpdated,
   type PublicSlotEvent,
   type StaffSlotEvent,
   publicRoom,
@@ -95,7 +96,13 @@ export const nullEmitter: RealtimeEmitter = {
 export async function emitSlotChange(
   db: Kysely<Database>,
   emitter: RealtimeEmitter,
-  args: { lotId: string; slotId: string; lotVersion: number },
+  args: {
+    lotId: string;
+    slotId: string;
+    lotVersion: number;
+    bookingId?: string | null;
+    userId?: string | null;
+  },
 ): Promise<void> {
   const row = await db
     .selectFrom('slot_status')
@@ -109,4 +116,41 @@ export async function emitSlotChange(
   if (!staff || !pub) return;
 
   emitter.slotChanged(args.lotId, staff, pub);
+
+  /*
+   * The driver's own booking, in their own room.
+   *
+   * Read from bookings rather than from slot_status: once a booking leaves the
+   * live statuses the view no longer shows it, so a CHECKED_OUT or PAID
+   * booking — exactly the ones a driver most wants to hear about — would have
+   * no row to report. A walk-in has no user and so has no one to notify.
+   */
+  if (args.bookingId && args.userId) {
+    const booking = await db
+      .selectFrom('bookings')
+      .select([
+        'id',
+        'lot_id',
+        'slot_id',
+        'status',
+        'hold_expires_at',
+        'planned_end_at',
+        'amount_due_santim',
+      ])
+      .where('id', '=', args.bookingId)
+      .executeTakeFirst();
+    if (!booking) return;
+
+    const payload: BookingUpdated = {
+      bookingId: booking.id,
+      lotId: booking.lot_id,
+      lotVersion: args.lotVersion,
+      status: booking.status,
+      slotId: booking.slot_id,
+      holdExpiresAt: booking.hold_expires_at?.toISOString() ?? null,
+      plannedEndAt: booking.planned_end_at?.toISOString() ?? null,
+      amountDueSantim: booking.amount_due_santim,
+    };
+    emitter.bookingChanged(args.userId, payload);
+  }
 }

@@ -59,7 +59,7 @@ describe('transition', () => {
     const { driverId, bookingId } = await setup('RESERVED');
     const clock = testClock();
 
-    const result = await inTransaction(db, logger, (trx) =>
+    const result = await inTransaction({ db, logger }, (trx) =>
       transition(trx, clock, {
         bookingId,
         from: 'RESERVED',
@@ -90,7 +90,7 @@ describe('transition', () => {
     // Far from real time: if anything reached for now(), this fails loudly.
     const clock = testClock('2030-06-15T12:34:56.000Z');
 
-    await inTransaction(db, logger, (trx) =>
+    await inTransaction({ db, logger }, (trx) =>
       transition(trx, clock, {
         bookingId,
         from: 'RESERVED',
@@ -113,7 +113,7 @@ describe('transition', () => {
   it('accepts a set of allowed predecessors', async () => {
     const { driverId, bookingId } = await setup('OVERSTAY');
 
-    const result = await inTransaction(db, logger, (trx) =>
+    const result = await inTransaction({ db, logger }, (trx) =>
       transition(trx, testClock(), {
         bookingId,
         from: ['CHECKED_IN', 'OVERSTAY'],
@@ -129,7 +129,7 @@ describe('transition', () => {
   it('reports WRONG_STATUS without changing anything', async () => {
     const { driverId, bookingId } = await setup('CHECKED_IN');
 
-    const result = await inTransaction(db, logger, (trx) =>
+    const result = await inTransaction({ db, logger }, (trx) =>
       transition(trx, testClock(), {
         bookingId,
         from: 'RESERVED',
@@ -143,7 +143,7 @@ describe('transition', () => {
   });
 
   it('reports NOT_FOUND for a booking that does not exist', async () => {
-    const result = await inTransaction(db, logger, (trx) =>
+    const result = await inTransaction({ db, logger }, (trx) =>
       transition(trx, testClock(), {
         bookingId: '00000000-0000-0000-0000-000000000000',
         from: 'RESERVED',
@@ -158,7 +158,7 @@ describe('transition', () => {
     const { bookingId } = await setup('RESERVED');
 
     await expect(
-      inTransaction(db, logger, (trx) =>
+      inTransaction({ db, logger }, (trx) =>
         transition(trx, testClock(), {
           bookingId,
           from: 'RESERVED',
@@ -174,7 +174,7 @@ describe('transition', () => {
   it('refuses an empty from set rather than matching everything', async () => {
     const { bookingId } = await setup('RESERVED');
     await expect(
-      inTransaction(db, logger, (trx) =>
+      inTransaction({ db, logger }, (trx) =>
         transition(trx, testClock(), {
           bookingId,
           from: [],
@@ -189,7 +189,7 @@ describe('transition', () => {
     const { driverId, bookingId } = await setup('RESERVED');
 
     await expect(
-      inTransaction(db, logger, async (trx) => {
+      inTransaction({ db, logger }, async (trx) => {
         await transition(trx, testClock(), {
           bookingId,
           from: 'RESERVED',
@@ -215,7 +215,7 @@ describe('transitionOrThrow', () => {
     const { bookingId } = await setup('CHECKED_IN');
 
     await expect(
-      inTransaction(db, logger, (trx) =>
+      inTransaction({ db, logger }, (trx) =>
         transitionOrThrow(trx, testClock(), {
           bookingId: '00000000-0000-0000-0000-000000000000',
           from: 'RESERVED',
@@ -226,7 +226,7 @@ describe('transitionOrThrow', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
 
     await expect(
-      inTransaction(db, logger, (trx) =>
+      inTransaction({ db, logger }, (trx) =>
         transitionOrThrow(trx, testClock(), {
           bookingId,
           from: 'RESERVED',
@@ -256,7 +256,7 @@ describe('the due guard', () => {
 
     const clock = testClock('2026-03-01T08:59:00.000Z'); // one minute early
 
-    const result = await inTransaction(db, logger, (trx) =>
+    const result = await inTransaction({ db, logger }, (trx) =>
       transition(trx, clock, {
         bookingId,
         from: 'CHECKED_IN',
@@ -283,7 +283,7 @@ describe('the due guard', () => {
     });
 
     const clock = testClock('2026-03-01T09:00:00.000Z');
-    const result = await inTransaction(db, logger, (trx) =>
+    const result = await inTransaction({ db, logger }, (trx) =>
       transition(trx, clock, {
         bookingId,
         from: 'CHECKED_IN',
@@ -308,7 +308,7 @@ describe('the due guard', () => {
     });
 
     const clock = testClock('2030-01-01T00:00:00.000Z');
-    const result = await inTransaction(db, logger, (trx) =>
+    const result = await inTransaction({ db, logger }, (trx) =>
       transition(trx, clock, {
         bookingId,
         from: 'CHECKED_IN',

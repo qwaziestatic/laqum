@@ -1,4 +1,4 @@
-import type { StaffSlotEvent, StaffSnapshot } from '@laqum/shared';
+import { type StaffSlotEvent, type StaffSnapshot, countSlots } from '@laqum/shared';
 import { describe, expect, it } from 'vitest';
 import { RealtimeStore } from './store.js';
 
@@ -80,7 +80,7 @@ describe('RealtimeStore ordering', () => {
 
     expect(applied).toBe(true);
     expect(statusOf(store, A1)).toBe('occupied');
-    expect(store.getState().lotVersion).toBe(42);
+    expect(store.getState().highestApplied).toBe(42);
   });
 
   it('rejects an event AT the snapshot version as already reflected', () => {
@@ -112,7 +112,7 @@ describe('RealtimeStore ordering', () => {
     // 38 predates the snapshot and is discarded; 43 postdates it and is kept.
     expect(statusOf(store, A1)).toBe('free');
     expect(statusOf(store, A2)).toBe('occupied');
-    expect(store.getState().lotVersion).toBe(43);
+    expect(store.getState().highestApplied).toBe(43);
     expect(store.getState().loading).toBe(false);
   });
 
@@ -128,13 +128,98 @@ describe('RealtimeStore ordering', () => {
     expect(
       store.applySlotEvent(slot({ slotId: A2, lotVersion: 43, displayStatus: 'occupied' })),
     ).toBe(true);
-    expect(store.getState().lotVersion).toBe(43);
+    expect(store.getState().highestApplied).toBe(43);
 
     // Arrives out of order, older than everything applied.
     expect(store.applySlotEvent(slot({ slotId: A1, lotVersion: 39, displayStatus: 'free' }))).toBe(
       false,
     );
     expect(statusOf(store, A1)).toBe('reserved');
+  });
+
+  /**
+   * THE MULTI-INSTANCE CASE.
+   *
+   * lots.version is commit-ordered, but delivery is not: instance A can
+   * publish v7 for slot X and instance B v6 for slot Y, and either can reach
+   * the client first. Both are genuinely new and both must land.
+   *
+   * A single lot-wide high-water mark fails exactly here — applying v7 would
+   * raise the mark to 7 and silently discard v6 for a DIFFERENT slot, leaving
+   * slot Y wrong until its next change. The watermark belongs to the slot.
+   */
+  it('applies v7 on slot X then v6 on slot Y, and only then drops a late v6 on X', () => {
+    const store = new RealtimeStore();
+    store.applySnapshot(
+      snapshot(5, [
+        slot({ slotId: A1, gridCol: 0, displayStatus: 'free' }),
+        slot({ slotId: A2, gridCol: 1, displayStatus: 'free' }),
+      ]),
+    );
+
+    // Out of version order across two instances. Both are newer than the
+    // snapshot at v5, so both must apply.
+    expect(
+      store.applySlotEvent(slot({ slotId: A1, lotVersion: 7, displayStatus: 'occupied' })),
+      'v7 on slot X must apply',
+    ).toBe(true);
+    expect(
+      store.applySlotEvent(slot({ slotId: A2, lotVersion: 6, displayStatus: 'reserved' })),
+      'v6 on slot Y must apply: a lot-wide mark would have dropped it',
+    ).toBe(true);
+
+    expect(statusOf(store, A1)).toBe('occupied');
+    expect(statusOf(store, A2)).toBe('reserved');
+
+    // Now a LATE v6 for slot X. That slot has already applied v7, so this one
+    // is genuinely stale and must be dropped.
+    expect(
+      store.applySlotEvent(slot({ slotId: A1, lotVersion: 6, displayStatus: 'free' })),
+      'a late v6 on slot X is behind that slot own watermark',
+    ).toBe(false);
+    expect(statusOf(store, A1)).toBe('occupied');
+
+    // The floors are per slot, not shared.
+    expect(store.floorFor(A1)).toBe(7);
+    expect(store.floorFor(A2)).toBe(6);
+  });
+
+  it('keeps the SNAPSHOT version as a floor under every slot', () => {
+    const store = new RealtimeStore();
+    store.applySnapshot(snapshot(5, [slot({ slotId: A1 }), slot({ slotId: A2, gridCol: 1 })]));
+
+    // A slot that has applied nothing since the snapshot still refuses
+    // anything at or below the snapshot's own version.
+    expect(store.floorFor(A2)).toBe(5);
+    expect(
+      store.applySlotEvent(slot({ slotId: A2, lotVersion: 5, displayStatus: 'occupied' })),
+    ).toBe(false);
+    expect(
+      store.applySlotEvent(slot({ slotId: A2, lotVersion: 4, displayStatus: 'occupied' })),
+    ).toBe(false);
+    expect(
+      store.applySlotEvent(slot({ slotId: A2, lotVersion: 6, displayStatus: 'occupied' })),
+    ).toBe(true);
+  });
+
+  it('sorts buffered out-of-order events per slot when the snapshot lands', () => {
+    const store = new RealtimeStore();
+
+    // Arriving before the snapshot, out of order, across two slots.
+    store.applySlotEvent(slot({ slotId: A1, lotVersion: 7, displayStatus: 'occupied' }));
+    store.applySlotEvent(slot({ slotId: A2, lotVersion: 6, displayStatus: 'reserved' }));
+    store.applySlotEvent(slot({ slotId: A1, lotVersion: 3, displayStatus: 'free' }));
+
+    store.applySnapshot(
+      snapshot(5, [
+        slot({ slotId: A1, gridCol: 0, displayStatus: 'free' }),
+        slot({ slotId: A2, gridCol: 1, displayStatus: 'free' }),
+      ]),
+    );
+
+    // v7 and v6 clear the snapshot floor; v3 does not.
+    expect(statusOf(store, A1)).toBe('occupied');
+    expect(statusOf(store, A2)).toBe('reserved');
   });
 
   it('treats a re-delivered event as a no-op', () => {
@@ -194,6 +279,46 @@ describe('RealtimeStore ordering', () => {
       outOfService: 0,
     });
   });
+
+  /**
+   * Counters are a FUNCTION of the slots, not a running tally.
+   *
+   * A tally incremented per event drifts the moment an event is dropped,
+   * re-delivered, or applied out of order — and a header that disagrees with
+   * the grid beneath it is worse than no header, because the attendant cannot
+   * tell which one is lying. This asserts the property directly: whatever
+   * sequence of events, the counts equal a fresh count of the rendered slots.
+   */
+  it('counts always equal a fresh tally of the rendered slots', () => {
+    const store = new RealtimeStore();
+    store.applySnapshot(
+      snapshot(5, [
+        slot({ slotId: A1, gridCol: 0, displayStatus: 'free' }),
+        slot({ slotId: A2, gridCol: 1, displayStatus: 'free' }),
+      ]),
+    );
+
+    // A deliberately awkward sequence: out of order, one dropped, one
+    // re-delivered.
+    const events = [
+      slot({ slotId: A1, lotVersion: 7, displayStatus: 'occupied' }),
+      slot({ slotId: A2, lotVersion: 6, displayStatus: 'reserved' }),
+      slot({ slotId: A1, lotVersion: 6, displayStatus: 'free' }), // dropped
+      slot({ slotId: A2, lotVersion: 6, displayStatus: 'reserved' }), // re-delivered
+      slot({ slotId: A2, lotVersion: 9, displayStatus: 'overstay' }),
+    ];
+    for (const event of events) store.applySlotEvent(event);
+
+    const state = store.getState();
+    expect(state.counts).toEqual(countSlots(state.slots));
+    expect(state.counts).toEqual({
+      free: 0,
+      reserved: 0,
+      occupied: 1,
+      overstay: 1,
+      outOfService: 0,
+    });
+  });
 });
 
 describe('RealtimeStore reconnect', () => {
@@ -212,7 +337,7 @@ describe('RealtimeStore reconnect', () => {
 
     store.applySnapshot(snapshot(43, [slot({ slotId: A1, displayStatus: 'occupied' })]));
     expect(statusOf(store, A1)).toBe('free');
-    expect(store.getState().lotVersion).toBe(44);
+    expect(store.getState().highestApplied).toBe(44);
   });
 
   /**
@@ -223,7 +348,7 @@ describe('RealtimeStore reconnect', () => {
   it('accepts version 1 on a lot whose snapshot was version 0', () => {
     const store = new RealtimeStore();
     store.applySnapshot(snapshot(0, [slot({ slotId: A1 })]));
-    expect(store.getState().lotVersion).toBe(0);
+    expect(store.getState().highestApplied).toBe(0);
 
     expect(
       store.applySlotEvent(slot({ slotId: A1, lotVersion: 1, displayStatus: 'reserved' })),

@@ -1,6 +1,7 @@
 import type { Database } from '@laqum/db';
 import { AppError, type BookingStatus, type Clock, isLegalTransition } from '@laqum/shared';
 import type { Kysely, Selectable, Transaction, Updateable } from 'kysely';
+import { recordSlotChange } from '../afterCommit.js';
 
 /**
  * THE state-change function. INVARIANT 3.
@@ -171,6 +172,22 @@ export async function transition(
     .execute();
 
   const lotVersion = await bumpLotVersion(trx, updated.lot_id);
+
+  /*
+   * Record the change for the after-commit emit.
+   *
+   * Done HERE, in the one function that changes a booking's status, so that
+   * emitting is not something a write path can omit. A caller that forgets is
+   * not possible, because there is nothing for a caller to remember.
+   * inTransaction turns these into SideEffects only once the commit returns.
+   */
+  recordSlotChange(trx, {
+    lotId: updated.lot_id,
+    slotId: updated.slot_id,
+    lotVersion,
+    bookingId: updated.id,
+    userId: updated.user_id,
+  });
 
   return { ok: true, booking: updated, from: current, lotVersion };
 }

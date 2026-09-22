@@ -65,7 +65,7 @@ export async function cancelBooking(
 ): Promise<BookingRow> {
   await ownedBooking(ctx, userId, bookingId);
 
-  return inTransaction(ctx.db, ctx.logger, async (trx, effects) => {
+  return inTransaction(ctx, async (trx, effects) => {
     const booking = await transitionOrThrow(trx, ctx.clock, {
       bookingId,
       from: 'RESERVED',
@@ -130,7 +130,7 @@ export async function extendBooking(
   const plannedMinutes = (existing.planned_minutes ?? 0) + addedMinutes;
   const plannedEndAt = addMinutes(existing.planned_end_at, addedMinutes);
 
-  const booking = await inTransaction(ctx.db, ctx.logger, async (trx, effects) => {
+  const booking = await inTransaction(ctx, async (trx, effects) => {
     // No status column is written here, so this is not a transition.
     const updated = await trx
       .updateTable('bookings')

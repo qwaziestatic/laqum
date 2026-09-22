@@ -165,7 +165,7 @@ async function settleDeposit(
 ): Promise<ConfirmOutcome> {
   const now = ctx.clock.now();
 
-  return inTransaction(ctx.db, ctx.logger, async (trx, effects) => {
+  return inTransaction(ctx, async (trx, effects) => {
     const settled = await trx
       .updateTable('payments')
       .set({
@@ -308,7 +308,7 @@ async function settleFinal(
   if (alreadySettled) return flagAsOverpayment(ctx, payment, verified);
 
   try {
-    return await inTransaction(ctx.db, ctx.logger, async (trx) => {
+    return await inTransaction(ctx, async (trx) => {
       const settled = await trx
         .updateTable('payments')
         .set({

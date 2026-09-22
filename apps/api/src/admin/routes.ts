@@ -46,7 +46,7 @@ export function adminRouter(ctx: AppContext): Router {
         .executeTakeFirst();
       if (!operator) throw new AppError('NOT_FOUND', 'No such operator');
 
-      const lot = await inTransaction(ctx.db, ctx.logger, async (trx) => {
+      const lot = await inTransaction(ctx, async (trx) => {
         const created = await trx
           .insertInto('lots')
           .values({

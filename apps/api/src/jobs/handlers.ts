@@ -86,7 +86,7 @@ export async function expireHold(deps: JobDeps, bookingId: string): Promise<JobR
     return { queue: 'expire-hold', bookingId, applied: false, reason: 'PAYMENT_CONFIRMED' };
   }
 
-  return inTransaction(deps.db, deps.logger, async (trx) => {
+  return inTransaction(deps, async (trx) => {
     const outcome = await transition(trx, deps.clock, {
       bookingId,
       from: ['PENDING_PAYMENT', 'RESERVED'],
@@ -113,7 +113,7 @@ export async function expireHold(deps: JobDeps, bookingId: string): Promise<JobR
 export async function markOverstay(deps: JobDeps, bookingId: string): Promise<JobResult> {
   const now = deps.clock.now();
 
-  return inTransaction(deps.db, deps.logger, async (trx) => {
+  return inTransaction(deps, async (trx) => {
     const outcome = await transition(trx, deps.clock, {
       bookingId,
       from: 'CHECKED_IN',

@@ -7,12 +7,12 @@ import {
   computeBill,
   looksLikeShortCode,
 } from '@laqum/shared';
-import { inTransaction } from '../afterCommit.js';
+import { inTransaction, recordSlotChange } from '../afterCommit.js';
 import { staffSnapshot } from '../realtime/slots.js';
 import { createWalkIn } from '../bookings/create.js';
 import { reminderTimeFor } from '../bookings/service.js';
 import type { BookingRow } from '../bookings/transition.js';
-import { transitionOrThrow } from '../bookings/transition.js';
+import { bumpLotVersion, transitionOrThrow } from '../bookings/transition.js';
 import type { AppContext } from '../context.js';
 import { CONSTRAINTS, isUniqueViolation } from '../db/pgError.js';
 import { confirmPayment, type PaymentsContext } from '../payments/service.js';
@@ -76,7 +76,13 @@ export async function parkWalkIn(
 
   // Delegated so that every INSERT of a booking status lives in create.ts.
   return createWalkIn(
-    { db: ctx.db, clock: ctx.clock, logger: ctx.logger, scheduler: ctx.scheduler },
+    {
+      db: ctx.db,
+      clock: ctx.clock,
+      logger: ctx.logger,
+      scheduler: ctx.scheduler,
+      emitter: ctx.emitter,
+    },
     {
       lotId,
       slotId: input.slotId,
@@ -122,7 +128,7 @@ export async function checkIn(
   const now = ctx.clock.now();
   const plannedEndAt = addMinutes(now, found.planned_minutes ?? 0);
 
-  return inTransaction(ctx.db, ctx.logger, async (trx, effects) => {
+  return inTransaction(ctx, async (trx, effects) => {
     const booking = await transitionOrThrow(trx, ctx.clock, {
       bookingId: found.id,
       from: 'RESERVED',
@@ -201,7 +207,7 @@ export async function checkOut(
     now,
   );
 
-  const result = await inTransaction(ctx.db, ctx.logger, async (trx, effects) => {
+  const result = await inTransaction(ctx, async (trx, effects) => {
     let booking = await transitionOrThrow(trx, ctx.clock, {
       bookingId,
       from: ['CHECKED_IN', 'OVERSTAY'],
@@ -334,7 +340,7 @@ export async function recordCash(
   const now = ctx.clock.now();
 
   try {
-    return await inTransaction(ctx.db, ctx.logger, async (trx) => {
+    return await inTransaction(ctx, async (trx) => {
       await trx
         .insertInto('payments')
         .values({
@@ -410,10 +416,33 @@ export async function setSlotService(
     }
   }
 
-  await ctx.db
-    .updateTable('slots')
-    .set({ in_service: inService })
-    .where('id', '=', slotId)
-    .execute();
-  return { slotId, inService };
+  /*
+   * A transaction, for a single UPDATE, because the emit needs one.
+   *
+   * in_service is the one slot change that does NOT go through transition():
+   * no booking moves, so nothing bumps the lot version on its own. But the
+   * slot's display_status flips between 'free' and 'out_of_service', which is
+   * exactly what the grid shows — so it bumps the version itself and records
+   * the change like any other write path. Without this, taking a slot out of
+   * service would leave every open dashboard showing it as free.
+   */
+  return inTransaction(ctx, async (trx) => {
+    await trx
+      .updateTable('slots')
+      .set({ in_service: inService })
+      .where('id', '=', slotId)
+      .execute();
+
+    const lotVersion = await bumpLotVersion(trx, slot.lot_id);
+    recordSlotChange(trx, {
+      lotId: slot.lot_id,
+      slotId,
+      lotVersion,
+      // No booking changed, so there is no driver to notify.
+      bookingId: null,
+      userId: null,
+    });
+
+    return { slotId, inService };
+  });
 }

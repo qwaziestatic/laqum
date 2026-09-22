@@ -11,7 +11,8 @@ import type { Kysely, Selectable, Transaction } from 'kysely';
 import type { Logger } from 'pino';
 import { CONSTRAINTS, isUniqueViolation } from '../db/pgError.js';
 import { type JobScheduler, jobIdFor } from '../jobs/scheduler.js';
-import { inTransaction } from '../afterCommit.js';
+import { inTransaction, recordSlotChange } from '../afterCommit.js';
+import type { RealtimeEmitter } from '../realtime/emitter.js';
 import { generateQrToken, generateShortCode } from './codes.js';
 import { bumpLotVersion, type BookingRow } from './transition.js';
 
@@ -45,6 +46,7 @@ export interface CreateBookingDeps {
   clock: Clock;
   logger: Logger;
   scheduler: JobScheduler;
+  emitter?: RealtimeEmitter;
 }
 
 export interface CreateBookingResult {
@@ -197,7 +199,7 @@ async function attemptOnce(
   const holdExpiresAt = addMinutes(now, holdMinutes);
 
   try {
-    return await inTransaction(deps.db, deps.logger, async (trx, effects) => {
+    return await inTransaction(deps, async (trx, effects) => {
       const slot = await lockFreeSlot(trx, lot.id);
       if (!slot) return { kind: 'no-free-slot' };
 
@@ -233,7 +235,14 @@ async function attemptOnce(
         .execute();
 
       // Last lock taken, consistently with every other write path.
-      await bumpLotVersion(trx, lot.id);
+      const lotVersion = await bumpLotVersion(trx, lot.id);
+      recordSlotChange(trx, {
+        lotId: lot.id,
+        slotId: slot.id,
+        lotVersion,
+        bookingId: booking.id,
+        userId: input.userId,
+      });
 
       // INVARIANT 5: registered here, run only after the commit returns.
       effects.add(jobIdFor('expire-hold', booking.id), async () => {
@@ -336,7 +345,7 @@ export async function createWalkIn(
   const now = deps.clock.now();
 
   try {
-    return await inTransaction(deps.db, deps.logger, async (trx) => {
+    return await inTransaction(deps, async (trx) => {
       const booking = await trx
         .insertInto('bookings')
         .values({
@@ -367,7 +376,16 @@ export async function createWalkIn(
         })
         .execute();
 
-      await bumpLotVersion(trx, input.lotId);
+      const lotVersion = await bumpLotVersion(trx, input.lotId);
+      // A walk-in has no user, so there is no driver room to notify — the
+      // attendant is standing at the car.
+      recordSlotChange(trx, {
+        lotId: input.lotId,
+        slotId: input.slotId,
+        lotVersion,
+        bookingId: booking.id,
+        userId: null,
+      });
 
       return booking;
     });
