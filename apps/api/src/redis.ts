@@ -23,6 +23,26 @@ export function createQueueRedis(config: Config): Redis {
   });
 }
 
+/**
+ * A THIRD pair of connections, for the Socket.io Redis adapter.
+ *
+ * The subscriber cannot be shared with anything else: a Redis connection in
+ * subscribe mode accepts only subscription commands, so the moment the adapter
+ * subscribes, that client is unusable for the readiness probe's PING or for
+ * BullMQ. `subClient = pubClient.duplicate()` is the documented pairing.
+ *
+ * Offline queueing stays ON: a broadcast during a brief Redis blip should be
+ * delivered late rather than dropped, unlike a readiness probe.
+ */
+export function createAdapterRedis(config: Config): { pubClient: Redis; subClient: Redis } {
+  const pubClient = new Redis(config.REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: true,
+    retryStrategy: (attempt) => Math.min(attempt * 200, 5_000),
+  });
+  return { pubClient, subClient: pubClient.duplicate() };
+}
+
 export function createRedis(config: Config): Redis {
   return new Redis(config.REDIS_URL, {
     // Report the failure rather than buffering the command.

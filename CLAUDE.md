@@ -426,6 +426,84 @@ rejected. `pnpm chapa:sandbox` charges a known 20.00 ETB and prints
 `amount`/`charge`/`currency` verbatim with a verdict. **Record the result here
 before going live.**
 
+### Realtime ordering: `lots.version`, never `updated_at`
+
+Realtime clients must be able to tell a stale buffered event from a fresh one.
+`updated_at` CANNOT do that job, for two independent reasons:
+
+1. **A free slot has no live booking.** `slot_status` LEFT JOINs bookings, so a
+   free slot's `updated_at` is NULL. A stale buffered "occupied" event carries
+   a real timestamp and the snapshot row carries nothing to compare it with, so
+   the stale event wins over a newer "free" snapshot — the dashboard shows a car
+   that has driven away, and an attendant refuses to park someone on an empty
+   space.
+2. **Two API instances are two wall clocks.** They are not mutually ordered,
+   however well they are synchronised.
+
+`lots.version` (migration 003) fixes both. It is incremented **in the same
+transaction as every booking status change**, so the row lock on `lots`
+serialises the increments and versions come out in COMMIT order. It belongs to
+the LOT, so it exists whether or not a slot has a booking.
+
+- `bumpLotVersion` is **always acquired LAST** in every write path — after the
+  booking or slot lock. Identical lock order everywhere means no cycle, hence
+  no deadlock. Moving it earlier in any caller breaks that.
+- `integer`, not `bigint`: `bigint` maps to a JS **string** in Kysely, which
+  would put a string comparison in the middle of the ordering rule.
+- **Snapshots read the version FIRST, then the rows.** A change committing
+  between the two is then present in the rows but not the version, so the client
+  re-applies an event whose effect is already there — idempotent. Rows first
+  would fail the other way: the change missing from the rows AND covered by the
+  version, so the one event that would have corrected it is discarded, and the
+  slot stays wrong until its next change.
+- **The client rule:** apply an event only when
+  `event.lotVersion > snapshot.lotVersion`. The watermark advances to each
+  applied event, so a burst all lands and a straggler is still rejected.
+  `RealtimeStore.reset()` goes to **-1, not 0** — zero is a real version (a lot
+  that has never had a booking).
+
+Verified: `apps/dashboard/src/realtime/store.test.ts` **fails 6 of 11** against
+a simulated `updated_at` rule, including the named free-slot test.
+
+### Socket authorization must not outlive its basis
+
+An HTTP request re-authorises itself on every call. A socket is authorised once
+at handshake and then lives for hours, so without deliberate effort it keeps
+authority long after the grounds for it are gone.
+
+- **The socket dies with its token.** The disconnect timer is armed from the
+  token's own `exp`, so a token issued 10 minutes ago dies in 5, not in 15. The
+  client is sent `auth.expired` _before_ the close so it reconnects with a fresh
+  token rather than treating it as a network blip and backing off.
+- **`verifyAccessToken` REQUIRES `exp`.** jose only enforces an expiry claim
+  that exists; a token without one would authorise a socket forever.
+- **`lot_staff` is re-read on EVERY `:staff` subscribe.** Never cached at
+  handshake and never remembered from a previous subscribe on the same socket.
+  Reconnect is covered for free — it is a fresh handshake plus a fresh
+  subscribe, and there is only one code path.
+- Timers are **injected** (`realtime/timers.ts`), for the same reason the Clock
+  is: the alternative is a real multi-minute sleep or a token contrived to
+  expire in milliseconds.
+
+Verified: caching membership at handshake makes exactly the named re-subscribe
+test fail. The _reconnect_ variant still passes under that bug, because a
+reconnect gets fresh socket data — which is why both cases are tested.
+
+### DEV_AUTH fails closed
+
+`POST /v1/auth/dev-login` signs in any seeded phone with no credential. It is
+gated on `config.DEV_AUTH_ENABLED`, **never** on `DEV_AUTH`:
+
+- unset ⇒ disabled (the schema default is `false`);
+- only the exact string `'true'` enables it — `'1'`, `'yes'`, `'TRUE'` are a
+  **startup error**, never a silent enable;
+- `NODE_ENV=production` disables it regardless, and logs that it was ignored.
+
+The route is **not registered** when disabled, so it 404s like any unknown path
+— there is no guard clause that could be got wrong. `devSignIn` additionally
+refuses an unknown number (it will not create an account, unlike the real OTP
+flow) and reads the role from the database rather than the request.
+
 ### Phase 2 open items
 
 - [ ] **Run `pnpm chapa:sandbox` against the Chapa sandbox** and record the

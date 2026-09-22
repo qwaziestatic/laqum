@@ -243,3 +243,47 @@ export async function logout(deps: AuthDeps, refreshToken: string): Promise<void
     .where('revoked_at', 'is', null)
     .execute();
 }
+
+/**
+ * Sign in a seeded user by phone, with no OTP.
+ *
+ * Reachable ONLY when config.DEV_AUTH_ENABLED — the route is not registered
+ * otherwise (see auth/routes.ts). Two deliberate differences from the real
+ * sign-in, both there to make this useless as a back door if it ever were
+ * reachable in error:
+ *
+ *   - it will NOT create an account. The real flow creates a driver on first
+ *     sign-in; this one refuses an unknown number, so it can only ever return
+ *     a user the seed already put there.
+ *   - it re-reads the role from the database rather than accepting one, so it
+ *     cannot be used to mint an attendant token for a driver's number.
+ */
+export async function devSignIn(deps: AuthDeps, phone: string): Promise<Session> {
+  if (!deps.config.DEV_AUTH_ENABLED) {
+    // Defence in depth: the route should not exist, but a direct call from a
+    // future code path must not bypass the gate either.
+    throw new AppError('FORBIDDEN', 'Dev login is disabled');
+  }
+
+  const user = await deps.db
+    .selectFrom('users')
+    .select(['id', 'phone', 'role', 'full_name'])
+    .where('phone', '=', phone)
+    .executeTakeFirst();
+
+  if (!user) {
+    throw new AppError('NOT_FOUND', 'No seeded user with that phone number');
+  }
+
+  deps.logger.warn({ phone, role: user.role }, 'DEV LOGIN: signed in without an OTP');
+
+  const tokens = await issueTokenPair(deps.db, deps.config, deps.clock, {
+    userId: user.id,
+    role: user.role,
+  });
+
+  return {
+    ...tokens,
+    user: { id: user.id, phone: user.phone, role: user.role, fullName: user.full_name },
+  };
+}

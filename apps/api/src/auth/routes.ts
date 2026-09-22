@@ -1,8 +1,15 @@
-import { otpRequestSchema, otpVerifySchema, refreshSchema } from '@laqum/shared';
+import { devLoginSchema, otpRequestSchema, otpVerifySchema, refreshSchema } from '@laqum/shared';
 import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { handle, validateBody } from '../middleware/validate.js';
-import { logout, refreshSession, requestOtp, verifyOtpAndSignIn, type Session } from './service.js';
+import {
+  devSignIn,
+  logout,
+  refreshSession,
+  requestOtp,
+  verifyOtpAndSignIn,
+  type Session,
+} from './service.js';
 
 function toSessionResponse(session: Session): unknown {
   return {
@@ -67,6 +74,43 @@ export function authRouter(ctx: AppContext): Router {
       res.status(204).end();
     }),
   );
+
+  /*
+   * DEV LOGIN — signs in a seeded user by phone, with no OTP.
+   *
+   * It exists so `pnpm dev` and the Playwright two-screen test can get a token
+   * without an SMS round-trip. It is also, obviously, a complete bypass of
+   * authentication, so it FAILS CLOSED: the route is not even registered
+   * unless config.DEV_AUTH_ENABLED, which requires an explicit DEV_AUTH=true
+   * AND a non-production NODE_ENV (see config.ts).
+   *
+   * Not registering it — rather than registering a handler that checks the
+   * flag — means that when it is off, the endpoint does not exist: it 404s
+   * exactly like any unknown path, and a bug in a guard clause cannot expose
+   * it, because there is no guard clause to get wrong.
+   */
+  if (ctx.config.DEV_AUTH_ENABLED) {
+    ctx.logger.warn(
+      'DEV_AUTH is enabled: POST /v1/auth/dev-login signs in any seeded user without an OTP',
+    );
+
+    router.post(
+      '/dev-login',
+      validateBody(devLoginSchema),
+      handle(async (req, res) => {
+        const { phone } = req.body as { phone: string };
+        const session = await devSignIn(deps, phone);
+        res.status(200).json(toSessionResponse(session));
+      }),
+    );
+  } else if (ctx.config.DEV_AUTH) {
+    // Asked for, and refused. Silence here would leave an operator believing
+    // dev login was available and debugging the wrong thing.
+    ctx.logger.warn(
+      { nodeEnv: ctx.config.NODE_ENV },
+      'DEV_AUTH=true was IGNORED: dev login is never enabled when NODE_ENV is production',
+    );
+  }
 
   return router;
 }

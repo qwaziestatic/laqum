@@ -25,6 +25,15 @@ export const otpRequestSchema = z.object({
 });
 export type OtpRequest = z.infer<typeof otpRequestSchema>;
 
+/**
+ * Dev login. Phone only — there is no credential, which is precisely why the
+ * endpoint is registered only when DEV_AUTH_ENABLED.
+ */
+export const devLoginSchema = z.object({
+  phone: phoneSchema,
+});
+export type DevLogin = z.infer<typeof devLoginSchema>;
+
 export const otpVerifySchema = z.object({
   phone: phoneSchema,
   code: z

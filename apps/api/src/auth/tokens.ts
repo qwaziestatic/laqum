@@ -26,6 +26,17 @@ export interface AccessClaims {
   role: UserRole;
 }
 
+/**
+ * A verified token, with the moment its authority ends.
+ *
+ * HTTP does not need `expiresAt` — every request re-verifies. A SOCKET does:
+ * it is authorised once at handshake and then lives for hours, so it has to
+ * know when to stop trusting what it checked. See realtime/authorise.ts.
+ */
+export interface VerifiedAccessToken extends AccessClaims {
+  expiresAt: Date;
+}
+
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
@@ -63,7 +74,7 @@ export async function verifyAccessToken(
   config: Config,
   clock: Clock,
   token: string,
-): Promise<AccessClaims> {
+): Promise<VerifiedAccessToken> {
   try {
     const { payload } = await jwtVerify(token, secretOf(config.JWT_ACCESS_SECRET), {
       issuer: ISSUER,
@@ -77,7 +88,25 @@ export async function verifyAccessToken(
     if (typeof payload.sub !== 'string' || typeof role !== 'string') {
       throw new AppError('UNAUTHENTICATED', 'Malformed token');
     }
-    return { userId: payload.sub, role: role as UserRole };
+
+    /*
+     * `exp` is REQUIRED, not merely honoured when present.
+     *
+     * jose only enforces an expiry claim that exists. Our signer always sets
+     * one, so this rejects nothing we issue — but a token without `exp` would
+     * authorise a socket FOREVER, which is exactly the failure this whole
+     * mechanism is meant to prevent. Refusing it closes that door rather than
+     * relying on the signer staying correct.
+     */
+    if (typeof payload.exp !== 'number') {
+      throw new AppError('UNAUTHENTICATED', 'Token has no expiry');
+    }
+
+    return {
+      userId: payload.sub,
+      role: role as UserRole,
+      expiresAt: new Date(payload.exp * 1000),
+    };
   } catch (err) {
     if (err instanceof AppError) throw err;
     throw new AppError('UNAUTHENTICATED', 'Invalid or expired access token');

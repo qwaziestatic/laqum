@@ -8,6 +8,7 @@ import type { SmsProvider } from './auth/sms.js';
 import type { Config } from './config.js';
 import type { JobScheduler } from './jobs/scheduler.js';
 import type { PaymentProvider } from './payments/provider.js';
+import type { RealtimeEmitter } from './realtime/emitter.js';
 
 /**
  * Everything a request handler is allowed to reach for, assembled once at
@@ -24,4 +25,10 @@ export interface AppContext {
   sms: SmsProvider;
   rateLimiter: RateLimiter;
   provider: PaymentProvider;
+  /**
+   * Realtime emits. Mutable because the Socket.io server needs the HTTP server
+   * that app.listen() returns, which does not exist until after the context is
+   * built. Defaults to nullEmitter so nothing has to check for undefined.
+   */
+  emitter: RealtimeEmitter;
 }

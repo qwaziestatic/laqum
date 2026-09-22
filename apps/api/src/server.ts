@@ -9,7 +9,10 @@ import { BullMqScheduler, startWorkers } from './jobs/bullmq.js';
 import { createLogger } from './logger.js';
 import { ChapaProvider } from './payments/chapa.js';
 import { FakePaymentProvider } from './payments/fake.js';
-import { createQueueRedis, createRedis } from './redis.js';
+import { SocketEmitter, nullEmitter } from './realtime/emitter.js';
+import { createRealtimeServer } from './realtime/server.js';
+import { createAdapterRedis, createQueueRedis, createRedis } from './redis.js';
+import { createAdapter } from '@socket.io/redis-adapter';
 
 /**
  * Process entry point.
@@ -58,6 +61,9 @@ function main(): void {
     sms: new ConsoleSmsProvider(logger),
     rateLimiter: new RateLimiter({ redis, clock: systemClock }),
     provider,
+    // Replaced below, once app.listen() has given us an HTTP server to attach
+    // Socket.io to.
+    emitter: nullEmitter,
   };
 
   // One process by default. Phase 5 can split the worker out by running a
@@ -75,6 +81,26 @@ function main(): void {
     logger.info({ port: config.PORT, env: config.NODE_ENV }, 'ላቁም? API listening');
   });
 
+  /*
+   * Realtime, with the Redis adapter.
+   *
+   * The adapter is what makes more than one API instance possible: a slot
+   * change handled by instance A has to reach dashboards connected to
+   * instance B, and without it each instance only ever broadcasts to its own
+   * sockets. apps/api/test/realtime-multi-instance.test.ts negative-tests
+   * that — the same scenario fails when the adapter is removed.
+   */
+  const { pubClient, subClient } = createAdapterRedis(config);
+  const realtime = createRealtimeServer(server, {
+    db,
+    config,
+    clock: systemClock,
+    logger,
+    adapter: createAdapter(pubClient, subClient),
+  });
+  ctx.emitter = new SocketEmitter(realtime.io);
+  logger.info('realtime server attached');
+
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
     if (shuttingDown) return;
@@ -85,11 +111,16 @@ function main(): void {
       if (err) logger.error({ err }, 'error closing HTTP server');
       void (async (): Promise<void> => {
         try {
+          // Sockets first: closing them lets clients reconnect elsewhere
+          // rather than sit on a connection to a process that is going away.
+          await realtime.close();
           await workers?.close();
           await scheduler.close();
           await db.destroy();
           redis.disconnect();
           queueRedis.disconnect();
+          pubClient.disconnect();
+          subClient.disconnect();
         } catch (closeErr) {
           logger.error({ err: closeErr }, 'error closing connections');
         } finally {

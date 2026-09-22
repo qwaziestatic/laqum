@@ -87,6 +87,25 @@ const baseSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value) => value === 'true'),
+
+  /**
+   * Enables POST /v1/auth/dev-login, which mints a token pair for a seeded
+   * user with no OTP. It exists so the dashboard and the Playwright two-screen
+   * test can sign in without an SMS round-trip.
+   *
+   * FAIL CLOSED, in three ways:
+   *   - the default is 'false', so an UNSET environment disables it;
+   *   - only the exact string 'true' enables it — a typo, '1', or 'yes' is a
+   *     schema error at startup, not a quiet enable;
+   *   - NODE_ENV === 'production' disables it regardless of this value, so the
+   *     endpoint cannot exist in production even by misconfiguration.
+   *
+   * The gate the code reads is DEV_AUTH_ENABLED below, never this value.
+   */
+  DEV_AUTH: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export const configSchema = baseSchema
@@ -113,6 +132,13 @@ export const configSchema = baseSchema
     ...cfg,
     JWT_ACCESS_SECRET: cfg.JWT_ACCESS_SECRET ?? DEV_ACCESS_SECRET,
     JWT_REFRESH_SECRET: cfg.JWT_REFRESH_SECRET ?? DEV_REFRESH_SECRET,
+    /*
+     * The ONLY gate on dev auth. Derived here rather than at the call site so
+     * that there is exactly one place the conjunction is written; a future
+     * route that checks `DEV_AUTH` alone would be a bug, and this makes the
+     * safe value the obvious one to reach for.
+     */
+    DEV_AUTH_ENABLED: cfg.DEV_AUTH && cfg.NODE_ENV !== 'production',
   }));
 
 export type Config = z.infer<typeof configSchema>;
