@@ -1,7 +1,32 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+
+/**
+ * HTTPS IN DEVELOPMENT, AND WHY THE API DOES NOT NEED A CERTIFICATE.
+ *
+ * `navigator.mediaDevices` is undefined outside a secure context, so the QR
+ * scanner cannot work over plain http on a phone or tablet on the LAN
+ * (localhost is exempt, which is why it works on the dev machine and fails on
+ * the device — a genuinely confusing failure).
+ *
+ * The fix is a locally-trusted certificate from mkcert for THIS server only.
+ * The API stays on plain http, because everything the page fetches goes
+ * through the proxy below: the browser only ever talks to this origin, so
+ * there is no mixed content and no second certificate to trust. See
+ * README.md, "Camera access in development".
+ *
+ * Certificates are optional: without them the server runs over http and the
+ * scanner falls back to the manual short code, which is a supported tier.
+ */
+const certDir = fileURLToPath(new URL('./certs/', import.meta.url));
+const keyPath = `${certDir}localhost-key.pem`;
+const certPath = `${certDir}localhost.pem`;
+const hasCerts = existsSync(keyPath) && existsSync(certPath);
+
+const API_TARGET = process.env['VITE_API_TARGET'] ?? 'http://localhost:3000';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -17,5 +42,16 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 0.0.0.0, so a real tablet on the same network can reach it. That is the
+    // only way to test the camera on the device it will actually run on.
+    host: true,
+    ...(hasCerts ? { https: { key: readFileSync(keyPath), cert: readFileSync(certPath) } } : {}),
+    proxy: {
+      '/v1': { target: API_TARGET, changeOrigin: true },
+      // ws: true is REQUIRED. Without it the proxy handles the initial polling
+      // handshake and then silently fails the upgrade, so the socket falls
+      // back to long-polling and reconnects forever without an obvious error.
+      '/socket.io': { target: API_TARGET, changeOrigin: true, ws: true },
+    },
   },
 });

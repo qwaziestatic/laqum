@@ -11,8 +11,85 @@
     "overstay": "Overstay",
     "out_of_service": "Out of service"
   },
+  "source": {
+    "app": "App booking",
+    "walk_in": "Walk-in"
+  },
+  "connection": {
+    "live": "Live",
+    "connecting": "Connecting…",
+    "reconnecting": "Reconnecting — this view may be out of date",
+    "offline": "Offline — this view is not updating",
+    "retry": "Retry"
+  },
+  "grid": {
+    "loading": "Loading the lot…",
+    "empty": "This lot has no slots yet"
+  },
+  "drawer": {
+    "title": "Slot",
+    "zone": "Zone {{zone}}",
+    "plate": "Plate",
+    "plateOptional": "Plate (optional)",
+    "until": "Until",
+    "holdUntil": "Held until",
+    "source": "Source"
+  },
+  "action": {
+    "scan": "Scan",
+    "typeCode": "Type code",
+    "park": "Park a walk-in",
+    "checkOut": "Check out",
+    "checkIn": "Check in",
+    "cash": "Record cash",
+    "recordCash": "Record cash {{amount}}",
+    "outOfService": "Take out of service",
+    "takeOutOfService": "Take out of service",
+    "inService": "Return to service",
+    "returnToService": "Return to service",
+    "close": "Close",
+    "cancel": "Cancel",
+    "pending": "Sending…",
+    "waitingForServer": "Waiting for the server to confirm. Nothing has changed yet."
+  },
+  "conflict": {
+    "explained": "Could not {{action}}: this slot is now {{status}}. The view has been refreshed.",
+    "unknown": "no longer in this lot"
+  },
+  "scanner": {
+    "title": "Scan the driver's QR code",
+    "hint": "Hold the code inside the frame",
+    "unavailable": "The camera is not available on this device",
+    "insecureContext": "The camera needs HTTPS. Open this page over https:// or localhost.",
+    "permissionDenied": "Camera permission was refused",
+    "useShortCode": "Ask the driver for their 6-character code instead"
+  },
+  "shortCode": {
+    "title": "Enter the 6-character code"
+  },
+  "signIn": {
+    "devOnly": "Development sign-in. Enter a seeded phone number.",
+    "phone": "Phone number",
+    "submit": "Sign in"
+  },
+  "theme": {
+    "toggle": "Change theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "Auto"
+  },
+  "error": {
+    "STATE_CONFLICT": "That booking has already moved on",
+    "SLOT_TAKEN": "That slot already has a car on it",
+    "SLOT_IN_USE": "Check the car out first",
+    "NOT_FOUND": "No booking matches that code",
+    "FORBIDDEN": "You are not assigned to this lot",
+    "ALREADY_PAID": "This booking was already paid in the app",
+    "PAYMENT_PENDING": "An in-app payment is still pending. Confirm with the driver.",
+    "NETWORK": "No connection to the server",
+    "UNAUTHENTICATED": "Your session has ended. Sign in again."
+  },
   "common": {
-    "language": "Language",
-    "phase": "Phase 0: foundation"
+    "language": "Language"
   }
 }

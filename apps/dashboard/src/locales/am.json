@@ -7,12 +7,89 @@
   "slot": {
     "free": "ነፃ",
     "reserved": "ተይዟል",
-    "occupied": "ተይዞ ነው",
+    "occupied": "መኪና አለ",
     "overstay": "ጊዜ አልፏል",
     "out_of_service": "ከአገልግሎት ውጭ"
   },
+  "source": {
+    "app": "በአፕ የተያዘ",
+    "walk_in": "በቦታው የመጣ"
+  },
+  "connection": {
+    "live": "በቀጥታ",
+    "connecting": "በመገናኘት ላይ…",
+    "reconnecting": "እንደገና በመገናኘት ላይ — ይህ ገጽ ያልተዘመነ ሊሆን ይችላል",
+    "offline": "ግንኙነት የለም — ይህ ገጽ አይዘመንም",
+    "retry": "እንደገና ሞክር"
+  },
+  "grid": {
+    "loading": "ማቆሚያው በመጫን ላይ…",
+    "empty": "በዚህ ማቆሚያ ውስጥ ቦታዎች የሉም"
+  },
+  "drawer": {
+    "title": "ቦታ",
+    "zone": "ዞን {{zone}}",
+    "plate": "ታርጋ",
+    "plateOptional": "ታርጋ (አማራጭ)",
+    "until": "እስከ",
+    "holdUntil": "የተያዘው እስከ",
+    "source": "ምንጭ"
+  },
+  "action": {
+    "scan": "ቃኝ",
+    "typeCode": "ኮድ ተይብ",
+    "park": "በቦታው የመጣ አስገባ",
+    "checkOut": "አስወጣ",
+    "checkIn": "አስገባ",
+    "cash": "ጥሬ ገንዘብ መዝግብ",
+    "recordCash": "ጥሬ ገንዘብ መዝግብ {{amount}}",
+    "outOfService": "ከአገልግሎት አውጣ",
+    "takeOutOfService": "ከአገልግሎት አውጣ",
+    "inService": "ወደ አገልግሎት መልስ",
+    "returnToService": "ወደ አገልግሎት መልስ",
+    "close": "ዝጋ",
+    "cancel": "ተወው",
+    "pending": "በመላክ ላይ…",
+    "waitingForServer": "ሰርቨሩ እስኪያረጋግጥ በመጠበቅ ላይ። እስካሁን ምንም አልተቀየረም።"
+  },
+  "conflict": {
+    "explained": "{{action}} አልተቻለም፦ ይህ ቦታ አሁን {{status}} ነው። ገጹ ተዘምኗል።",
+    "unknown": "በዚህ ማቆሚያ ውስጥ የለም"
+  },
+  "scanner": {
+    "title": "የሹፌሩን QR ኮድ ቃኝ",
+    "hint": "ኮዱን በክፈፉ ውስጥ ያዝ",
+    "unavailable": "በዚህ መሣሪያ ላይ ካሜራ አይገኝም",
+    "insecureContext": "ካሜራው HTTPS ይፈልጋል። ይህን ገጽ በhttps:// ወይም localhost ክፈት።",
+    "permissionDenied": "የካሜራ ፈቃድ ተከልክሏል",
+    "useShortCode": "በምትኩ ሹፌሩን የ6 ፊደል ኮዱን ጠይቅ"
+  },
+  "shortCode": {
+    "title": "የ6 ፊደል ኮዱን አስገባ"
+  },
+  "signIn": {
+    "devOnly": "የልማት መግቢያ። የተመዘገበ ስልክ ቁጥር አስገባ።",
+    "phone": "ስልክ ቁጥር",
+    "submit": "ግባ"
+  },
+  "theme": {
+    "toggle": "ገጽታ ቀይር",
+    "light": "ብሩህ",
+    "dark": "ጨለማ",
+    "system": "ራስ-ሰር"
+  },
+  "error": {
+    "STATE_CONFLICT": "ይህ ቦታ ማስያዣ አስቀድሞ ተቀይሯል",
+    "SLOT_TAKEN": "በዚህ ቦታ ላይ አስቀድሞ መኪና አለ",
+    "SLOT_IN_USE": "መጀመሪያ መኪናውን አስወጣ",
+    "NOT_FOUND": "ከዚህ ኮድ ጋር የሚዛመድ ማስያዣ የለም",
+    "FORBIDDEN": "በዚህ ማቆሚያ ላይ አልተመደብክም",
+    "ALREADY_PAID": "ይህ ማስያዣ አስቀድሞ በአፑ ተከፍሏል",
+    "PAYMENT_PENDING": "በአፑ ውስጥ ክፍያ በመጠባበቅ ላይ ነው። ከሹፌሩ ጋር አረጋግጥ።",
+    "NETWORK": "ከሰርቨሩ ጋር ግንኙነት የለም",
+    "UNAUTHENTICATED": "ክፍለ ጊዜህ አብቅቷል። እንደገና ግባ።"
+  },
   "common": {
-    "language": "ቋንቋ",
-    "phase": "ምዕራፍ 0: መሠረት"
+    "language": "ቋንቋ"
   }
 }
