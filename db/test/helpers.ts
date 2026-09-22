@@ -48,6 +48,12 @@ export async function migrateToLatest(db: Kysely<unknown>): Promise<void> {
   if (error !== undefined) throw asError(error);
 }
 
+/** Apply up to a named migration and no further. */
+export async function migrateTo(db: Kysely<unknown>, name: string): Promise<void> {
+  const { error } = await createMigrator(db).migrateTo(name);
+  if (error !== undefined) throw asError(error);
+}
+
 export async function migrateDown(db: Kysely<unknown>): Promise<void> {
   const { error } = await createMigrator(db).migrateDown();
   if (error !== undefined) throw asError(error);

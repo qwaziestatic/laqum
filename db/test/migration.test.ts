@@ -4,6 +4,7 @@ import {
   connectTestDb,
   freshSchema,
   migrateDown,
+  migrateTo,
   migrateToLatest,
   query,
   resetSchema,
@@ -45,7 +46,7 @@ async function enumNames(): Promise<string[]> {
 
 describe('migrator', () => {
   it('knows about the migrations this build ships', () => {
-    expect(knownMigrationNames()).toEqual(['001_initial']);
+    expect(knownMigrationNames()).toEqual(['001_initial', '002_payment_status_superseded']);
   });
 
   it('records the migration as applied', async () => {
@@ -54,7 +55,7 @@ describe('migrator', () => {
       ctx.db,
       `SELECT name FROM kysely_migration ORDER BY name`,
     );
-    expect(rows.map((r) => r.name)).toEqual(['001_initial']);
+    expect(rows.map((r) => r.name)).toEqual(['001_initial', '002_payment_status_superseded']);
   });
 
   it('is a no-op when run a second time', async () => {
@@ -70,17 +71,45 @@ describe('migrator', () => {
       ctx.db,
       `SELECT count(*)::text AS count FROM kysely_migration`,
     );
-    expect(rows[0]?.count).toBe('1');
+    expect(rows[0]?.count).toBe('2');
   });
 
-  it('rolls back cleanly and can be re-applied', async () => {
+  /*
+   * MIGRATION POLICY: forward-only from 002 onward.
+   *
+   * The consequence is sharper than "there is no down method". Kysely's
+   * migrateDown runs `if (migration.down)` and, when there is none, neither
+   * executes anything NOR removes the row from kysely_migration. So a
+   * forward-only migration does not merely skip itself — it BLOCKS rollback
+   * past it permanently. Tearing down a development database is
+   * `DROP SCHEMA`, not `migrate down`.
+   */
+  it('cannot be rolled back past a forward-only migration', async () => {
     await freshSchema(ctx.db);
+    expect(await tableNames()).toHaveLength(11);
+
+    // Repeated attempts change nothing: 002 stays applied and 001 is never
+    // reached, however many times this is called.
+    await migrateDown(ctx.db);
+    await migrateDown(ctx.db);
+
+    expect(await tableNames()).toHaveLength(11);
+    const applied = await query<{ name: string }>(
+      ctx.db,
+      `SELECT name FROM kysely_migration ORDER BY name`,
+    );
+    expect(applied.map((r) => r.name)).toEqual(['001_initial', '002_payment_status_superseded']);
+  });
+
+  it('still rolls the INITIAL schema back, when it is the only one applied', async () => {
+    // 001 keeps its down so the initial schema can be torn down and rebuilt in
+    // development. Reachable only by stopping at 001.
+    await resetSchema(ctx.db);
+    await migrateTo(ctx.db, '001_initial');
     expect(await tableNames()).toHaveLength(11);
     expect(await enumNames()).toHaveLength(6);
 
     await migrateDown(ctx.db);
-
-    // The down migration drops the view, the tables and the enum types.
     expect(await tableNames()).toEqual([]);
     expect(await enumNames()).toEqual([]);
 

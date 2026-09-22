@@ -74,7 +74,6 @@ export function refundsRouter(ctx: PaymentsContext): Router {
           'p.amount_santim as amountSantim',
           'p.kind as kind',
           'p.status as status',
-          'p.provider_payload as providerPayload',
         ])
         .where('p.id', '=', paymentId)
         .where('ls.user_id', '=', user.userId)
@@ -82,15 +81,13 @@ export function refundsRouter(ctx: PaymentsContext): Router {
 
       if (!original) throw new AppError('NOT_FOUND', 'No such payment at a lot you staff');
       /*
-       * Two shapes are refundable, and both represent money we hold:
-       *   success  a late deposit, recorded normally;
-       *   failed + refundOwed  an overpayment the provider collected but
-       *            one_paid_final_per_booking would not let us record as a
-       *            second success.
+       * Two statuses represent money we hold and owe back:
+       *   success     a late deposit, applied to nothing;
+       *   superseded  a final the provider collected but the booking could
+       *               not accept, because it was already settled.
+       * Everything else — pending, failed — was never collected.
        */
-      const payload = original.providerPayload as { refundOwed?: unknown } | null;
-      const refundOwed = payload?.refundOwed === true;
-      if (original.status !== 'success' && !refundOwed) {
+      if (original.status !== 'success' && original.status !== 'superseded') {
         throw new AppError('PAYMENT_NOT_CONFIRMED', 'Only a collected payment can be refunded', {
           status: original.status,
         });

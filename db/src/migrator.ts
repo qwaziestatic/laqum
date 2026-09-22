@@ -4,6 +4,7 @@ import type { Kysely } from 'kysely';
 // runtime with "does not provide an export named 'Migrator'".
 import { type Migration, type MigrationProvider, Migrator } from 'kysely/migration';
 import * as migration001 from '../migrations/001_initial.js';
+import * as migration002 from '../migrations/002_payment_status_superseded.js';
 
 /**
  * Migrations are registered explicitly rather than discovered from disk.
@@ -22,6 +23,7 @@ import * as migration001 from '../migrations/001_initial.js';
  */
 const MIGRATIONS: Record<string, Migration> = {
   '001_initial': migration001,
+  '002_payment_status_superseded': migration002,
 };
 
 const provider: MigrationProvider = {

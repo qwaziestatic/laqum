@@ -12,8 +12,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connectTestDb, freshSchema, query, type TestDb } from './helpers.js';
 
 /**
- * Proves the migration reproduces the reviewed schema, by introspecting what
- * Postgres actually built rather than by reading the DDL back.
+ * Proves the migrations produce the schema the application depends on, by
+ * introspecting what Postgres actually built rather than by reading DDL back.
+ *
+ * This asserts the CURRENT schema: 001_initial plus every migration after it.
+ * db/schema.sql remains the byte-for-byte reference copy of 001 alone (see
+ * schema-copy.test.ts); the current shape lives here, because with
+ * forward-only migrations no single file is the whole picture.
  *
  * Every assertion below is a fact the application depends on. If a future
  * migration changes one, this test fails and the change has to be deliberate.
@@ -59,12 +64,16 @@ describe('enum types', () => {
 
     // Order matters: it is the enum's sort order, and it is what the brief
     // specified. These also pin packages/shared to the database.
+    //
+    // payment_status carries 'superseded' from migration 002. ALTER TYPE ADD
+    // VALUE appends, so it sorts last — which is why shared lists it last too.
     expect(byType.get('user_role')).toEqual([...USER_ROLES]);
     expect(byType.get('booking_source')).toEqual([...BOOKING_SOURCES]);
     expect(byType.get('booking_status')).toEqual([...BOOKING_STATUSES]);
     expect(byType.get('payment_kind')).toEqual([...PAYMENT_KINDS]);
     expect(byType.get('payment_provider')).toEqual([...PAYMENT_PROVIDERS]);
     expect(byType.get('payment_status')).toEqual([...PAYMENT_STATUSES]);
+    expect(byType.get('payment_status')).toEqual(['pending', 'success', 'failed', 'superseded']);
   });
 });
 

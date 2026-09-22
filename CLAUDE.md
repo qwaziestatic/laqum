@@ -228,13 +228,39 @@ instead of being silently skipped.
 **Add new migrations to that record, in order. Never rename an existing key** —
 it is the name recorded in the `kysely_migration` table.
 
-### Migration policy is UNDECIDED beyond 001
+### Migration policy: FORWARD-ONLY (decided)
 
-`001_initial` ships a `down` so the up/down round-trip can be tested. That is
-**not** a standing commitment that every migration ships a `down`.
+**Migrations are forward-only from 002 onward.** New migrations ship an `up`
+and no `down`. A mistake is corrected by a further migration, never by a
+rollback.
 
-**Before writing any second migration, ask the product owner** whether down
-migrations are required, and record the answer here.
+`001_initial` keeps its `down` so the initial schema can be torn down and
+rebuilt in development; that is the single exception and it is not a
+precedent.
+
+**The consequence is sharper than "there is no down method."** Kysely's
+`migrateDown` runs `if (migration.down)` and, when there is none, neither
+executes anything NOR deletes the row from `kysely_migration`. A forward-only
+migration therefore **blocks rollback past it permanently** — repeated
+`migrate down` calls are no-ops. Tearing down a development database is
+`DROP SCHEMA`, not `migrate down`. `db/test/migration.test.ts` pins this, and
+the CLI prints `SKIPPED (forward-only, no down migration)` so silence is never
+mistaken for a successful rollback.
+
+### Adding an enum value
+
+`ALTER TYPE ... ADD VALUE` may run inside a transaction on PG12+, but the new
+value **cannot be used in the transaction that added it** — "New enum values
+must be committed before they can be used." Verified directly against PG16.
+Kysely wraps each migration in a transaction, so a migration that adds a label
+must not also write it. Any backfill needs its own later migration.
+
+### db/schema.sql is the INITIAL schema only
+
+With forward-only migrations no single file is the whole picture.
+`db/schema.sql` stays the byte-for-byte reference copy of `001_initial`;
+`db/test/schema.test.ts` is the authority on the CURRENT shape and asserts
+001 + every migration after it.
 
 ---
 
@@ -308,11 +334,10 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
     schemas are spelled out.
 15. **`one_paid_final_per_booking` makes two successful finals IMPOSSIBLE.** A
     genuinely double-collected final therefore cannot be recorded as a second
-    success. The loser is marked `failed` — meaning "not accepted into our
-    ledger", not "the driver was not charged" — with `provider_payload`
-    carrying `refundOwed: true` and the provider's response. The refund queue
-    looks for that flag. `payments.status` is OUR ledger status; the provider's
-    truth lives in `provider_payload`.
+    success. It is recorded as **`superseded`** (migration 002): collected by
+    the provider, not applied to the booking, owed back. It is NOT `failed` —
+    the money moved, so `failed` would make our ledger disagree with Chapa's
+    settlement report. The refund queue selects on that status.
 16. **Two concurrent confirms of the same tx_ref can cancel each other out.**
     One settles the row to success; the other then sees "a successful final
     exists" and would flag THAT SAME ROW as an overpayment, turning success

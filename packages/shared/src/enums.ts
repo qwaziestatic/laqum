@@ -36,7 +36,14 @@ export const PAYMENT_PROVIDERS = ['chapa', 'telebirr', 'cash'] as const;
 export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
 export const paymentProviderSchema = z.enum(PAYMENT_PROVIDERS);
 
-export const PAYMENT_STATUSES = ['pending', 'success', 'failed'] as const;
+/**
+ * 'superseded' (migration 002) means the provider collected the money but our
+ * ledger could not apply it to the booking, because one_paid_final_per_booking
+ * permits only one successful final payment. It is NOT 'failed': the driver
+ * was charged, and the amount is owed back. Order matters — ALTER TYPE ADD
+ * VALUE appends, so 'superseded' is last.
+ */
+export const PAYMENT_STATUSES = ['pending', 'success', 'failed', 'superseded'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const paymentStatusSchema = z.enum(PAYMENT_STATUSES);
 

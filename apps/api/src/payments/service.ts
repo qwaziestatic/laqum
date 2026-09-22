@@ -7,7 +7,7 @@ import {
   type RefundReason,
   providerAmountToSantim,
 } from '@laqum/shared';
-import { sql, type Selectable } from 'kysely';
+import type { Selectable } from 'kysely';
 import { inTransaction } from '../afterCommit.js';
 import { transition } from '../bookings/transition.js';
 import type { AppContext } from '../context.js';
@@ -238,14 +238,13 @@ async function settleDeposit(
 }
 
 /**
- * Marks a confirmed-but-unrecordable payment for refund.
+ * Records a payment the provider collected but the booking could not accept.
  *
  * one_paid_final_per_booking permits AT MOST ONE successful final payment per
- * booking, so when a second one is genuinely collected our ledger cannot
- * record it as success. The row is therefore marked `failed` — meaning "not
- * accepted into our ledger", not "the driver was not charged" — and
- * provider_payload carries the provider's truth plus `refundOwed`, which is
- * what the operator refund queue looks for.
+ * booking, so a genuinely double-collected final cannot be a second success.
+ * It is recorded as 'superseded' (migration 002): the money moved, it was not
+ * applied to the booking, and it is owed back. Marking it 'failed' would make
+ * our ledger disagree with the provider's settlement report.
  */
 async function flagAsOverpayment(
   ctx: PaymentsContext,
@@ -255,10 +254,9 @@ async function flagAsOverpayment(
   await ctx.db
     .updateTable('payments')
     .set({
-      status: 'failed',
+      status: 'superseded',
       provider_payload: JSON.stringify({
         providerConfirmed: true,
-        refundOwed: true,
         note: 'collected by the provider but this booking already has a settled final payment',
         verified: verified.raw,
       }),
@@ -448,15 +446,12 @@ export async function refundQueue(
         ]),
         /*
          * A final payment the provider collected but our ledger could not
-         * record, because one_paid_final_per_booking permits only ONE
-         * successful final per booking. There can never be two success rows
-         * to compare, so the flag written by flagAsOverpayment is the signal.
+         * apply, because one_paid_final_per_booking permits only ONE
+         * successful final per booking. 'superseded' is the status that says
+         * exactly that, so the queue selects on it directly rather than on a
+         * flag buried in provider_payload.
          */
-        eb.and([
-          eb('p.kind', '=', 'final'),
-          eb('p.status', '=', 'failed'),
-          eb(sql<string>`p.provider_payload ->> 'refundOwed'`, '=', 'true'),
-        ]),
+        eb.and([eb('p.kind', '=', 'final'), eb('p.status', '=', 'superseded')]),
       ]),
     )
     .orderBy('p.created_at');

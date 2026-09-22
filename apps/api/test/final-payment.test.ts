@@ -274,10 +274,18 @@ describe('the cash / in-app race', () => {
       .execute();
     expect(paidEvents).toHaveLength(1);
 
+    const superseded = await t.db.db
+      .selectFrom('payments')
+      .selectAll()
+      .where('booking_id', '=', id)
+      .where('status', '=', 'superseded')
+      .execute();
+
     const queue = await refundQueue(t.ctx);
-    if (successfulFinals.length > 1) {
-      // Both took money: the duplicate must be queued for refund.
-      expect(successfulFinals).toHaveLength(2);
+    if (superseded.length > 0) {
+      // Both took money: the duplicate is recorded as collected-but-not-
+      // applied, and queued for refund.
+      expect(successfulFinals).toHaveLength(1);
       expect(queue.map((q) => q.reason)).toContain('overpayment');
     } else {
       // One won cleanly and the other was refused.
@@ -386,10 +394,11 @@ describe('the cash / in-app race, each ordering forced', () => {
       .where('booking_id', '=', id)
       .where('kind', '=', 'final')
       .execute();
-    // one_paid_final_per_booking permits only one success; the loser is
-    // recorded as failed-in-our-ledger with the provider's truth alongside.
+    // one_paid_final_per_booking permits only one success. The loser is
+    // 'superseded' — collected, not applied — NOT 'failed', which would make
+    // our ledger disagree with the provider's settlement report.
     expect(finals.filter((f) => f.status === 'success')).toHaveLength(1);
-    expect(finals.find((f) => f.tx_ref === txRef)?.status).toBe('failed');
+    expect(finals.find((f) => f.tx_ref === txRef)?.status).toBe('superseded');
 
     const queue = await refundQueue(t.ctx);
     expect(queue).toHaveLength(1);

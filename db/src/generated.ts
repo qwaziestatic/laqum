@@ -31,7 +31,7 @@ export type PaymentKind = "deposit" | "final" | "refund";
 
 export type PaymentProvider = "cash" | "chapa" | "telebirr";
 
-export type PaymentStatus = "failed" | "pending" | "success";
+export type PaymentStatus = "failed" | "pending" | "success" | "superseded";
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
