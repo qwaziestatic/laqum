@@ -24,6 +24,8 @@ export const CONSTRAINTS = {
   liveBookingPerUser: 'one_live_booking_per_user',
   liveBookingPerShortCode: 'one_live_booking_per_short_code',
   qrToken: 'bookings_qr_token_key',
+  paidFinalPerBooking: 'one_paid_final_per_booking',
+  paidDepositPerBooking: 'one_paid_deposit_per_booking',
 } as const;
 
 function readString(source: Record<string, unknown>, key: string): string | undefined {

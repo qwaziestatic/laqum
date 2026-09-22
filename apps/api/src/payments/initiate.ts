@@ -38,7 +38,13 @@ export async function initiatePayment(
     .values({
       booking_id: input.bookingId,
       kind: input.kind,
-      provider: ctx.provider.name === 'chapa' ? 'chapa' : 'cash',
+      /*
+       * The rail, not the implementation. FakePaymentProvider stands in FOR
+       * Chapa in development and tests, so its rows are 'chapa' too.
+       * Recording them as 'cash' would both be a lie and violate
+       * cash_has_recorder, which requires a named human recorder.
+       */
+      provider: 'chapa',
       amount_santim: input.amountSantim,
       status: 'pending',
       tx_ref: txRef,

@@ -46,6 +46,35 @@ beforeEach(async () => {
   jobDeps = { db: t.db.db, clock: t.clock, logger: t.ctx.logger, payments: t.ctx };
 });
 
+/**
+ * The webhook answers 200 BEFORE it processes, on purpose — Chapa must not be
+ * kept waiting on our database. So a test that asserts the effect has to wait
+ * for it. Polling real milliseconds here is fine: this is waiting for an async
+ * task to finish, not for a business deadline, which is what the FakeClock is
+ * for.
+ */
+async function waitUntil(
+  predicate: () => Promise<boolean>,
+  what: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+async function waitForStatus(bookingId: string, status: string): Promise<void> {
+  await waitUntil(async () => (await statusOf(bookingId)) === status, `booking to be ${status}`);
+}
+
+/** Give the fire-and-forget webhook processing a chance to run and settle. */
+async function settleWebhook(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
 async function statusOf(bookingId: string): Promise<string> {
   const row = await t.db.db
     .selectFrom('bookings')
@@ -294,7 +323,7 @@ describe('the webhook endpoint', () => {
     const res = await post({ tx_ref: txRef, status: 'success' });
 
     expect(res.status).toBe(200);
-    expect(await statusOf(bookingId)).toBe('RESERVED');
+    await waitForStatus(bookingId, 'RESERVED');
   });
 
   it('is idempotent across DUPLICATE deliveries', async () => {
@@ -303,9 +332,10 @@ describe('the webhook endpoint', () => {
 
     for (let i = 0; i < 3; i++) {
       expect((await post(body)).status).toBe(200);
+      await settleWebhook();
     }
 
-    expect(await statusOf(bookingId)).toBe('RESERVED');
+    await waitForStatus(bookingId, 'RESERVED');
 
     // one_paid_deposit_per_booking permits only one, and the CAS permits only
     // one transition: creation + the single RESERVED event.
@@ -329,12 +359,13 @@ describe('the webhook endpoint', () => {
   it('ignores an OUT-OF-ORDER stale delivery arriving after success', async () => {
     const { bookingId, txRef } = await bookingAwaitingDeposit();
     await post({ tx_ref: txRef, status: 'success' });
-    expect(await statusOf(bookingId)).toBe('RESERVED');
+    await waitForStatus(bookingId, 'RESERVED');
 
     // A stale 'pending' notification turns up late. The body is never acted
     // on, and the payment is already settled, so nothing changes.
     t.provider.setStatus(txRef, 'pending');
     expect((await post({ tx_ref: txRef, status: 'pending' })).status).toBe(200);
+    await settleWebhook();
 
     expect(await statusOf(bookingId)).toBe('RESERVED');
     expect((await paymentFor(bookingId, 'deposit'))?.status).toBe('success');
@@ -346,6 +377,7 @@ describe('the webhook endpoint', () => {
     t.provider.setStatus(txRef, 'pending');
 
     expect((await post({ tx_ref: txRef, status: 'success', amount: '999999' })).status).toBe(200);
+    await settleWebhook();
 
     expect(await statusOf(bookingId)).toBe('PENDING_PAYMENT');
     expect((await paymentFor(bookingId, 'deposit'))?.status).toBe('pending');
@@ -357,6 +389,7 @@ describe('the webhook endpoint', () => {
     const res = await post({ tx_ref: txRef, status: 'success' }, 'a'.repeat(64));
 
     expect(res.status).toBe(401);
+    await settleWebhook();
     expect(await statusOf(bookingId)).toBe('PENDING_PAYMENT');
   });
 
@@ -391,6 +424,6 @@ describe('the webhook endpoint', () => {
   it('accepts trx_ref, which Chapa uses in its callback payload', async () => {
     const { bookingId, txRef } = await bookingAwaitingDeposit();
     expect((await post({ trx_ref: txRef, status: 'success' })).status).toBe(200);
-    expect(await statusOf(bookingId)).toBe('RESERVED');
+    await waitForStatus(bookingId, 'RESERVED');
   });
 });

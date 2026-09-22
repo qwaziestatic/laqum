@@ -14,6 +14,7 @@ import { reminderTimeFor } from '../bookings/service.js';
 import type { BookingRow } from '../bookings/transition.js';
 import { transitionOrThrow } from '../bookings/transition.js';
 import type { AppContext } from '../context.js';
+import { CONSTRAINTS, isUniqueViolation } from '../db/pgError.js';
 import { confirmPayment, type PaymentsContext } from '../payments/service.js';
 import { jobIdFor } from '../jobs/scheduler.js';
 
@@ -335,30 +336,43 @@ export async function recordCash(
 
   const now = ctx.clock.now();
 
-  return inTransaction(ctx.db, ctx.logger, async (trx) => {
-    await trx
-      .insertInto('payments')
-      .values({
-        booking_id: bookingId,
-        kind: 'final',
-        provider: 'cash',
-        amount_santim: amountSantim,
-        status: 'success',
-        // cash_has_recorder: the schema refuses a cash row without one.
-        recorded_by: attendantId,
-        created_at: now,
-        updated_at: now,
-      })
-      .execute();
+  try {
+    return await inTransaction(ctx.db, ctx.logger, async (trx) => {
+      await trx
+        .insertInto('payments')
+        .values({
+          booking_id: bookingId,
+          kind: 'final',
+          provider: 'cash',
+          amount_santim: amountSantim,
+          status: 'success',
+          // cash_has_recorder: the schema refuses a cash row without one.
+          recorded_by: attendantId,
+          created_at: now,
+          updated_at: now,
+        })
+        .execute();
 
-    return transitionOrThrow(trx, ctx.clock, {
-      bookingId,
-      from: 'CHECKED_OUT',
-      to: 'PAID',
-      actorId: attendantId,
-      note: 'cash',
+      return await transitionOrThrow(trx, ctx.clock, {
+        bookingId,
+        from: 'CHECKED_OUT',
+        to: 'PAID',
+        actorId: attendantId,
+        note: 'cash',
+      });
     });
-  });
+  } catch (err) {
+    /*
+     * An in-app payment settled while the attendant was taking the cash.
+     * one_paid_final_per_booking is what decides: only one final payment can
+     * ever succeed, and this one lost. The cash was not accepted, so the
+     * attendant must be told plainly rather than shown a 500.
+     */
+    if (isUniqueViolation(err, CONSTRAINTS.paidFinalPerBooking)) {
+      throw new AppError('ALREADY_PAID', 'This booking was settled in the app a moment ago');
+    }
+    throw err;
+  }
 }
 
 /**

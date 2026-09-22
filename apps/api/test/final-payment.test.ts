@@ -1,6 +1,7 @@
 import { addMinutes } from '@laqum/shared';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { transition } from '../src/bookings/transition.js';
 import { confirmPayment, refundQueue } from '../src/payments/service.js';
 import { signPayload } from '../src/payments/signature.js';
 import { makeActor, reissue, staffLot, type Actor } from './helpers/auth.js';
@@ -85,6 +86,16 @@ async function startInAppPayment(bookingId: string): Promise<string> {
   return (res.body as { txRef: string }).txRef;
 }
 
+/** The webhook answers 200 before processing, so tests must wait for the effect. */
+async function waitForStatus(bookingId: string, status: string, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await statusOf(bookingId)) === status) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out waiting for booking to become ${status}`);
+}
+
 function webhook(txRef: string) {
   const raw = JSON.stringify({ tx_ref: txRef, status: 'success' });
   return request(t.app)
@@ -100,8 +111,8 @@ describe('paying the final bill in the app', () => {
     const txRef = await startInAppPayment(id);
 
     await webhook(txRef);
+    await waitForStatus(id, 'PAID');
 
-    expect(await statusOf(id)).toBe('PAID');
     const payment = await t.db.db
       .selectFrom('payments')
       .selectAll()
@@ -137,6 +148,7 @@ describe('paying the final bill in the app', () => {
     const id = await checkedOut();
     const txRef = await startInAppPayment(id);
     await webhook(txRef);
+    await waitForStatus(id, 'PAID');
 
     const res = await request(t.app)
       .post(`/v1/bookings/${id}/pay`)
@@ -170,7 +182,8 @@ describe('cash while an in-app payment is pending', () => {
       .where('kind', '=', 'final')
       .execute();
     expect(payments).toHaveLength(1);
-    expect(payments[0]?.provider).toBe('cash');
+    // The in-app rail, not cash: the cash insert never happened.
+    expect(payments[0]?.provider).toBe('chapa');
     expect(payments[0]?.tx_ref).toBe(txRef);
     expect(payments[0]?.status).toBe('success');
   });
@@ -298,6 +311,168 @@ describe('the cash / in-app race', () => {
     expect(queue).toHaveLength(1);
     expect(queue[0]).toMatchObject({ bookingId: id, reason: 'overpayment', amountSantim: 4000 });
   });
+});
+
+/**
+ * The race, with the ordering FORCED rather than left to chance.
+ *
+ * The property test above can only ever exercise whichever branch the
+ * scheduler happens to pick, so each ordering also gets a test that pins it
+ * with a held-open transaction — the competitor's index entry exists but is
+ * uncommitted, so the other path genuinely blocks on it.
+ */
+describe('the cash / in-app race, each ordering forced', () => {
+  const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it('(a) cash commits FIRST: one PAID, and the Chapa money is queued as an overpayment', async () => {
+    const id = await checkedOut();
+    const txRef = await startInAppPayment(id);
+    t.provider.setStatus(txRef, 'success');
+
+    // The attendant's settlement, held open: its successful final row exists
+    // but is invisible to anyone else until it commits.
+    const cashTx = await t.db.db.startTransaction().execute();
+    await cashTx
+      .insertInto('payments')
+      .values({
+        booking_id: id,
+        kind: 'final',
+        provider: 'cash',
+        amount_santim: 4000,
+        status: 'success',
+        recorded_by: attendant.userId,
+        created_at: t.clock.now(),
+        updated_at: t.clock.now(),
+      })
+      .execute();
+    const cashMoved = await transition(cashTx, t.clock, {
+      bookingId: id,
+      from: 'CHECKED_OUT',
+      to: 'PAID',
+      actorId: attendant.userId,
+      note: 'cash',
+    });
+    expect(cashMoved.ok).toBe(true);
+
+    // The Chapa confirmation starts now and must block on the uncommitted
+    // one_paid_final_per_booking entry.
+    let settled = false;
+    const confirming = confirmPayment(t.ctx, txRef).then((outcome) => {
+      settled = true;
+      return outcome;
+    });
+
+    await sleep(250);
+    expect(settled, 'the Chapa confirm should be blocked on the index').toBe(false);
+
+    await cashTx.commit().execute();
+    const outcome = await confirming;
+
+    // Cash won. The Chapa money was still collected, so it is flagged.
+    expect(outcome).toMatchObject({ kind: 'late', reason: 'overpayment' });
+    expect(await statusOf(id)).toBe('PAID');
+
+    const paidEvents = await t.db.db
+      .selectFrom('booking_events')
+      .select('to_status')
+      .where('booking_id', '=', id)
+      .where('to_status', '=', 'PAID')
+      .execute();
+    expect(paidEvents, 'exactly one settlement').toHaveLength(1);
+
+    const finals = await t.db.db
+      .selectFrom('payments')
+      .selectAll()
+      .where('booking_id', '=', id)
+      .where('kind', '=', 'final')
+      .execute();
+    // one_paid_final_per_booking permits only one success; the loser is
+    // recorded as failed-in-our-ledger with the provider's truth alongside.
+    expect(finals.filter((f) => f.status === 'success')).toHaveLength(1);
+    expect(finals.find((f) => f.tx_ref === txRef)?.status).toBe('failed');
+
+    const queue = await refundQueue(t.ctx);
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ bookingId: id, reason: 'overpayment', amountSantim: 4000 });
+  }, 30_000);
+
+  it('(b) the Chapa confirm commits FIRST: cash is refused and nothing is queued', async () => {
+    const id = await checkedOut();
+    const txRef = await startInAppPayment(id);
+
+    const payment = await t.db.db
+      .selectFrom('payments')
+      .selectAll()
+      .where('tx_ref', '=', txRef)
+      .executeTakeFirstOrThrow();
+
+    // The in-app settlement, held open.
+    const chapaTx = await t.db.db.startTransaction().execute();
+    await chapaTx
+      .updateTable('payments')
+      .set({ status: 'success', updated_at: t.clock.now() })
+      .where('id', '=', payment.id)
+      .execute();
+    const chapaMoved = await transition(chapaTx, t.clock, {
+      bookingId: id,
+      from: 'CHECKED_OUT',
+      to: 'PAID',
+      actorId: null,
+      note: 'paid in app',
+    });
+    expect(chapaMoved.ok).toBe(true);
+
+    // The attendant takes cash at the same moment. overridePending skips the
+    // pre-check, so this is the genuine collision rather than the polite path.
+    // .then() is what makes supertest actually send: a Test object sits
+    // inert until something subscribes to it. Without this the request would
+    // not start until the await below, i.e. AFTER the commit, and the race
+    // being tested would never happen.
+    let cashSettled = false;
+    const cash = request(t.app)
+      .post(`/v1/staff/bookings/${id}/cash`)
+      .set(attendant.header)
+      .send({ amountSantim: 4000, overridePending: true })
+      .then((r) => {
+        cashSettled = true;
+        return r;
+      });
+
+    await sleep(250);
+    // Symmetric with (a): proves the ordering was actually forced rather than
+    // the request simply having finished first.
+    expect(cashSettled, 'cash should be blocked on the in-app settlement').toBe(false);
+
+    await chapaTx.commit().execute();
+    const res = await cash;
+
+    // The in-app payment won, so the cash is refused with a plain message
+    // rather than a 500 from a raw unique violation.
+    expect(res.status).toBe(409);
+    expect(errorCode(res)).toBe('ALREADY_PAID');
+    expect(await statusOf(id)).toBe('PAID');
+
+    const paidEvents = await t.db.db
+      .selectFrom('booking_events')
+      .select('to_status')
+      .where('booking_id', '=', id)
+      .where('to_status', '=', 'PAID')
+      .execute();
+    expect(paidEvents).toHaveLength(1);
+
+    const finals = await t.db.db
+      .selectFrom('payments')
+      .selectAll()
+      .where('booking_id', '=', id)
+      .where('kind', '=', 'final')
+      .execute();
+    // Only the Chapa one exists: the cash insert was rolled back, so no money
+    // was double-collected and there is nothing to refund.
+    expect(finals).toHaveLength(1);
+    expect(finals[0]?.tx_ref).toBe(txRef);
+
+    expect(await refundQueue(t.ctx)).toEqual([]);
+  }, 30_000);
 });
 
 describe('the operator refund queue', () => {

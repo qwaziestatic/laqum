@@ -74,13 +74,23 @@ export function refundsRouter(ctx: PaymentsContext): Router {
           'p.amount_santim as amountSantim',
           'p.kind as kind',
           'p.status as status',
+          'p.provider_payload as providerPayload',
         ])
         .where('p.id', '=', paymentId)
         .where('ls.user_id', '=', user.userId)
         .executeTakeFirst();
 
       if (!original) throw new AppError('NOT_FOUND', 'No such payment at a lot you staff');
-      if (original.status !== 'success') {
+      /*
+       * Two shapes are refundable, and both represent money we hold:
+       *   success  a late deposit, recorded normally;
+       *   failed + refundOwed  an overpayment the provider collected but
+       *            one_paid_final_per_booking would not let us record as a
+       *            second success.
+       */
+      const payload = original.providerPayload as { refundOwed?: unknown } | null;
+      const refundOwed = payload?.refundOwed === true;
+      if (original.status !== 'success' && !refundOwed) {
         throw new AppError('PAYMENT_NOT_CONFIRMED', 'Only a collected payment can be refunded', {
           status: original.status,
         });

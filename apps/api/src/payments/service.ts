@@ -7,11 +7,12 @@ import {
   type RefundReason,
   providerAmountToSantim,
 } from '@laqum/shared';
-import type { Selectable } from 'kysely';
+import { sql, type Selectable } from 'kysely';
 import { inTransaction } from '../afterCommit.js';
 import { transition } from '../bookings/transition.js';
 import type { AppContext } from '../context.js';
 import { jobIdFor } from '../jobs/scheduler.js';
+import { CONSTRAINTS, isUniqueViolation } from '../db/pgError.js';
 import { isProviderUnavailable, type VerifyResult } from './provider.js';
 
 export type PaymentRow = Selectable<Database['payments']>;
@@ -236,6 +237,50 @@ async function settleDeposit(
   });
 }
 
+/**
+ * Marks a confirmed-but-unrecordable payment for refund.
+ *
+ * one_paid_final_per_booking permits AT MOST ONE successful final payment per
+ * booking, so when a second one is genuinely collected our ledger cannot
+ * record it as success. The row is therefore marked `failed` — meaning "not
+ * accepted into our ledger", not "the driver was not charged" — and
+ * provider_payload carries the provider's truth plus `refundOwed`, which is
+ * what the operator refund queue looks for.
+ */
+async function flagAsOverpayment(
+  ctx: PaymentsContext,
+  payment: PaymentRow,
+  verified: VerifyResult,
+): Promise<ConfirmOutcome> {
+  await ctx.db
+    .updateTable('payments')
+    .set({
+      status: 'failed',
+      provider_payload: JSON.stringify({
+        providerConfirmed: true,
+        refundOwed: true,
+        note: 'collected by the provider but this booking already has a settled final payment',
+        verified: verified.raw,
+      }),
+      updated_at: ctx.clock.now(),
+    })
+    .where('id', '=', payment.id)
+    .execute();
+
+  ctx.logger.warn(
+    { txRef: payment.tx_ref, bookingId: payment.booking_id, amountSantim: payment.amount_santim },
+    'OVERPAYMENT: the provider collected a final payment this booking had already settled',
+  );
+
+  const flagged = await ctx.db
+    .selectFrom('payments')
+    .selectAll()
+    .where('id', '=', payment.id)
+    .executeTakeFirstOrThrow();
+
+  return { kind: 'late', payment: flagged, reason: 'overpayment' };
+}
+
 /** A confirmed final payment moves CHECKED_OUT to PAID. */
 async function settleFinal(
   ctx: PaymentsContext,
@@ -244,47 +289,84 @@ async function settleFinal(
 ): Promise<ConfirmOutcome> {
   const now = ctx.clock.now();
 
-  return inTransaction(ctx.db, ctx.logger, async (trx) => {
-    const settled = await trx
-      .updateTable('payments')
-      .set({
-        status: 'success',
-        provider_payload: JSON.stringify(verified.raw),
-        updated_at: now,
-      })
-      .where('id', '=', payment.id)
-      .where('status', '=', 'pending')
-      .returningAll()
-      .executeTakeFirst();
+  /*
+   * Cheap pre-check for the sequential case. It cannot see an uncommitted
+   * competitor, so the unique violation below is the real guard.
+   *
+   * `id != payment.id` is load-bearing. Two concurrent confirmations of the
+   * SAME tx_ref both reach here; if one has already settled this very row,
+   * the other would otherwise find "a successful final exists", flag THIS row
+   * as an overpayment, and turn a successful payment back into a failed one.
+   */
+  const alreadySettled = await ctx.db
+    .selectFrom('payments')
+    .select('id')
+    .where('booking_id', '=', payment.booking_id)
+    .where('kind', '=', 'final')
+    .where('status', '=', 'success')
+    .where('id', '!=', payment.id)
+    .executeTakeFirst();
 
-    if (!settled) {
-      const current = await trx
-        .selectFrom('payments')
-        .selectAll()
+  if (alreadySettled) return flagAsOverpayment(ctx, payment, verified);
+
+  try {
+    return await inTransaction(ctx.db, ctx.logger, async (trx) => {
+      const settled = await trx
+        .updateTable('payments')
+        .set({
+          status: 'success',
+          provider_payload: JSON.stringify(verified.raw),
+          updated_at: now,
+        })
         .where('id', '=', payment.id)
-        .executeTakeFirstOrThrow();
-      return { kind: 'already_settled', payment: current };
-    }
+        .where('status', '=', 'pending')
+        .returningAll()
+        .executeTakeFirst();
 
-    const outcome = await transition(trx, ctx.clock, {
-      bookingId: payment.booking_id,
-      from: 'CHECKED_OUT',
-      to: 'PAID',
-      actorId: null,
-      note: 'paid in app',
+      if (!settled) {
+        const current = await trx
+          .selectFrom('payments')
+          .selectAll()
+          .where('id', '=', payment.id)
+          .executeTakeFirstOrThrow();
+        return { kind: 'already_settled', payment: current };
+      }
+
+      const outcome = await transition(trx, ctx.clock, {
+        bookingId: payment.booking_id,
+        from: 'CHECKED_OUT',
+        to: 'PAID',
+        actorId: null,
+        note: 'paid in app',
+      });
+
+      if (!outcome.ok) {
+        // The booking moved on without us. Roll the whole attempt back and
+        // record it as an overpayment outside this transaction.
+        throw new DuplicateFinalError();
+      }
+
+      return { kind: 'confirmed', payment: settled, bookingStatus: 'PAID' };
     });
-
-    if (!outcome.ok) {
-      // Cash got there first. The money is real and duplicated: refund queue.
-      ctx.logger.warn(
-        { txRef: payment.tx_ref, bookingId: payment.booking_id },
-        'final payment confirmed for a booking that was already settled; queued for refund',
-      );
-      return { kind: 'late', payment: settled, reason: 'overpayment' };
+  } catch (err) {
+    // A cash settlement committed while we were mid-flight: its index entry
+    // is what this collides with.
+    if (
+      err instanceof DuplicateFinalError ||
+      isUniqueViolation(err, CONSTRAINTS.paidFinalPerBooking)
+    ) {
+      return flagAsOverpayment(ctx, payment, verified);
     }
+    throw err;
+  }
+}
 
-    return { kind: 'confirmed', payment: settled, bookingStatus: 'PAID' };
-  });
+/** Internal signal: the booking was settled by someone else mid-transaction. */
+class DuplicateFinalError extends Error {
+  constructor() {
+    super('another final payment settled this booking first');
+    this.name = 'DuplicateFinalError';
+  }
 }
 
 // ─── The operator refund queue ────────────────────────────────────────────
@@ -333,7 +415,6 @@ export async function refundQueue(
       'b.status as bookingStatus',
       'b.lot_id as lotId',
     ])
-    .where('p.status', '=', 'success')
     .where('p.kind', '!=', 'refund')
     // Not already refunded.
     // Not destructured: pulling these off the builder detaches them from `this`.
@@ -354,6 +435,7 @@ export async function refundQueue(
         // A deposit on a booking that never reached RESERVED.
         eb.and([
           eb('p.kind', '=', 'deposit'),
+          eb('p.status', '=', 'success'),
           eb.not(
             eb.exists(
               eb
@@ -364,18 +446,16 @@ export async function refundQueue(
             ),
           ),
         ]),
-        // A second successful final payment on the same booking.
+        /*
+         * A final payment the provider collected but our ledger could not
+         * record, because one_paid_final_per_booking permits only ONE
+         * successful final per booking. There can never be two success rows
+         * to compare, so the flag written by flagAsOverpayment is the signal.
+         */
         eb.and([
           eb('p.kind', '=', 'final'),
-          eb.exists(
-            eb
-              .selectFrom('payments as other')
-              .select('other.id')
-              .whereRef('other.booking_id', '=', 'p.booking_id')
-              .whereRef('other.id', '!=', 'p.id')
-              .where('other.kind', '=', 'final')
-              .where('other.status', '=', 'success'),
-          ),
+          eb('p.status', '=', 'failed'),
+          eb(sql<string>`p.provider_payload ->> 'refundOwed'`, '=', 'true'),
         ]),
       ]),
     )

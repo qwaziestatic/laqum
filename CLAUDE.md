@@ -306,7 +306,28 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
 14. **zod's `.partial()` does NOT strip `.default()`.** A PATCH schema derived
     that way silently resets every defaulted field on an empty body. Update
     schemas are spelled out.
-15. **Advancing a FakeClock expires access tokens.** Tests that time-travel
+15. **`one_paid_final_per_booking` makes two successful finals IMPOSSIBLE.** A
+    genuinely double-collected final therefore cannot be recorded as a second
+    success. The loser is marked `failed` — meaning "not accepted into our
+    ledger", not "the driver was not charged" — with `provider_payload`
+    carrying `refundOwed: true` and the provider's response. The refund queue
+    looks for that flag. `payments.status` is OUR ledger status; the provider's
+    truth lives in `provider_payload`.
+16. **Two concurrent confirms of the same tx_ref can cancel each other out.**
+    One settles the row to success; the other then sees "a successful final
+    exists" and would flag THAT SAME ROW as an overpayment, turning success
+    back into failed. The duplicate pre-check in `settleFinal` excludes
+    `payment.id` for exactly this reason. Found by the racy property test.
+17. **supertest requests are LAZY.** A `Test` object does not send until
+    something subscribes to it, so `const p = request(app).post(...)` followed
+    by a sleep does NOT run concurrently — it runs when awaited. Race tests
+    must attach `.then()` to start the request.
+18. **The webhook answers 200 BEFORE processing**, so tests must wait for the
+    effect rather than asserting immediately after the response.
+19. **`payments.provider` is the RAIL, not the implementation.**
+    FakePaymentProvider rows are `'chapa'`. Recording them as `'cash'` both
+    lies and violates `cash_has_recorder`, which requires a named human.
+20. **Advancing a FakeClock expires access tokens.** Tests that time-travel
     past `ACCESS_TOKEN_TTL_MINUTES` must re-issue (`reissue()` in
     test/helpers/auth.ts), which is incidental proof JWT expiry uses the
     injected clock.
@@ -342,13 +363,51 @@ Gate on each phase's 🛑 before advancing.
   tokens), lots/layout endpoints, booking creation with `FOR UPDATE SKIP
 LOCKED` slot assignment, `transition()`, all staff actions, admin endpoints,
   `computeBill`, BullMQ jobs + sweeper, error model.
-- **Phase 2 — payments.** PaymentProvider interface, Chapa test mode, fake
-  provider, webhook + verify, deposit and final-payment flows.
+- **Phase 2 — payments.** ✅ Delivered. PaymentProvider interface,
+  ChapaProvider (v1) incl. refunds, FakePaymentProvider, webhook + verify,
+  deposit and final-payment flows, operator refund queue.
 - **Phase 3 — realtime + dashboard.** Socket.io with Redis adapter and auth,
   events after commit, the full attendant dashboard.
 - **Phase 4 — mobile app.** Expo driver app against the real API.
 - **Phase 5 — hardening.** Push notifications, rate limiting, pino request IDs,
   graceful shutdown, production Dockerfile, deployment README.
+
+### Chapa integration — the facts that matter
+
+Every endpoint is cited in `apps/api/src/payments/chapa.ts`. **API v1**
+(`api.chapa.co`, `tx_ref`), not the newer v2 (`api.chapa.global`,
+`merchant_reference`) — v1 matches the brief and our `payments.tx_ref` column.
+
+- initialize `POST /v1/transaction/initialize` — required `amount`, `currency`,
+  `tx_ref`; returns `data.checkout_url`.
+- verify `GET /v1/transaction/verify/<tx_ref>` — `data` carries `amount`,
+  `charge`, `currency`, `status` (`failed | success | pending`).
+- refund `POST /v1/refund/<tx_ref>` — optional `amount` (omit = full),
+  `reason`, `reference`. **"Chapa charges are non-refundable."**
+
+**Webhook signature: we require `x-chapa-signature` ONLY.** Chapa documents a
+second header, `chapa-signature`, as an HMAC of the secret keyed by the secret
+— a CONSTANT, identical on every request, which proves nothing about the body.
+Chapa says either header is sufficient; accepting the constant would make any
+observed webhook replayable with an attacker-chosen payload, so we don't. The
+HMAC covers the RAW bytes, which is why the webhook route is mounted **before**
+`express.json` in `app.ts`. Order is load-bearing.
+
+**UNRESOLVED until the sandbox runs:** verify returns both `amount` and
+`charge`, and whether `amount` is gross or net of the fee depends on the
+merchant's fee settings. We compare `amount` exactly against the payments row
+and never deduct `charge`. If Chapa reports net, EVERY payment would be
+rejected. `pnpm chapa:sandbox` charges a known 20.00 ETB and prints
+`amount`/`charge`/`currency` verbatim with a verdict. **Record the result here
+before going live.**
+
+### Phase 2 open items
+
+- [ ] **Run `pnpm chapa:sandbox` against the Chapa sandbox** and record the
+      `amount` vs `charge` result above. Also note which signature headers the
+      real service actually sends — our `x-chapa-signature`-only policy is
+      stricter than Chapa's documented guidance and has not been exercised
+      against the live service.
 
 ### Phase 1 open items
 
