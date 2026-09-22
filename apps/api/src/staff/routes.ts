@@ -43,7 +43,7 @@ export function staffRouter(ctx: AppContext): Router {
     requireLotStaff(ctx, 'id'),
     handle(async (req, res) => {
       const lotId = uuidSchema.parse(req.params['id']);
-      res.json({ slots: await listLotSlots(ctx, lotId) });
+      res.json(await listLotSlots(ctx, lotId));
     }),
   );
 

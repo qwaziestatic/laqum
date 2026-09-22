@@ -6,5 +6,6 @@ export * from './errors.js';
 export * from './geo.js';
 export * from './money.js';
 export * from './payments.js';
+export * from './realtime.js';
 export * from './schemas.js';
 export * from './transitions.js';

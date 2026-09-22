@@ -1,6 +1,6 @@
 import type { Database } from '@laqum/db';
 import { AppError, type BookingStatus, type Clock, isLegalTransition } from '@laqum/shared';
-import type { Selectable, Transaction, Updateable } from 'kysely';
+import type { Kysely, Selectable, Transaction, Updateable } from 'kysely';
 
 /**
  * THE state-change function. INVARIANT 3.
@@ -49,7 +49,7 @@ export interface TransitionInput {
 }
 
 export type TransitionOutcome =
-  | { ok: true; booking: BookingRow; from: BookingStatus }
+  | { ok: true; booking: BookingRow; from: BookingStatus; lotVersion: number }
   | { ok: false; reason: 'NOT_FOUND' }
   | { ok: false; reason: 'WRONG_STATUS'; current: BookingStatus }
   | { ok: false; reason: 'NOT_DUE'; current: BookingStatus; dueAt: Date | null };
@@ -170,7 +170,42 @@ export async function transition(
     })
     .execute();
 
-  return { ok: true, booking: updated, from: current };
+  const lotVersion = await bumpLotVersion(trx, updated.lot_id);
+
+  return { ok: true, booking: updated, from: current, lotVersion };
+}
+
+/**
+ * The realtime ordering token. See migration 003 for why it exists instead of
+ * comparing updated_at.
+ *
+ * Incremented in the SAME transaction as the status change, so the row lock on
+ * lots serialises concurrent changes to a lot and versions come out in COMMIT
+ * order rather than clock order.
+ *
+ * ALWAYS ACQUIRED LAST. Every write path takes its booking or slot lock first
+ * and this one second, so the lock order is identical everywhere and no cycle
+ * — hence no deadlock — is possible. Moving this earlier in any caller would
+ * break that property.
+ */
+export async function bumpLotVersion(trx: Transaction<Database>, lotId: string): Promise<number> {
+  const row = await trx
+    .updateTable('lots')
+    .set((eb) => ({ version: eb('version', '+', 1) }))
+    .where('id', '=', lotId)
+    .returning('version')
+    .executeTakeFirstOrThrow();
+  return row.version;
+}
+
+/** The lot's current version, for pairing with a snapshot. */
+export async function currentLotVersion(db: Kysely<Database>, lotId: string): Promise<number> {
+  const row = await db
+    .selectFrom('lots')
+    .select('version')
+    .where('id', '=', lotId)
+    .executeTakeFirst();
+  return row?.version ?? 0;
 }
 
 /** transition() for HTTP paths, where a refused transition is a 4xx. */

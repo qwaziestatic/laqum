@@ -1,3 +1,4 @@
+import { STAFF_ONLY_FIELDS, publicSnapshotSchema } from '@laqum/shared';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { makeActor, type Actor } from './helpers/auth.js';
@@ -194,15 +195,21 @@ describe('GET /v1/lots/:id/layout', () => {
     const res = await request(t.app).get(`/v1/lots/${lot.lotId}/layout`).set(driver.header);
     expect(res.status).toBe(200);
 
-    const body = res.body as { slots: Record<string, unknown>[] };
+    const body = res.body as { lotVersion: number; slots: Record<string, unknown>[] };
     expect(body.slots).toHaveLength(2);
     expect(body.slots[0]?.['displayStatus']).toBe('occupied');
     expect(body.slots[1]?.['displayStatus']).toBe('free');
 
-    // THE privacy assertion: no plate, no booking id, no hold deadline.
+    // The snapshot names the version it was read at, so a client has something
+    // to compare buffered events against.
+    expect(publicSnapshotSchema.parse(body).lotVersion).toBeGreaterThanOrEqual(0);
+
+    // THE privacy assertion: no plate, no booking id, no hold deadline. Driven
+    // off the shared list, so adding a staff-only field to the contract
+    // without excluding it here fails this test rather than leaking quietly.
     const serialised = JSON.stringify(body);
     expect(serialised).not.toContain('AA-12345');
-    for (const key of ['vehiclePlate', 'bookingId', 'holdExpiresAt', 'plannedEndAt']) {
+    for (const key of STAFF_ONLY_FIELDS) {
       expect(Object.keys(body.slots[0] ?? {}), key).not.toContain(key);
     }
   });

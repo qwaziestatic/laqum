@@ -46,7 +46,11 @@ async function enumNames(): Promise<string[]> {
 
 describe('migrator', () => {
   it('knows about the migrations this build ships', () => {
-    expect(knownMigrationNames()).toEqual(['001_initial', '002_payment_status_superseded']);
+    expect(knownMigrationNames()).toEqual([
+      '001_initial',
+      '002_payment_status_superseded',
+      '003_lot_version',
+    ]);
   });
 
   it('records the migration as applied', async () => {
@@ -55,7 +59,11 @@ describe('migrator', () => {
       ctx.db,
       `SELECT name FROM kysely_migration ORDER BY name`,
     );
-    expect(rows.map((r) => r.name)).toEqual(['001_initial', '002_payment_status_superseded']);
+    expect(rows.map((r) => r.name)).toEqual([
+      '001_initial',
+      '002_payment_status_superseded',
+      '003_lot_version',
+    ]);
   });
 
   it('is a no-op when run a second time', async () => {
@@ -71,7 +79,7 @@ describe('migrator', () => {
       ctx.db,
       `SELECT count(*)::text AS count FROM kysely_migration`,
     );
-    expect(rows[0]?.count).toBe('2');
+    expect(rows[0]?.count).toBe('3');
   });
 
   /*
@@ -98,7 +106,11 @@ describe('migrator', () => {
       ctx.db,
       `SELECT name FROM kysely_migration ORDER BY name`,
     );
-    expect(applied.map((r) => r.name)).toEqual(['001_initial', '002_payment_status_superseded']);
+    expect(applied.map((r) => r.name)).toEqual([
+      '001_initial',
+      '002_payment_status_superseded',
+      '003_lot_version',
+    ]);
   });
 
   it('still rolls the INITIAL schema back, when it is the only one applied', async () => {

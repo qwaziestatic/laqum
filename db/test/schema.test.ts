@@ -170,6 +170,8 @@ describe('tables and columns', () => {
       'lots.overstay_rate_per_block_santim integer NO',
       'lots.is_active boolean NO',
       'lots.created_at timestamp with time zone NO',
+      // Migration 003: the realtime ordering token.
+      'lots.version integer NO',
 
       'operators.id uuid NO',
       'operators.name text NO',

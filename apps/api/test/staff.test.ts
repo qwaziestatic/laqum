@@ -1,4 +1,4 @@
-import { addMinutes } from '@laqum/shared';
+import { addMinutes, staffSnapshotSchema } from '@laqum/shared';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { makeActor, reissue, staffLot, type Actor } from './helpers/auth.js';
@@ -87,10 +87,17 @@ describe('GET /v1/staff/lots/:id/slots', () => {
 
     const res = await request(t.app).get(`/v1/staff/lots/${lot.lotId}/slots`).set(attendant.header);
 
-    const body = res.body as { slots: Record<string, unknown>[] };
-    expect(body.slots).toHaveLength(3);
-    expect(JSON.stringify(body)).toContain('AA-54321');
-    expect(body.slots[0]?.['display_status']).toBe('occupied');
+    const snapshot = staffSnapshotSchema.parse(res.body);
+    expect(snapshot.slots).toHaveLength(3);
+    expect(JSON.stringify(res.body)).toContain('AA-54321');
+    expect(snapshot.slots[0]?.displayStatus).toBe('occupied');
+
+    // The walk-in was a status change, so the lot version has moved off zero
+    // and every slot carries the version the snapshot was read at.
+    expect(snapshot.lotVersion).toBeGreaterThan(0);
+    for (const slot of snapshot.slots) {
+      expect(slot.lotVersion).toBe(snapshot.lotVersion);
+    }
   });
 });
 

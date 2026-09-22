@@ -2,13 +2,13 @@ import {
   AppError,
   type BillBreakdown,
   LIVE_STATUSES,
+  type StaffSnapshot,
   addMinutes,
   computeBill,
   looksLikeShortCode,
 } from '@laqum/shared';
-import type { Database } from '@laqum/db';
-import type { Selectable } from 'kysely';
 import { inTransaction } from '../afterCommit.js';
+import { staffSnapshot } from '../realtime/slots.js';
 import { createWalkIn } from '../bookings/create.js';
 import { reminderTimeFor } from '../bookings/service.js';
 import type { BookingRow } from '../bookings/transition.js';
@@ -38,18 +38,15 @@ export async function listStaffedLots(ctx: AppContext, userId: string) {
     .execute();
 }
 
-/** The FULL slot_status rows: staff see plates and deadlines, drivers do not. */
-export type StaffSlotRow = Selectable<Database['slot_status']>;
-
-export async function listLotSlots(ctx: AppContext, lotId: string): Promise<StaffSlotRow[]> {
-  return ctx.db
-    .selectFrom('slot_status')
-    .selectAll()
-    .where('lot_id', '=', lotId)
-    .orderBy('zone')
-    .orderBy('grid_row')
-    .orderBy('grid_col')
-    .execute();
+/**
+ * The staff view of the grid: plates and deadlines included.
+ *
+ * Returns the SAME shape the realtime events carry, paired with the lot
+ * version they are ordered against, so the dashboard has one type to merge
+ * rather than two that must be kept in step.
+ */
+export async function listLotSlots(ctx: AppContext, lotId: string): Promise<StaffSnapshot> {
+  return staffSnapshot(ctx.db, lotId);
 }
 
 /**

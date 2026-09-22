@@ -85,6 +85,7 @@ export interface Lots {
   overstay_rate_per_block_santim: number;
   payment_window_minutes: Generated<number>;
   rate_per_block_santim: number;
+  version: Generated<number>;
 }
 
 export interface LotStaff {

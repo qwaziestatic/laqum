@@ -1,6 +1,7 @@
 import type { Database } from '@laqum/db';
-import { AppError, haversineMeters } from '@laqum/shared';
+import { AppError, type PublicSnapshot, haversineMeters } from '@laqum/shared';
 import type { Kysely, Selectable } from 'kysely';
+import { publicSnapshot } from '../realtime/slots.js';
 
 /**
  * Lot browsing for drivers.
@@ -139,25 +140,15 @@ export async function getLot(db: Kysely<Database>, lotId: string): Promise<LotSu
   return toSummary(lot, counts.free, counts.total);
 }
 
-export interface PublicSlot {
-  slotId: string;
-  label: string;
-  zone: string;
-  gridRow: number;
-  gridCol: number;
-  appBookable: boolean;
-  inService: boolean;
-  displayStatus: string;
-}
-
 /**
- * The slot grid as a DRIVER may see it.
+ * The slot grid as a DRIVER may see it, with the lot version it was read at.
  *
- * Deliberately omits booking_id, vehicle_plate, hold_expires_at and
+ * The payload omits booking_id, vehicle_plate, hold_expires_at and
  * planned_end_at: a driver may see that a slot is occupied, never by whom or
- * until when. The staff endpoint returns the full rows.
+ * until when. That omission is structural — publicSnapshot selects only the
+ * public columns, so there is nothing to forget to strip.
  */
-export async function getLotLayout(db: Kysely<Database>, lotId: string): Promise<PublicSlot[]> {
+export async function getLotLayout(db: Kysely<Database>, lotId: string): Promise<PublicSnapshot> {
   const lot = await db
     .selectFrom('lots')
     .select('id')
@@ -166,38 +157,5 @@ export async function getLotLayout(db: Kysely<Database>, lotId: string): Promise
     .executeTakeFirst();
   if (!lot) throw new AppError('NOT_FOUND', 'No such lot');
 
-  const rows = await db
-    .selectFrom('slot_status')
-    .select([
-      'slot_id',
-      'label',
-      'zone',
-      'grid_row',
-      'grid_col',
-      'app_bookable',
-      'in_service',
-      'display_status',
-    ])
-    .where('lot_id', '=', lotId)
-    .orderBy('zone')
-    .orderBy('grid_row')
-    .orderBy('grid_col')
-    .execute();
-
-  return rows.flatMap((row) =>
-    row.slot_id === null
-      ? []
-      : [
-          {
-            slotId: row.slot_id,
-            label: row.label ?? '',
-            zone: row.zone ?? '',
-            gridRow: row.grid_row ?? 0,
-            gridCol: row.grid_col ?? 0,
-            appBookable: row.app_bookable ?? false,
-            inService: row.in_service ?? false,
-            displayStatus: row.display_status ?? 'free',
-          },
-        ],
-  );
+  return publicSnapshot(db, lotId);
 }

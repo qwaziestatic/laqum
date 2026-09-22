@@ -2,7 +2,7 @@ import { AppError, LIVE_STATUSES, type Clock, addMinutes } from '@laqum/shared';
 import { inTransaction } from '../afterCommit.js';
 import type { AppContext } from '../context.js';
 import { jobIdFor } from '../jobs/scheduler.js';
-import type { BookingRow } from './transition.js';
+import { bumpLotVersion, type BookingRow } from './transition.js';
 import { transitionOrThrow } from './transition.js';
 
 /**
@@ -147,6 +147,11 @@ export async function extendBooking(
     if (!updated) {
       throw new AppError('STATE_CONFLICT', 'This booking changed while being extended');
     }
+
+    // Not a status change, but it moves planned_end_at, which the staff grid
+    // shows. Realtime consumers need an ordering token for it like any other
+    // change, so the lot version advances here too.
+    await bumpLotVersion(trx, updated.lot_id);
 
     effects.add(jobIdFor('mark-overstay', bookingId), async () => {
       await ctx.scheduler.schedule({

@@ -5,6 +5,7 @@ import type { Kysely } from 'kysely';
 import { type Migration, type MigrationProvider, Migrator } from 'kysely/migration';
 import * as migration001 from '../migrations/001_initial.js';
 import * as migration002 from '../migrations/002_payment_status_superseded.js';
+import * as migration003 from '../migrations/003_lot_version.js';
 
 /**
  * Migrations are registered explicitly rather than discovered from disk.
@@ -24,6 +25,7 @@ import * as migration002 from '../migrations/002_payment_status_superseded.js';
 const MIGRATIONS: Record<string, Migration> = {
   '001_initial': migration001,
   '002_payment_status_superseded': migration002,
+  '003_lot_version': migration003,
 };
 
 const provider: MigrationProvider = {

@@ -13,7 +13,7 @@ import { CONSTRAINTS, isUniqueViolation } from '../db/pgError.js';
 import { type JobScheduler, jobIdFor } from '../jobs/scheduler.js';
 import { inTransaction } from '../afterCommit.js';
 import { generateQrToken, generateShortCode } from './codes.js';
-import type { BookingRow } from './transition.js';
+import { bumpLotVersion, type BookingRow } from './transition.js';
 
 /**
  * Booking creation. Together with transition.ts, the only writer of
@@ -232,6 +232,9 @@ async function attemptOnce(
         })
         .execute();
 
+      // Last lock taken, consistently with every other write path.
+      await bumpLotVersion(trx, lot.id);
+
       // INVARIANT 5: registered here, run only after the commit returns.
       effects.add(jobIdFor('expire-hold', booking.id), async () => {
         await deps.scheduler.schedule({
@@ -363,6 +366,8 @@ export async function createWalkIn(
           at: now,
         })
         .execute();
+
+      await bumpLotVersion(trx, input.lotId);
 
       return booking;
     });
