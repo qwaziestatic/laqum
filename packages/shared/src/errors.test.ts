@@ -36,9 +36,12 @@ describe('the error code table', () => {
     expect(ERROR_STATUS.ALREADY_HAS_ACTIVE_BOOKING).toBe(409);
   });
 
-  it('keeps exactly one 5xx code, so nothing else can leak as a server error', () => {
-    const serverCodes = ERROR_CODES.filter((c) => httpStatusFor(c) >= 500);
-    expect(serverCodes).toEqual(['INTERNAL']);
+  it('keeps the 5xx codes to a known, deliberate set', () => {
+    // INTERNAL is the catch-all; PROVIDER_UNAVAILABLE is a 503 because the
+    // fault is upstream and the caller should retry. Nothing else may be 5xx,
+    // so an unexpected failure cannot leak as one.
+    const serverCodes = ERROR_CODES.filter((c) => httpStatusFor(c) >= 500).sort();
+    expect(serverCodes).toEqual(['INTERNAL', 'PROVIDER_UNAVAILABLE']);
   });
 });
 

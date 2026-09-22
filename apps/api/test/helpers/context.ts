@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import { createApp } from '../../src/app.js';
 import { RateLimiter } from '../../src/auth/rateLimit.js';
 import { RecordingSmsProvider } from '../../src/auth/sms.js';
+import { FakePaymentProvider } from '../../src/payments/fake.js';
 import { loadConfig, type Config } from '../../src/config.js';
 import type { AppContext } from '../../src/context.js';
 import { RecordingScheduler, connect, testClock, testLogger, type TestDb } from './db.js';
@@ -17,6 +18,7 @@ export interface TestContext {
   clock: FakeClock;
   sms: RecordingSmsProvider;
   scheduler: RecordingScheduler;
+  provider: FakePaymentProvider;
   redis: Redis;
   close: () => Promise<void>;
 }
@@ -48,6 +50,7 @@ export async function createTestContext(
 
   const sms = new RecordingSmsProvider();
   const scheduler = new RecordingScheduler();
+  const provider = new FakePaymentProvider({ clock });
 
   const ctx: AppContext = {
     db: db.db,
@@ -58,6 +61,7 @@ export async function createTestContext(
     scheduler,
     sms,
     rateLimiter: new RateLimiter({ redis, clock }),
+    provider,
   };
 
   return {
@@ -67,6 +71,7 @@ export async function createTestContext(
     clock,
     sms,
     scheduler,
+    provider,
     redis,
     close: async () => {
       await db.close();
@@ -89,6 +94,7 @@ export function contextFor(db: TestDb['db'], redis: Redis, clock = testClock()):
     scheduler: new RecordingScheduler(),
     sms: new RecordingSmsProvider(),
     rateLimiter: new RateLimiter({ redis, clock }),
+    provider: new FakePaymentProvider({ clock }),
   };
 }
 

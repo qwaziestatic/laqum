@@ -67,8 +67,14 @@ export default tseslint.config(
 
   // Plain JS config files are not part of any tsconfig.
   {
-    files: ['**/*.js'],
+    files: ['**/*.js', '**/*.mjs'],
     languageOptions: { globals: globals.node },
+  },
+
+  // Operator scripts are run by hand and talk to the user through stdout.
+  {
+    files: ['scripts/**/*.mjs', 'scripts/**/*.js'],
+    rules: { 'no-console': 'off' },
   },
 
   // Tests may assert that a fixture they just created exists. A wrong

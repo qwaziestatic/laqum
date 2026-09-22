@@ -7,6 +7,7 @@ import type { RateLimiter } from './auth/rateLimit.js';
 import type { SmsProvider } from './auth/sms.js';
 import type { Config } from './config.js';
 import type { JobScheduler } from './jobs/scheduler.js';
+import type { PaymentProvider } from './payments/provider.js';
 
 /**
  * Everything a request handler is allowed to reach for, assembled once at
@@ -22,4 +23,5 @@ export interface AppContext {
   scheduler: JobScheduler;
   sms: SmsProvider;
   rateLimiter: RateLimiter;
+  provider: PaymentProvider;
 }

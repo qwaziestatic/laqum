@@ -102,6 +102,12 @@ export function looksLikeShortCode(code: string): boolean {
 
 export const cashPaymentSchema = z.object({
   amountSantim: z.int().positive(),
+  /**
+   * Settle in cash even though an in-app payment is still pending. A
+   * deliberate act: the driver may still complete that checkout, in which case
+   * the duplicate lands in the operator refund queue.
+   */
+  overridePending: z.boolean().default(false),
 });
 export type CashPaymentRequest = z.infer<typeof cashPaymentSchema>;
 

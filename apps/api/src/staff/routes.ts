@@ -99,8 +99,13 @@ export function staffRouter(ctx: AppContext): Router {
       const bookingId = uuidSchema.parse(req.params['id']);
       await assertStaffsBookingLot(ctx, user.userId, bookingId);
 
-      const { amountSantim } = req.body as { amountSantim: number };
-      const booking = await recordCash(ctx, user.userId, bookingId, amountSantim);
+      const { amountSantim, overridePending } = req.body as {
+        amountSantim: number;
+        overridePending: boolean;
+      };
+      const booking = await recordCash(ctx, user.userId, bookingId, amountSantim, {
+        overridePending,
+      });
       res.json({ booking: toStaffBookingDto(booking) });
     }),
   );

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "ላቁም? — real-time parking for Addis Ababa",
+  "description": "\u120b\u1241\u121d? \u2014 real-time parking for Addis Ababa",
   "packageManager": "pnpm@12.5.1",
   "engines": {
     "node": ">=24.13.0"
@@ -22,7 +22,8 @@
     "infra:up": "docker compose up -d postgres redis",
     "infra:down": "docker compose down",
     "test:infra:up": "docker compose -f docker-compose.test.yml up -d",
-    "test:infra:down": "docker compose -f docker-compose.test.yml down -v"
+    "test:infra:down": "docker compose -f docker-compose.test.yml down -v",
+    "chapa:sandbox": "node scripts/chapa-sandbox.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

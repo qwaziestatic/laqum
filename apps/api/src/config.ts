@@ -63,6 +63,25 @@ const baseSchema = z.object({
   OTP_RATE_LIMIT_PER_IP: z.coerce.number().int().positive().default(10),
   OTP_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
 
+  // ─── Payments ───────────────────────────────────────────────────────────
+  /** 'fake' for development and every automated test; 'chapa' for real money. */
+  PAYMENT_PROVIDER: z.enum(['fake', 'chapa']).default('fake'),
+  /** Chapa secret key. Test keys are prefixed CHASECK_TEST-. */
+  CHAPA_SECRET_KEY: z.string().min(1).optional(),
+  /** Secret the webhook signature is verified against. */
+  CHAPA_WEBHOOK_SECRET: z.string().min(1).default('dev-only-webhook-secret'),
+  CHAPA_BASE_URL: z.string().min(1).default('https://api.chapa.co'),
+  /** Public base URL Chapa calls back to, and returns the driver to. */
+  PUBLIC_BASE_URL: z.string().min(1).default('http://localhost:3000'),
+  /**
+   * How long past a hold deadline we keep deferring expiry while the provider
+   * is unreachable, before expiring anyway. Bounds how long one outage can
+   * hold a slot hostage; a payment that lands later goes to the refund queue.
+   */
+  PAYMENT_VERIFY_DEFERRAL_MINUTES: z.coerce.number().int().positive().default(15),
+  /** Seconds before a FakePaymentProvider payment reports success. */
+  FAKE_PAYMENT_DELAY_SECONDS: z.coerce.number().int().nonnegative().default(0),
+
   /** Run the BullMQ worker in this process. Split out in Phase 5 if needed. */
   RUN_WORKER: z
     .enum(['true', 'false'])
@@ -72,6 +91,13 @@ const baseSchema = z.object({
 
 export const configSchema = baseSchema
   .superRefine((cfg, ctx) => {
+    if (cfg.PAYMENT_PROVIDER === 'chapa' && cfg.CHAPA_SECRET_KEY === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CHAPA_SECRET_KEY'],
+        message: 'is required when PAYMENT_PROVIDER is chapa',
+      });
+    }
     if (cfg.NODE_ENV !== 'production') return;
     for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
       if (cfg[key] === undefined) {

@@ -35,6 +35,15 @@ export const ERROR_STATUS = {
   /** one_live_booking_per_user rejected the insert. */
   ALREADY_HAS_ACTIVE_BOOKING: 409,
 
+  /** The booking is already settled. */
+  ALREADY_PAID: 409,
+  /** Verify disagreed with our payments row on amount, currency or reference. */
+  PAYMENT_AMOUNT_MISMATCH: 409,
+  /** The provider has not confirmed this payment as successful. */
+  PAYMENT_NOT_CONFIRMED: 409,
+  /** An in-app payment is in flight; settling by another means needs an override. */
+  PAYMENT_PENDING: 409,
+
   /** Beyond the lot's max_booking_distance_m. */
   TOO_FAR: 422,
 
@@ -42,6 +51,11 @@ export const ERROR_STATUS = {
   OTP_TOO_MANY_ATTEMPTS: 429,
 
   INTERNAL: 500,
+  /**
+   * The payment provider could not be reached. Deliberately 503 and not 500:
+   * nothing is wrong with this service, and the caller should retry.
+   */
+  PROVIDER_UNAVAILABLE: 503,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

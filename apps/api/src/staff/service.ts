@@ -14,6 +14,7 @@ import { reminderTimeFor } from '../bookings/service.js';
 import type { BookingRow } from '../bookings/transition.js';
 import { transitionOrThrow } from '../bookings/transition.js';
 import type { AppContext } from '../context.js';
+import { confirmPayment, type PaymentsContext } from '../payments/service.js';
 import { jobIdFor } from '../jobs/scheduler.js';
 
 /** Attendant operations at the gate. */
@@ -253,11 +254,23 @@ async function sumSuccessfulDeposits(ctx: AppContext, bookingId: string): Promis
  * that is neither CHECKED_OUT nor PAID in any meaningful sense, and the state
  * machine has no room for it.
  */
+export interface RecordCashOptions {
+  /**
+   * Settle in cash even though an in-app payment is still pending.
+   *
+   * Requires a deliberate act by the attendant, because the driver may still
+   * complete that checkout page. If they do, the money is detected as an
+   * overpayment and lands in the operator refund queue.
+   */
+  overridePending?: boolean;
+}
+
 export async function recordCash(
-  ctx: AppContext,
+  ctx: PaymentsContext,
   attendantId: string,
   bookingId: string,
   amountSantim: number,
+  options: RecordCashOptions = {},
 ): Promise<BookingRow> {
   const booking = await ctx.db
     .selectFrom('bookings')
@@ -270,6 +283,46 @@ export async function recordCash(
     throw new AppError('STATE_CONFLICT', 'Only a checked-out booking can be settled', {
       status: booking.status,
     });
+  }
+
+  /*
+   * Before taking cash, ask the provider about any in-flight in-app payment.
+   *
+   * The driver may have paid on their phone seconds ago and the webhook may
+   * not have arrived. Taking cash on top of that charges them twice, and the
+   * refund queue is a worse outcome than a question at the gate.
+   */
+  const pending = await ctx.db
+    .selectFrom('payments')
+    .selectAll()
+    .where('booking_id', '=', bookingId)
+    .where('kind', '=', 'final')
+    .where('status', '=', 'pending')
+    .where('tx_ref', 'is not', null)
+    .executeTakeFirst();
+
+  if (pending?.tx_ref) {
+    const outcome = await confirmPayment(ctx, pending.tx_ref);
+
+    if (outcome.kind === 'confirmed' || outcome.kind === 'already_settled') {
+      // They already paid. Do not take the cash.
+      throw new AppError('ALREADY_PAID', 'The driver has already paid in the app', {
+        txRef: pending.tx_ref,
+      });
+    }
+
+    if (
+      outcome.kind === 'not_successful' &&
+      outcome.status === 'pending' &&
+      !options.overridePending
+    ) {
+      throw new AppError(
+        'PAYMENT_PENDING',
+        'An in-app payment is still pending for this booking. Confirm with the driver, then retry with overridePending.',
+        { txRef: pending.tx_ref },
+      );
+    }
+    // 'rejected', 'failed', 'late', or an explicit override: cash proceeds.
   }
 
   const due = booking.amount_due_santim ?? 0;

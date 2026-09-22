@@ -7,6 +7,8 @@ import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { BullMqScheduler, startWorkers } from './jobs/bullmq.js';
 import { createLogger } from './logger.js';
+import { ChapaProvider } from './payments/chapa.js';
+import { FakePaymentProvider } from './payments/fake.js';
 import { createQueueRedis, createRedis } from './redis.js';
 
 /**
@@ -32,6 +34,20 @@ function main(): void {
   const queueRedis = createQueueRedis(config);
   const scheduler = new BullMqScheduler({ connection: queueRedis, clock: systemClock, logger });
 
+  const provider =
+    config.PAYMENT_PROVIDER === 'chapa'
+      ? new ChapaProvider({
+          // Validated as present when PAYMENT_PROVIDER is chapa.
+          secretKey: config.CHAPA_SECRET_KEY ?? '',
+          baseUrl: config.CHAPA_BASE_URL,
+          logger,
+        })
+      : new FakePaymentProvider({
+          clock: systemClock,
+          autoSucceedAfterSeconds: config.FAKE_PAYMENT_DELAY_SECONDS,
+        });
+  logger.info({ provider: provider.name }, 'payment provider selected');
+
   const ctx: AppContext = {
     db,
     redis,
@@ -41,13 +57,14 @@ function main(): void {
     scheduler,
     sms: new ConsoleSmsProvider(logger),
     rateLimiter: new RateLimiter({ redis, clock: systemClock }),
+    provider,
   };
 
   // One process by default. Phase 5 can split the worker out by running a
   // second instance with RUN_WORKER=false here and true there.
   const workers = config.RUN_WORKER
     ? startWorkers(
-        { db, clock: systemClock, logger },
+        { db, clock: systemClock, logger, payments: ctx },
         { connection: queueRedis, clock: systemClock, logger },
       )
     : null;
