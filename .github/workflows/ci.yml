@@ -78,7 +78,7 @@ jobs:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
       - name: Typecheck
-        run: pnpm -r typecheck
+        run: pnpm typecheck
 
       # Exercises the dist/ resolution path that production uses, which the
       # test aliases deliberately bypass.
@@ -90,3 +90,86 @@ jobs:
 
       - name: Build API image
         run: docker build -f apps/api/Dockerfile -t laqum-api:ci .
+
+  # A SEPARATE JOB. The e2e suite starts a real API, a real Vite server and a
+  # browser; keeping it apart means a unit-test failure is reported in seconds
+  # rather than behind a browser download, and the two can run concurrently.
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: laqum
+          POSTGRES_PASSWORD: laqum
+          POSTGRES_DB: laqum_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U laqum -d laqum_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Chromium only. The dashboard targets an Android tablet, so Firefox and
+      # WebKit would be testing browsers this product does not ship on.
+      - name: Install Playwright Chromium
+        run: pnpm e2e:install --with-deps chromium
+
+      - name: Migrate
+        run: pnpm --filter @laqum/db migrate up
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      # The realtime timing budget is deliberately looser here than locally
+      # (5s vs 1s) — a shared runner's scheduler jitter is not a product
+      # defect. The measured latency is printed either way, so a creeping
+      # regression is visible long before it breaches the budget.
+      - name: End-to-end tests
+        run: pnpm e2e
+        env:
+          CI: 'true'
+          TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+          TEST_REDIS_URL: ${{ env.TEST_REDIS_URL }}
+
+      # Uploaded whether or not the run passed: the screenshots are review
+      # material, not only failure evidence.
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-screenshots
+          path: e2e/screenshots/
+          if-no-files-found: error
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: e2e/.results/
+          if-no-files-found: ignore

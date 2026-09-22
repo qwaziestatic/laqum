@@ -63,6 +63,18 @@ export function createRealtimeServer(httpServer: HttpServer, deps: RealtimeDeps)
     // Nothing the client sends is large; a small cap limits what a hostile
     // client can make the server buffer.
     maxHttpBufferSize: 8_192,
+    /*
+     * Faster than the 25s/20s defaults, deliberately.
+     *
+     * The connection indicator's entire purpose is to tell an attendant
+     * promptly that the grid has stopped updating. With the defaults a dead
+     * connection can go unnoticed for ~45 seconds — long enough to turn a
+     * driver away from a slot that is actually free. 10s/5s means the worst
+     * case is ~15s, at the cost of one small frame each way per 10s per
+     * socket, which for a handful of dashboards per lot is nothing.
+     */
+    pingInterval: 10_000,
+    pingTimeout: 5_000,
   });
 
   if (deps.adapter) io.adapter(deps.adapter);

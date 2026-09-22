@@ -91,5 +91,8 @@
   },
   "common": {
     "language": "Language"
+  },
+  "lot": {
+    "choose": "Choose a lot"
   }
 }

@@ -66,7 +66,31 @@ export function App(): React.JSX.Element {
     <div className="min-h-screen bg-surface text-ink">
       <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b-2 border-line bg-surface-raised px-4 py-3">
         <div className="mr-auto">
-          <h1 className="text-2xl font-extrabold">{lot?.name ?? t('app.name')}</h1>
+          {/*
+           * An attendant may staff more than one lot — the seed puts one
+           * person on both — so the lot is a control, not a caption. With a
+           * single lot it renders as plain text rather than a select with one
+           * option, which would only invite a pointless tap.
+           */}
+          {lots.length > 1 ? (
+            <select
+              data-testid="lot-picker"
+              value={lotId ?? ''}
+              onChange={(event) => {
+                setLotId(event.target.value);
+              }}
+              aria-label={t('lot.choose')}
+              className="max-w-[22rem] rounded-lg border-2 border-line bg-surface px-2 py-1 text-2xl font-extrabold text-ink"
+            >
+              {lots.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <h1 className="text-2xl font-extrabold">{lot?.name ?? t('app.name')}</h1>
+          )}
           <p className="text-xs font-semibold text-ink-muted">{t('app.attendantConsole')}</p>
         </div>
 

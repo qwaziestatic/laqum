@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    /*
+     * DOM as well as node. These files run in Node, but page.evaluate()
+     * callbacks are serialised and executed in the BROWSER, so they
+     * legitimately reference document and localStorage.
+     */
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true
+  },
+  "include": ["**/*.ts", "../playwright.config.ts"]
+}

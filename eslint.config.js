@@ -29,7 +29,15 @@ export default tseslint.config(
     extends: [...tseslint.configs.strictTypeChecked, ...tseslint.configs.stylisticTypeChecked],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          /*
+           * playwright.config.ts sits at the repo root, where there is no
+           * tsconfig.json — only tsconfig.base.json, which the project service
+           * does not look for. e2e/tsconfig.json includes the file, but the
+           * service resolves by directory proximity, not by `include`.
+           */
+          allowDefaultProject: ['playwright.config.ts'],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -81,8 +89,16 @@ export default tseslint.config(
   // assumption fails the test immediately and locally, which is the desired
   // behaviour; production code keeps the rule.
   {
-    files: ['**/test/**/*.ts', '**/*.test.ts'],
+    files: ['**/test/**/*.ts', '**/*.test.ts', 'e2e/**/*.ts'],
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+
+  // End-to-end suite: Node globals, and it reports measurements (the realtime
+  // latency) to stdout, which is the whole point of measuring them.
+  {
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: { 'no-console': 'off' },
   },
 
   // Must stay last: turns off every rule that fights Prettier.

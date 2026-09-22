@@ -10,9 +10,8 @@ at entry and exit, and record cash.
 
 ## Status
 
-**Phase 0 (foundation) complete.** The monorepo, database schema, health
-endpoints and CI are in place. The API surface, payments, realtime, dashboard
-and mobile app follow in Phases 1–5.
+**Phases 0–3 complete.** Foundation, API core, payments, and realtime plus the
+attendant dashboard. The mobile app (Phase 4) and hardening (Phase 5) follow.
 
 ## Getting started
 
@@ -47,6 +46,69 @@ pnpm -r test
 
 Integration tests run against a real Postgres and Redis. The database is never
 mocked.
+
+### End-to-end
+
+```bash
+pnpm e2e:install       # once: downloads Playwright's Chromium
+pnpm test:infra:up
+pnpm e2e               # starts the API and Vite itself, then runs the browser
+```
+
+The e2e suite starts its own API (port 3100) and Vite server (port 5673), both
+pointed at the **test** database, and drives a real browser holding a real
+socket. The two-screen test measures how long a change takes to reach a second
+screen and prints it:
+
+|       | Budget      | Why                                                                                                                              |
+| ----- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Local | **1000 ms** | The whole path is well under 100 ms on one machine, so a regression should fail the build.                                       |
+| CI    | **5000 ms** | A shared runner's scheduler jitter is not a product defect, and a flaky e2e test gets ignored — a worse outcome than a slow one. |
+
+Screenshots for review are written to `e2e/screenshots/` on every run, in both
+themes and both languages, and are uploaded as a CI artifact.
+
+## Camera access in development
+
+The QR scanner needs `navigator.mediaDevices`, which the browser exposes **only
+in a secure context**. `localhost` counts as secure, so the scanner works on
+the development machine and then fails on a real tablet over the LAN — where
+the origin is `http://192.168.x.x`. There, `navigator.mediaDevices` is not
+merely restricted, it is `undefined`, which is why the code feature-detects it
+rather than catching an exception: catching would report "permission denied"
+for what is really a URL scheme problem.
+
+To test the camera on the device it will actually run on, give the **dev
+server** a locally-trusted certificate:
+
+```bash
+# once per machine — installs a local certificate authority
+mkcert -install
+
+# from apps/dashboard, naming every host the tablet might use
+mkdir -p certs && cd certs
+mkcert -key-file localhost-key.pem -cert-file localhost.pem \
+  localhost 127.0.0.1 ::1 192.168.1.42
+```
+
+`vite.config.ts` picks the pair up automatically if `apps/dashboard/certs/`
+exists, and runs plain http otherwise. `certs/` is gitignored.
+
+**The API needs no certificate.** Vite proxies `/v1` and `/socket.io` to it, so
+the browser only ever talks to the dashboard's origin — there is no mixed
+content to block and no second certificate to trust on the tablet. The
+`ws: true` flag on the `/socket.io` proxy entry is required: without it the
+initial polling handshake succeeds and the WebSocket upgrade silently fails,
+leaving the socket to reconnect forever with no obvious error.
+
+On Android, the tablet must also trust the mkcert root CA — `mkcert -CAROOT`
+prints its location; copy `rootCA.pem` across and install it under
+**Settings → Security → Encryption & credentials → Install a certificate → CA
+certificate**.
+
+If none of that is practical, the manual short-code entry is a supported tier,
+not a degraded one: it is a first-class button in the header and is what
+attendants fall back to in the rain regardless.
 
 ## Layout
 

@@ -26,3 +26,8 @@ tmp/
 
 # mkcert certificates for HTTPS dev (camera access). Never committed.
 apps/dashboard/certs/
+
+# Playwright
+e2e/.results/
+playwright-report/
+test-results/
