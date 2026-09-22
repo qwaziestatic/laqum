@@ -137,7 +137,13 @@ status = ANY($allowedFrom) RETURNING *`. Zero rows means someone else won the
    moved on, the job is a no-op.
 7. **Realtime is a notification channel, not a source of truth.** Clients
    refetch a REST snapshot on connect and reconnect, then apply events. Every
-   event carries `updated_at` so clients can drop stale events.
+   event carries the **`lotVersion`** it produced, and every snapshot carries
+   the version it was read at, so clients drop stale events.
+
+   > **Amended by the product owner.** The brief says `updated_at`. It cannot
+   > work: a free slot's `updated_at` is NULL through the view's LEFT JOIN, and
+   > two API instances are two unsynchronised clocks. Replaced with a
+   > commit-ordered per-lot version — see "Realtime ordering" below.
 
 ### Live statuses
 
