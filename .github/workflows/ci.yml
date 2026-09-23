@@ -145,12 +145,22 @@ jobs:
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
+      # REQUIRED, and the reason this job once failed before any test ran.
+      #
+      # The e2e suite runs the COMPILED API (`node dist/server.js`) and the
+      # BUILT dashboard (`vite preview`), so that it exercises the same module
+      # resolution production uses. On a fresh checkout dist/ does not exist,
+      # so it has to be built here. Kept as its own step so a build failure is
+      # reported as a build failure rather than as "webServer did not start".
+      - name: Build
+        run: pnpm build
+
       # The realtime timing budget is deliberately looser here than locally
       # (5s vs 1s) — a shared runner's scheduler jitter is not a product
       # defect. The measured latency is printed either way, so a creeping
       # regression is visible long before it breaches the budget.
       - name: End-to-end tests
-        run: pnpm e2e
+        run: pnpm exec playwright test
         env:
           CI: 'true'
           TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}

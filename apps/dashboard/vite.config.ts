@@ -28,6 +28,21 @@ const hasCerts = existsSync(keyPath) && existsSync(certPath);
 
 const API_TARGET = process.env['VITE_API_TARGET'] ?? 'http://localhost:3000';
 
+/**
+ * Shared by `server` and `preview`.
+ *
+ * Everything the page fetches goes through here, so the browser only ever
+ * talks to this origin: no CORS, and no second certificate to trust when the
+ * dev server is on https.
+ */
+const PROXY = {
+  '/v1': { target: API_TARGET, changeOrigin: true },
+  // ws: true is REQUIRED. Without it the proxy handles the initial polling
+  // handshake and then silently fails the upgrade, so the socket falls back
+  // to long-polling and reconnects forever without an obvious error.
+  '/socket.io': { target: API_TARGET, changeOrigin: true, ws: true },
+};
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -46,12 +61,17 @@ export default defineConfig({
     // only way to test the camera on the device it will actually run on.
     host: true,
     ...(hasCerts ? { https: { key: readFileSync(keyPath), cert: readFileSync(certPath) } } : {}),
-    proxy: {
-      '/v1': { target: API_TARGET, changeOrigin: true },
-      // ws: true is REQUIRED. Without it the proxy handles the initial polling
-      // handshake and then silently fails the upgrade, so the socket falls
-      // back to long-polling and reconnects forever without an obvious error.
-      '/socket.io': { target: API_TARGET, changeOrigin: true, ws: true },
-    },
+    proxy: PROXY,
+  },
+  /*
+   * `preview` serves the BUILT bundle and has its own proxy config — it does
+   * NOT inherit `server.proxy`. The e2e suite runs against preview so it
+   * exercises the production bundle, so the two have to be kept in step;
+   * sharing one object is what keeps them so.
+   */
+  preview: {
+    port: 4173,
+    host: true,
+    proxy: PROXY,
   },
 });

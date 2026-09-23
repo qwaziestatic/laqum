@@ -72,13 +72,23 @@ export default defineConfig({
   webServer: [
     {
       /*
-       * The API, pointed at the TEST database and with dev auth on.
+       * The COMPILED API — `node dist/server.js`, exactly what ships.
+       *
+       * Deliberately not tsx. e2e is the last gate before a release, so it
+       * should exercise the same resolution production uses: bare specifiers
+       * resolved through each workspace package's `import`/`default` export
+       * condition, which points at dist/. Running it from source here would
+       * have meant the build was never exercised by a running process, and a
+       * broken dist would reach production untested.
+       *
+       * `pnpm e2e` builds first, so dist is always current — see the root
+       * package.json script.
        *
        * DEV_AUTH=true is safe here and nowhere else: NODE_ENV is not
        * production, and the config refuses to enable dev login in production
        * regardless of this flag.
        */
-      command: 'pnpm --filter @laqum/api exec tsx src/server.ts',
+      command: 'pnpm --filter @laqum/api start',
       port: API_PORT,
       reuseExistingServer: !isCI,
       timeout: 120_000,
@@ -98,9 +108,14 @@ export default defineConfig({
       },
     },
     {
-      // --host localhost: the config binds 0.0.0.0 for device testing, which
-      // a test run neither needs nor should expose.
-      command: `pnpm --filter @laqum/dashboard exec vite --port ${String(WEB_PORT)} --strictPort --host localhost`,
+      /*
+       * `vite preview` serves the BUILT bundle, for the same reason the API is
+       * the compiled one: the dev server is not what ships.
+       *
+       * --host localhost: the config binds 0.0.0.0 for device testing, which
+       * a test run neither needs nor should expose.
+       */
+      command: `pnpm --filter @laqum/dashboard exec vite preview --port ${String(WEB_PORT)} --strictPort --host localhost`,
       port: WEB_PORT,
       reuseExistingServer: !isCI,
       timeout: 120_000,

@@ -6,6 +6,7 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "development": "./src/index.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
     },
@@ -15,8 +16,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "migrate": "tsx src/cli.ts",
-    "seed": "tsx seed/seed.ts",
+    "migrate": "tsx --conditions=development src/cli.ts",
+    "seed": "tsx --conditions=development seed/seed.ts",
     "codegen": "kysely-codegen --dialect postgres --out-file src/generated.ts --exclude-pattern \"kysely_migration*\"",
     "codegen:verify": "kysely-codegen --dialect postgres --out-file src/generated.ts --exclude-pattern \"kysely_migration*\" --verify"
   },
