@@ -206,7 +206,7 @@ export function SlotDrawer({
           {slot.displayStatus === 'free' ? (
             <ActionButton
               testId="action-out-of-service"
-              label={t('action.takeOutOfService')}
+              label={t('action.outOfService')}
               busy={pending === 'outOfService'}
               disabled={busy}
               tone="plain"
@@ -219,7 +219,7 @@ export function SlotDrawer({
           {slot.displayStatus === 'out_of_service' ? (
             <ActionButton
               testId="action-in-service"
-              label={t('action.returnToService')}
+              label={t('action.inService')}
               busy={pending === 'inService'}
               disabled={busy}
               tone="accent"

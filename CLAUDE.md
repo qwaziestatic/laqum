@@ -397,8 +397,10 @@ LOCKED` slot assignment, `transition()`, all staff actions, admin endpoints,
 - **Phase 2 — payments.** ✅ Delivered. PaymentProvider interface,
   ChapaProvider (v1) incl. refunds, FakePaymentProvider, webhook + verify,
   deposit and final-payment flows, operator refund queue.
-- **Phase 3 — realtime + dashboard.** Socket.io with Redis adapter and auth,
-  events after commit, the full attendant dashboard.
+- **Phase 3 — realtime + dashboard.** ✅ Delivered. Socket.io with the Redis
+  adapter, expiry-bound socket auth, commit-ordered event delivery, emits on
+  every write path, and the attendant dashboard with QR scanning, plus a
+  Playwright two-screen suite and screenshots.
 - **Phase 4 — mobile app.** Expo driver app against the real API.
 - **Phase 5 — hardening.** Push notifications, rate limiting, pino request IDs,
   graceful shutdown, production Dockerfile, deployment README.
@@ -509,6 +511,63 @@ The route is **not registered** when disabled, so it 404s like any unknown path
 — there is no guard clause that could be got wrong. `devSignIn` additionally
 refuses an unknown number (it will not create an account, unlike the real OTP
 flow) and reads the role from the database rather than the request.
+
+### Emitting is structural, not remembered
+
+`transition()` and `create.ts` — the only two functions invariant 3 lets write
+`bookings.status` — record the change on their transaction via a WeakMap
+(`recordSlotChange`), and `inTransaction` turns recorded changes into
+SideEffects **only after the commit returns**. There is nothing for a caller to
+remember, so a new write path cannot omit an emit.
+
+`in_service` is the exception: no booking moves, so `setSlotService` bumps the
+version and records the change itself. Without that, taking a slot out of
+service left every open dashboard showing it free.
+
+`emit-coverage.test.ts` iterates the `TRANSITIONS` table itself, so a new row
+in the state machine becomes a new test. **Verified:** removing the
+`recordSlotChange` call from `transition()` fails all 9.
+
+### Dashboard rules that are easy to undo by accident
+
+- **Status is never colour alone.** `statusPresentation.ts` is the single table
+  giving each status a colour, a geometric glyph and a translated word; the
+  type requires all three. Glyphs are geometric, NOT emoji — emoji render
+  differently per platform and some Android builds ship no colour emoji font,
+  so a tofu box would be worse than no glyph. Tests assert completeness,
+  distinctness, and the no-emoji rule.
+- **No optimistic updates.** An action sets `pending` and changes nothing. On
+  `STATE_CONFLICT` or `SLOT_TAKEN` the view refetches and states what the slot
+  actually is now — "conflict" alone just makes an attendant press again.
+- **The drawer reads its slot from the store by id**, never a copy, so a
+  realtime event cannot leave it showing actions for a state the slot has left.
+- **Counters are derived** from slot rows on every change, never a running
+  tally — a header that disagrees with the grid is worse than no header.
+- **Resync order is subscribe-THEN-snapshot.** The reverse leaves a gap: a
+  change between the read and the subscribe reaches nobody. This way the
+  overlap is a duplicate, which the version rule discards.
+- **Socket.io ping is 10s/5s, not the 25s/20s default.** The defaults let a
+  dead connection go unnoticed for ~45s, which defeats the point of a
+  connection indicator.
+
+### Phase 3 facts worth keeping
+
+- **Windows reserves TCP ranges** (here 5199-5298) for Hyper-V/WinNAT. Binding
+  inside one fails `EACCES`, which reads like a permissions problem rather than
+  "that port is taken". `netsh interface ipv4 show excludedportrange
+protocol=tcp` lists them. The e2e web port is 5673 for this reason.
+- **`navigator.mediaDevices` is `undefined`** outside a secure context, not
+  throwing — so the scanner feature-detects rather than catching, or an
+  insecure origin would be reported as a denied permission.
+- **TypeScript narrows a flag across `await`** and then `no-unnecessary-
+condition` reports the re-check as dead code, even though a cleanup handler
+  sets it during the await. Read such flags through a function call
+  (`cancelled()`, `#isClosed()`) so the guard survives.
+- **`exactOptionalPropertyTypes`** means `{ adapter: undefined }` is not the
+  same as omitting `adapter`; spread conditionally instead.
+- The root `db:migrate`/`db:codegen`/`db:seed` scripts pointed at `@laqum/api`,
+  which has no such scripts. They were broken from Phase 0 and now target
+  `@laqum/db`.
 
 ### Phase 2 open items
 
