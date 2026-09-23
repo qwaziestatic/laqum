@@ -408,7 +408,10 @@ LOCKED` slot assignment, `transition()`, all staff actions, admin endpoints,
   adapter, expiry-bound socket auth, commit-ordered event delivery, emits on
   every write path, and the attendant dashboard with QR scanning, plus a
   Playwright two-screen suite and screenshots.
-- **Phase 4 — mobile app.** Expo driver app against the real API.
+- **Phase 4 — mobile app.** ✅ Built, **device-untested**. Expo SDK 57 driver
+  app: all seven screens, secure tokens, single-flight refresh, the location
+  gate, server-time countdowns, maps deep link, push token registration.
+  Awaiting the device pass in [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md).
 - **Phase 5 — hardening.** Push notifications, rate limiting, pino request IDs,
   graceful shutdown, production Dockerfile, deployment README.
 
@@ -668,6 +671,73 @@ condition` reports the re-check as dead code, even though a cleanup handler
 - The root `db:migrate`/`db:codegen`/`db:seed` scripts pointed at `@laqum/api`,
   which has no such scripts. They were broken from Phase 0 and now target
   `@laqum/db`.
+
+### Phase 4: the mobile facts worth keeping
+
+**Versions are Expo's, not the registry's.** `expo install --fix` downgraded
+react-native from the registry-latest **0.87.1** to the **0.86.3** SDK 57
+actually bundles, and react to **19.2.3** with it. The registry's newest is
+the wrong answer for an SDK-pinned app. `apps/mobile/test/resolution.test.ts`
+asserts the app and react-native resolve the **same react file** — not merely
+the same version string, since two copies of one version are still two
+dispatchers. The workspace legitimately holds two reacts (the dashboard is on
+19.3.0); pnpm's isolated linker keeps them apart.
+
+**Metro needed exactly two settings**, each added only after a real bundle
+failed without it (amendment: start from SDK 57's built-in monorepo support):
+
+- **No** `watchFolders`, `nodeModulesPaths` or `unstable_enableSymlinks` —
+  verified unnecessary by bundling with no `metro.config.js` at all.
+- `resolver.unstable_conditionNames` including `development`, or
+  `@laqum/shared` resolves to `dist/` and Metro demands a prior build.
+- A `resolveRequest` hook mapping `./x.js` → `./x.ts`, because the shared
+  source writes the `.js` specifiers Node ESM requires and Metro — unlike tsx
+  and Vite — does not map them back.
+
+**The location gate is a decision, not a threshold.** With `d` = distance,
+`a` = accuracy, `r` = the lot's radius: `d + a <= r` proceed; `d - a > r`
+refuse locally with the numbers; otherwise ask for a better fix. A fixed
+"≤100m" rule is wrong both ways — it refuses a 120m fix taken inside the lot
+and accepts a 10m fix at 95m from a 100m boundary. 60s staleness is checked
+**first**, since accuracy says nothing about age.
+
+**Countdowns never trust the device clock.** The offset comes from the `Date`
+header every response already carries, and the tick runs on
+`performance.now()` elapsed — so an NTP correction mid-countdown does not
+double-count. On foreground the app **refetches** rather than extrapolating,
+because the server may have expired the booking while the app slept.
+
+**The push prompt waits for the first successful booking.** A denied
+notification permission cannot be re-requested in-app on either platform, so
+one badly-timed prompt costs the channel permanently.
+
+**Phase 4 registers the push token; Phase 5 sends to it.** `POST
+/v1/push/tokens` upserts on the token, re-pointing it at the current user — a
+phone that changes hands must stop receiving the previous owner's bookings,
+which is a privacy leak rather than a constraint violation.
+
+### Phase 4 open items
+
+- [ ] **The entire device pass.** [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md),
+      18 numbered steps. Nothing touching a camera, GPS, Keystore, Chapa's
+      browser, the Maps hand-off, or push has been run.
+- [ ] **EAS login.** Blocked on the product owner's Expo account; `eas init`
+      must write a real `projectId` into `app.json` or push registration
+      cannot work.
+- [ ] **Google Maps Android API key** — the map renders blank grey without
+      one. Currently a committed placeholder.
+- [ ] **iOS is untested.** Configuration is present and valid; no build has
+      ever been produced. Device testing is Android-only by decision.
+
+### Phase 3 open items
+
+- [ ] **Native-speaker Amharic review.** Every string in
+      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (56 keys) was written by
+      a non-native speaker. **BLOCKS RELEASE. Does not block Phase 4.**
+      `i18n.test.ts` guarantees key parity and non-emptiness; it cannot
+      guarantee the Amharic is idiomatic, which is the point of the review.
+      No known defect — `slot.free` is correctly ነፃ; an earlier report of ገባ
+      was traced to the check-in verb አስገባ, which is a different key.
 
 ### Phase 2 open items
 

@@ -8,5 +8,6 @@ export * from './money.js';
 export * from './palette.js';
 export * from './payments.js';
 export * from './realtime.js';
+export * from './realtimeStore.js';
 export * from './schemas.js';
 export * from './transitions.js';

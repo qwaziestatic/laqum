@@ -1,10 +1,9 @@
-import type { StaffSlotEvent } from '@laqum/shared';
+import { RealtimeStore, type RealtimeState, type StaffSlotEvent } from '@laqum/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiClient, ApiError } from './api/client.js';
 import type { ActionKind } from './components/SlotDrawer.js';
 import { RealtimeConnection } from './realtime/connection.js';
-import { RealtimeStore, type RealtimeState } from './realtime/store.js';
 
 /**
  * The dashboard's whole state machine, kept out of the view.

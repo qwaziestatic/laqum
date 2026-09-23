@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import type { ConnectionState } from '../realtime/store.js';
+import type { ConnectionState } from '@laqum/shared';
 
 /**
  * Is what I am looking at actually live?

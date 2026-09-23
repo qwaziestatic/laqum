@@ -1,6 +1,6 @@
-import { type StaffSlotEvent, type StaffSnapshot, countSlots } from '@laqum/shared';
+import { type StaffSlotEvent, type StaffSnapshot, countSlots } from './realtime.js';
 import { describe, expect, it } from 'vitest';
-import { RealtimeStore } from './store.js';
+import { RealtimeStore } from './realtimeStore.js';
 
 const LOT = '11111111-1111-1111-1111-111111111111';
 

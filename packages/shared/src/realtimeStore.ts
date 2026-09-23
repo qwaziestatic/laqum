@@ -1,4 +1,4 @@
-import { type LotCounts, type StaffSlotEvent, type StaffSnapshot, countSlots } from '@laqum/shared';
+import { type LotCounts, type StaffSlotEvent, type StaffSnapshot, countSlots } from './realtime.js';
 
 /**
  * The client side of the ordering rule.

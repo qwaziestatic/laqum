@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "ላቁም?",
+    "slug": "laqum",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "laqum",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "package": "et.laqum.driver",
+      "edgeToEdgeEnabled": true,
+      "config": {
+        "googleMaps": {
+          "apiKey": "REPLACE_WITH_GOOGLE_MAPS_ANDROID_KEY"
+        }
+      },
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "CAMERA"]
+    },
+    "ios": {
+      "bundleIdentifier": "et.laqum.driver",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Laqum checks you are close enough to the parking lot before holding a slot for you.",
+        "NSCameraUsageDescription": "Laqum shows your booking QR code; the camera is not used to record anything."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Laqum checks you are close enough to the parking lot before holding a slot for you."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_AFTER_EAS_INIT"
+      }
+    }
+  }
+}

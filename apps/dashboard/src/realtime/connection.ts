@@ -2,7 +2,7 @@ import type { StaffSlotEvent } from '@laqum/shared';
 import { SUBSCRIBE_EVENT, type SubscribedAck } from '@laqum/shared';
 import { type Socket, io } from 'socket.io-client';
 import type { ApiClient } from '../api/client.js';
-import type { RealtimeStore } from './store.js';
+import type { RealtimeStore } from '@laqum/shared';
 
 /**
  * The socket half of the dashboard, and the resync that goes with it.

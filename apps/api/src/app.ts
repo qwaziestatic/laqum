@@ -5,6 +5,7 @@ import { bookingsRouter } from './bookings/routes.js';
 import { lotsRouter } from './lots/routes.js';
 import { refundsRouter } from './payments/adminRoutes.js';
 import { webhookRouter } from './payments/routes.js';
+import { pushRouter } from './push/routes.js';
 import { staffRouter } from './staff/routes.js';
 import type { AppContext } from './context.js';
 import { checkReadiness } from './health.js';
@@ -61,6 +62,7 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   app.use('/v1/auth', authRouter(ctx));
   app.use('/v1/lots', lotsRouter(ctx));
   app.use('/v1/bookings', bookingsRouter(ctx));
+  app.use('/v1/push', pushRouter(ctx));
   app.use('/v1/staff', staffRouter(ctx));
   app.use('/v1/admin', adminRouter(ctx));
   app.use('/v1/admin', refundsRouter(ctx));
