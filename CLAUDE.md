@@ -415,6 +415,49 @@ LOCKED` slot assignment, `transition()`, all staff actions, admin endpoints,
 - **Phase 5 — hardening.** Push notifications, rate limiting, pino request IDs,
   graceful shutdown, production Dockerfile, deployment README.
 
+### NO INTERNATIONAL CARD — a standing constraint on every choice
+
+The product owner has **no international payment card**. This is not a
+preference to be worked around later; it rules out whole categories of
+service, and any dependency that assumes one is unusable however good it is.
+It is what replaced Google Maps with MapLibre + OpenFreeMap (below).
+
+**Verified card-free and already relied on:**
+
+- **Expo EAS Build** — free tier, no card, slower queues.
+- **Firebase Spark for FCM** — no card, and Cloud Messaging is free and
+  unlimited on it. (Since Feb 2026 Cloud _Storage_ requires Blaze and
+  therefore a card; we use none.)
+- **OpenFreeMap** — no registration, no keys, no limits.
+
+**Known to hit the wall, unresolved:**
+
+- **Apple App Store** ($99/yr) — no card-free route exists. iOS is already
+  untested; treat it as out unless this changes.
+- **Google Play** ($25 one-time) — direct APK distribution is the workaround,
+  adequate for a pilot, not for public reach.
+- **Twilio and every international SMS gateway.** OTP is still console-only.
+  A local Ethiopian aggregator billed in birr is the only route.
+
+### Phase 5 hosting — RESEARCH AT THE START OF PHASE 5, do not pre-decide
+
+Constraints given by the product owner:
+
+1. **Payment in birr** — bank transfer, Telebirr or similar. No international
+   card.
+2. **Prefer hosting in Ethiopia.** The system stores Ethiopian users' phone
+   numbers and booking history. **Check whether Ethiopia's Personal Data
+   Protection Proclamation restricts storing personal data abroad, and CITE
+   the source** — this may be a legal requirement rather than a preference.
+3. **Small budget** — a pilot with a few lots, not national scale.
+4. **Development and staging may use a free tier abroad**, but only if it is
+   **verified card-free at the time**, not assumed from an older memory.
+
+Deliverable at the start of Phase 5: **2–3 concrete options with evidence** —
+provider, how payment actually works, cost, and what the deploy looks like —
+then aim the deploy README at whichever is chosen. Do not write a Heroku
+guide.
+
 ### Chapa integration — the facts that matter
 
 Every endpoint is cited in `apps/api/src/payments/chapa.ts`. **API v1**
@@ -671,6 +714,42 @@ condition` reports the re-check as dead code, even though a cleanup handler
 - The root `db:migrate`/`db:codegen`/`db:seed` scripts pointed at `@laqum/api`,
   which has no such scripts. They were broken from Phase 0 and now target
   `@laqum/db`.
+
+### Map stack — APPROVED DEVIATION from the brief
+
+The brief specifies **react-native-maps with the Google provider**. Shipped
+instead: **MapLibre React Native over OpenFreeMap tiles**.
+
+**Reason: Google Maps Platform requires a billing account with an
+international card, which this project does not have.** Not a preference — a
+hard blocker. See "NO INTERNATIONAL CARD" above.
+
+- `@maplibre/maplibre-react-native` **11.4.0**. Peer deps `expo >=54`,
+  `react >=19.1`, `react-native >=0.80` — our 57 / 19.2.3 / 0.86.3 satisfy
+  them. It is **not an Expo Module** and does **not work in Expo Go**: it
+  needs a development build, which is what we already produce, and its config
+  plugin `@maplibre/maplibre-react-native` must stay in `app.config.ts`.
+- **v11 renamed `MapView` to `Map`**, and the style prop is `mapStyle`, not
+  `styleURL`. `Marker` takes `lngLat: [longitude, latitude]` — the OPPOSITE
+  order to the API's `{latitude, longitude}`, and a silent bug if swapped.
+- **Tiles: OpenFreeMap.** From its README: _"There's no registration, no user
+  database, no API keys, and no cookies"_ and _"no limits on the number of map
+  views or requests"_. Styles are plain URLs
+  (`https://tiles.openfreemap.org/styles/positron` and `/dark`).
+- **No SLA.** It is free and sponsorship-funded, so a blank map is an expected
+  state: the lot list never depends on it, and tiles are the only part of the
+  app needing the public internet rather than just the LAN API.
+- **ATTRIBUTION IS A LICENCE OBLIGATION.** `OpenFreeMap © OpenMapTiles Data
+from OpenStreetMap`, rendered as permanent visible text. MapLibre's own
+  `attribution` prop is a BUTTON that opens a dialog — confirmed in the
+  installed source — so it does not display the credit by itself.
+  `attribution.test.ts` pins the exact string and asserts no tile URL ever
+  grows a `key=` or `token=`, which would mean a billing provider had crept
+  in.
+- **"Navigate" is unchanged** and still deep-links to Google Maps with its
+  fallback chain. That needs no key and no SDK: we removed a dependency on
+  Google's _platform_, not the ability to hand off to an app the driver may
+  already have.
 
 ### Phase 4: the mobile facts worth keeping
 

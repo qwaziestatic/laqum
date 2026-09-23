@@ -12,14 +12,12 @@ been built or run. Do not treat it as working.
 
 ## Part 0 — What I need from you, and when
 
-| #   | I need                                                           | When                                             |
-| --- | ---------------------------------------------------------------- | ------------------------------------------------ |
-| 1   | You to create an Expo account                                    | Before step 2                                    |
-| 2   | You to run `eas login` on this machine, or paste an `EXPO_TOKEN` | Step 2 — **this is the only point I am blocked** |
-| 3   | A Google Maps Android API key, then to restrict it               | Steps 3a and 3b                                  |
-
-I cannot create the account or log in for you: it needs your email and a
-password I must never hold.
+| #                                                                        | I need                                                           | When                                             |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------ |
+| 1                                                                        | You to create an Expo account                                    | Before step 2                                    |
+| 2                                                                        | You to run `eas login` on this machine, or paste an `EXPO_TOKEN` | Step 2 — **this is the only point I am blocked** |
+| I cannot create the account or log in for you: it needs your email and a |
+| password I must never hold.                                              |
 
 ---
 
@@ -112,63 +110,7 @@ Edit `apps/mobile/eas.json` → `build.development.env.EXPO_PUBLIC_API_URL`:
 "EXPO_PUBLIC_API_URL": "http://<LAN-IP>:3000/v1"
 ```
 
-### 3a. Supply the Google Maps key
-
-The key now comes from the **environment**, not from a committed file.
-`apps/mobile/app.config.ts` reads `GOOGLE_MAPS_ANDROID_API_KEY`. There is no
-key in the repository and there should never be one.
-
-For a cloud EAS build, store it as an EAS secret so it is available at build
-time without ever entering git:
-
-```bash
-cd apps/mobile
-pnpm exec eas secret:create --scope project \
-  --name GOOGLE_MAPS_ANDROID_API_KEY --value "AIza...your key..."
-```
-
-For a purely local `expo prebuild`/`expo run:android`, export it in your shell
-or put it in a gitignored `.env`.
-
-Without it the map renders **blank grey**. That is a missing key, not a bug in
-the app.
-
-### 3b. Restrict the key — this is the actual protection
-
-**The key ships inside the APK and can be extracted from any copy in about a
-minute.** Secrecy is not the defence; restriction is. An unrestricted key is
-billable by anyone who finds it.
-
-1. Get the SHA-1 of the certificate EAS signs with:
-
-   ```bash
-   cd apps/mobile
-   pnpm exec eas credentials
-   ```
-
-   Choose **Android** → the **development** build profile → **Keystore** →
-   **Download** or **View** credentials. The fingerprint you want is labelled
-   **SHA-1 Fingerprint**, and looks like
-   `AB:CD:12:34:...` (20 colon-separated pairs).
-
-   > EAS generates and holds this keystore for you. The **preview** and
-   > **production** profiles may use a _different_ keystore, so if you later
-   > build those, add their SHA-1s too or the map will be blank in exactly
-   > those builds.
-
-2. In Google Cloud Console → **APIs & Services → Credentials** → your key →
-   **Edit**:
-   - **Application restrictions** → **Android apps** → **Add**:
-     - Package name: `et.laqum.driver`
-     - SHA-1 certificate fingerprint: the value from step 1
-   - **API restrictions** → **Restrict key** → select **Maps SDK for
-     Android** only.
-3. Save. Restrictions can take a few minutes to take effect.
-
-After this, an extracted copy of the key is useless in any other app, because
-Google checks the calling package and signature on every request.
-
-### 3c. Cleartext HTTP — already handled, and here is the evidence
+### 3a. Cleartext HTTP — already handled, and here is the evidence
 
 The dev API is plain `http://` on a LAN address. **Android 9 (API 28) defaults
 `usesCleartextTraffic` to false**, so a build that did not opt in would fail
@@ -269,7 +211,7 @@ You should see JSON. If you do not, fix that before going further:
 | Times out                                                                                          | Firewall (step 2), or client isolation on the Wi-Fi                                                                                                                                                                                                                                                                                         |
 | "Connection refused"                                                                               | API not running, or bound to 127.0.0.1 only                                                                                                                                                                                                                                                                                                 |
 | Works on laptop, not phone                                                                         | Different networks, or a VPN active on either                                                                                                                                                                                                                                                                                               |
-| **Chrome on the phone reaches `/health`, but the APP says "Network request failed" on every call** | **Cleartext HTTP blocked.** Chrome has its own policy and will happily load `http://`; the app is governed by `usesCleartextTraffic`. Means the APK was built from the `preview` or `production` profile, or `EAS_BUILD_PROFILE` was unset in a way that resolved to production. Rebuild with `--profile development` and re-check step 3c. |
+| **Chrome on the phone reaches `/health`, but the APP says "Network request failed" on every call** | **Cleartext HTTP blocked.** Chrome has its own policy and will happily load `http://`; the app is governed by `usesCleartextTraffic`. Means the APK was built from the `preview` or `production` profile, or `EAS_BUILD_PROFILE` was unset in a way that resolved to production. Rebuild with `--profile development` and re-check step 3a. |
 | Map is blank grey, everything else works                                                           | Missing or unrestricted Google Maps key (step 3a/3b) — not a network fault                                                                                                                                                                                                                                                                  |
 
 ---
@@ -302,6 +244,52 @@ estimated. The app must not be unusable.
 3. Grant it via the banner's **Open settings**, return to the app.
 
 _Should:_ distances appear, and your blue dot is on the map.
+
+### 10a. The map itself — MapLibre + OpenFreeMap
+
+The map no longer uses Google. It is MapLibre drawing OpenFreeMap tiles: **no
+API key, no account, no card**. That also means it is a free public service
+with **no uptime guarantee**, so a blank map is a state the app has to survive
+rather than a fault.
+
+**This is the part I could not verify at all.** MapLibre is native code — it
+draws nothing in a bundle check, and there is no Android SDK on this machine,
+so the native compile happens for the first time on EAS. Please look carefully.
+
+1. Look at the map area on the home screen.
+
+_Should:_ real streets, water and place labels — not a plain grey rectangle.
+
+2. Pinch to zoom and drag to pan.
+
+_Should:_ smooth, and more detail appears as you zoom in.
+
+3. Find the lot pins.
+
+_Should:_ a coloured circle per lot showing its **free count** — green when
+slots are free, red when full. Tapping one opens that lot.
+
+4. Check the credit line directly under the map.
+
+_Should:_ **`OpenFreeMap © OpenMapTiles Data from OpenStreetMap`**, always
+visible. This is a licence requirement, not decoration. Tapping it should open
+openstreetmap.org/copyright.
+
+5. Switch the phone to dark mode (Settings → Display) and return.
+
+_Should:_ the map switches to a dark tile style — genuinely different tiles,
+not the light map dimmed — and stays legible. The credit line stays visible.
+
+6. Turn mobile data and Wi-Fi WAN off, or put the phone on a network with no
+   internet, while keeping the API reachable.
+
+_Should:_ the map goes blank, and **everything else keeps working** — the lot
+list, booking, the countdown. The map is never allowed to block the app.
+
+> If the map is blank at step 1 with working internet, check
+> `https://tiles.openfreemap.org/styles/positron` in the phone's browser
+> first: that separates "OpenFreeMap is down" from "our map code is broken",
+> and they need completely different fixes.
 
 ### 11. The three location gate branches
 
@@ -453,6 +441,10 @@ For each numbered test: pass, fail, or could-not-test. Screenshots help most
 for anything that looks wrong rather than broken.
 
 I am particularly unsure about:
+
+- **10a** — the whole map. MapLibre's native code has never been compiled or
+  run; EAS builds it for the first time. Tiles rendering at all is the single
+  biggest unknown in this pass.
 
 - **11** — the middle and third gate branches, on real GPS.
 - **15** — which fallback tier actually fires without Google Maps.

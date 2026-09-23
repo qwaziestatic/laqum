@@ -6,16 +6,11 @@ import type { ExpoConfig } from 'expo/config';
  * Replaces app.json so that secrets and per-machine values come from the
  * environment instead of the repository.
  *
- * THE MAPS KEY IS NOT A SECRET, AND THAT IS THE POINT. Any Android API key
- * ships inside the APK and can be extracted from it in about a minute. Keeping
- * it out of git stops it leaking into a public repo and into every fork, but
- * the REAL protection is the restriction in Google Cloud: the key is bound to
- * this package name AND the SHA-1 of the signing certificate, so an extracted
- * copy is useless in anyone else's app. docs/DEVICE-TEST.md step 3b has the
- * exact steps.
+ * THE MAP NEEDS NO KEY AT ALL. Google Maps Platform requires a billing
+ * account with an international card, which is not available to this project,
+ * so the map is MapLibre over OpenFreeMap tiles — no registration, no API
+ * key, no account. See CLAUDE.md, "Map stack".
  */
-
-const googleMapsApiKey = process.env.GOOGLE_MAPS_ANDROID_API_KEY ?? '';
 
 /**
  * Where the app talks to.
@@ -44,12 +39,8 @@ const config: ExpoConfig = {
     package: 'et.laqum.driver',
     // No `edgeToEdgeEnabled`: prebuild warns it is no longer customisable,
     // because Android 16 makes edge-to-edge mandatory.
-    config: {
-      // Empty in a checkout without the variable set. The map then renders
-      // blank grey, which is a missing key rather than a broken app — called
-      // out in the device script so it is not misdiagnosed.
-      googleMaps: { apiKey: googleMapsApiKey },
-    },
+    //
+    // No `config.googleMaps` either: MapLibre needs no key.
     permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'CAMERA'],
   },
 
@@ -77,6 +68,9 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-secure-store',
+    // Required for a development build; MapLibre is native and is not part of
+    // the Expo SDK, so it does not work in Expo Go.
+    '@maplibre/maplibre-react-native',
     [
       'expo-location',
       {

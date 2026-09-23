@@ -1,9 +1,11 @@
 import { formatBirr } from '@laqum/shared';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Camera, Map, Marker, UserLocation } from '@maplibre/maplibre-react-native';
 import type { NearbyLot } from '../src/api/endpoints.js';
+import { MapAttribution } from '../src/map/Attribution.js';
+import { mapStyleFor } from '../src/map/tiles.js';
 import { getFix, type LocationResult } from '../src/location/useLocation.js';
 import { useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
@@ -101,31 +103,64 @@ export default function Home(): React.JSX.Element {
 
       {error ? <Notice tone="error" message={error} testID="home-error" /> : null}
 
-      <MapView
-        testID="map"
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        showsUserLocation={fix !== null}
-        initialRegion={{
-          latitude: fix?.latitude ?? 9.0192,
-          longitude: fix?.longitude ?? 38.7525,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        }}
-      >
-        {lots.map((lot) => (
-          <Marker
-            key={lot.id}
-            coordinate={{ latitude: lot.latitude, longitude: lot.longitude }}
-            title={lot.name}
-            // The count is the whole reason to look at the map.
-            description={`${String(lot.freeSlots)} free`}
-            onCalloutPress={() => {
-              router.push(`/lot/${lot.id}`);
+      {/*
+       * MapLibre over OpenFreeMap — no API key, no account, no card.
+       * See src/map/tiles.ts for the terms and the attribution obligation.
+       *
+       * Tiles need INTERNET, unlike the rest of the app, which only needs to
+       * reach the LAN API. A phone on Wi-Fi with no WAN gets a working lot
+       * list and a blank map, which is why the list is never gated on this.
+       */}
+      <View style={styles.map}>
+        <Map
+          testID="map"
+          style={StyleSheet.absoluteFill}
+          mapStyle={mapStyleFor(theme.scheme)}
+          // MapLibre's own ornament is an attribution BUTTON that opens a
+          // dialog; the visible credit is MapAttribution below. Both are on.
+          attribution
+          logo={false}
+          compass
+        >
+          <Camera
+            initialViewState={{
+              center: [fix?.longitude ?? 38.7525, fix?.latitude ?? 9.0192],
+              zoom: 13,
             }}
           />
-        ))}
-      </MapView>
+
+          {fix ? <UserLocation /> : null}
+
+          {lots.map((lot) => (
+            <Marker
+              key={lot.id}
+              id={lot.id}
+              // LngLat is [longitude, latitude] — the opposite order to the
+              // API's {latitude, longitude}, and a silent bug if swapped.
+              lngLat={[lot.longitude, lot.latitude]}
+              onPress={() => {
+                router.push(`/lot/${lot.id}`);
+              }}
+            >
+              <View
+                testID={`pin-${lot.id}`}
+                style={[
+                  styles.pin,
+                  {
+                    backgroundColor: lot.freeSlots > 0 ? theme.ok : theme.danger,
+                    borderColor: theme.card,
+                  },
+                ]}
+              >
+                {/* The count is the whole reason to look at the map. */}
+                <Text style={styles.pinText}>{String(lot.freeSlots)}</Text>
+              </View>
+            </Marker>
+          ))}
+        </Map>
+      </View>
+
+      <MapAttribution />
 
       <FlatList
         style={[styles.sheet, { backgroundColor: theme.card, borderColor: theme.line }]}
@@ -167,6 +202,16 @@ export default function Home(): React.JSX.Element {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   map: { flex: 1, minHeight: 180 },
+  pin: {
+    minWidth: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  pinText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
   sheet: { flex: 1.2, borderTopWidth: 2, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   sheetContent: { padding: 16, gap: 12 },
   actions: { padding: 16 },
