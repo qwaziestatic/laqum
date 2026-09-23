@@ -16,7 +16,7 @@ been built or run. Do not treat it as working.
 | --- | ---------------------------------------------------------------- | ------------------------------------------------ |
 | 1   | You to create an Expo account                                    | Before step 2                                    |
 | 2   | You to run `eas login` on this machine, or paste an `EXPO_TOKEN` | Step 2 — **this is the only point I am blocked** |
-| 3   | A Google Maps Android API key                                    | Step 3 (the map is blank without it)             |
+| 3   | A Google Maps Android API key, then to restrict it               | Steps 3a and 3b                                  |
 
 I cannot create the account or log in for you: it needs your email and a
 password I must never hold.
@@ -35,6 +35,48 @@ pnpm --filter @laqum/api dev
 ```
 
 Leave it running. It listens on **:3000**.
+
+### 1a. Seed a test lot where YOU are
+
+The seeded lots are in Addis. If you are not, arrival, live distance, the
+location gate and the countdowns cannot be tested at all — so seed a lot at
+your own coordinates instead.
+
+Get your coordinates from any maps app (long-press your location → it shows
+`lat, lng`), then:
+
+```bash
+SEED_TEST_LOT_LAT=51.5072 SEED_TEST_LOT_LNG=-0.1276 pnpm db:seed
+```
+
+It prints a confirmation line:
+
+```
+Seeded 3 lots with 78 slots. Times display in Africa/Addis_Ababa.
+TEST LOT at 51.5072, -0.1276 — 150 m radius, 5 min blocks, 3 min hold.
+```
+
+The test lot is deliberately **impatient and small**, so a whole cycle fits in
+one session rather than half an hour:
+
+|                    | Test lot                                           | Seeded Addis lots        |
+| ------------------ | -------------------------------------------------- | ------------------------ |
+| Block              | **5 min**                                          | 30 min                   |
+| Hold before expiry | **3 min**                                          | 15 min                   |
+| Slots              | **6** (T-1…T-3, U-1…U-3)                           | 48 and 24                |
+| Booking radius     | **150 m** (override with `SEED_TEST_LOT_RADIUS_M`) | 200 m                    |
+| Deposit            | none                                               | Bole 20 ETB, Piassa none |
+
+Pick the radius so that **walking one block flips the gate** — 80–150 m is
+usually right. That is what makes test 11 possible.
+
+> **It cannot run in production.** `testLotFromEnv` throws if `NODE_ENV` is
+> production, independently of the seed script's own guard, and refuses a
+> coordinate that is empty, unparseable, or out of range rather than silently
+> placing the lot at 0,0. Eleven tests cover those refusals.
+
+Where the script below says "a seeded lot", use **TEST LOT (device testing)**
+if you seeded one.
 
 ### 2. Find your machine's LAN address
 
@@ -70,14 +112,93 @@ Edit `apps/mobile/eas.json` → `build.development.env.EXPO_PUBLIC_API_URL`:
 "EXPO_PUBLIC_API_URL": "http://<LAN-IP>:3000/v1"
 ```
 
-Also put your Google Maps Android key into `apps/mobile/app.json` →
-`android.config.googleMaps.apiKey`. Without it the map renders blank grey —
-that is a missing key, not a bug in the app.
+### 3a. Supply the Google Maps key
 
-> The key is currently the placeholder `REPLACE_WITH_GOOGLE_MAPS_ANDROID_KEY`
-> and is committed as such. **Do not commit your real key.** If you would
-> rather not hold it in the repo at all, tell me and I will move it to an
-> `app.config.ts` reading an env var.
+The key now comes from the **environment**, not from a committed file.
+`apps/mobile/app.config.ts` reads `GOOGLE_MAPS_ANDROID_API_KEY`. There is no
+key in the repository and there should never be one.
+
+For a cloud EAS build, store it as an EAS secret so it is available at build
+time without ever entering git:
+
+```bash
+cd apps/mobile
+pnpm exec eas secret:create --scope project \
+  --name GOOGLE_MAPS_ANDROID_API_KEY --value "AIza...your key..."
+```
+
+For a purely local `expo prebuild`/`expo run:android`, export it in your shell
+or put it in a gitignored `.env`.
+
+Without it the map renders **blank grey**. That is a missing key, not a bug in
+the app.
+
+### 3b. Restrict the key — this is the actual protection
+
+**The key ships inside the APK and can be extracted from any copy in about a
+minute.** Secrecy is not the defence; restriction is. An unrestricted key is
+billable by anyone who finds it.
+
+1. Get the SHA-1 of the certificate EAS signs with:
+
+   ```bash
+   cd apps/mobile
+   pnpm exec eas credentials
+   ```
+
+   Choose **Android** → the **development** build profile → **Keystore** →
+   **Download** or **View** credentials. The fingerprint you want is labelled
+   **SHA-1 Fingerprint**, and looks like
+   `AB:CD:12:34:...` (20 colon-separated pairs).
+
+   > EAS generates and holds this keystore for you. The **preview** and
+   > **production** profiles may use a _different_ keystore, so if you later
+   > build those, add their SHA-1s too or the map will be blank in exactly
+   > those builds.
+
+2. In Google Cloud Console → **APIs & Services → Credentials** → your key →
+   **Edit**:
+   - **Application restrictions** → **Android apps** → **Add**:
+     - Package name: `et.laqum.driver`
+     - SHA-1 certificate fingerprint: the value from step 1
+   - **API restrictions** → **Restrict key** → select **Maps SDK for
+     Android** only.
+3. Save. Restrictions can take a few minutes to take effect.
+
+After this, an extracted copy of the key is useless in any other app, because
+Google checks the calling package and signature on every request.
+
+### 3c. Cleartext HTTP — already handled, and here is the evidence
+
+The dev API is plain `http://` on a LAN address. **Android 9 (API 28) defaults
+`usesCleartextTraffic` to false**, so a build that did not opt in would fail
+every request with "Network request failed" and look exactly like a firewall
+problem.
+
+This does **not** rely on a debug-only default. `app.config.ts` sets it
+explicitly via `expo-build-properties`, keyed off `EAS_BUILD_PROFILE`, and I
+verified the generated manifest both ways with `expo prebuild`:
+
+| Profile       | Generated `AndroidManifest.xml`        |
+| ------------- | -------------------------------------- |
+| `development` | `android:usesCleartextTraffic="true"`  |
+| `production`  | `android:usesCleartextTraffic="false"` |
+
+There is no `networkSecurityConfig` in the manifest — the attribute alone
+carries it. **Production is explicitly false**, so the allowance cannot reach
+a shipped build.
+
+You can confirm it yourself before building:
+
+```bash
+cd apps/mobile
+EAS_BUILD_PROFILE=development pnpm exec expo prebuild --platform android --no-install --clean
+grep -o 'android:usesCleartextTraffic="[a-z]*"' android/app/src/main/AndroidManifest.xml
+rm -rf android   # prebuild output is disposable and gitignored
+```
+
+> iOS gets the equivalent `NSAllowsLocalNetworking`, also excluded from
+> production. **iOS is untested.**
 
 ---
 
@@ -143,11 +264,13 @@ http://<LAN-IP>:3000/health
 
 You should see JSON. If you do not, fix that before going further:
 
-| Symptom                    | Likely cause                                        |
-| -------------------------- | --------------------------------------------------- |
-| Times out                  | Firewall (step 2), or client isolation on the Wi-Fi |
-| "Connection refused"       | API not running, or bound to 127.0.0.1 only         |
-| Works on laptop, not phone | Different networks, or a VPN active on either       |
+| Symptom                                                                                            | Likely cause                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Times out                                                                                          | Firewall (step 2), or client isolation on the Wi-Fi                                                                                                                                                                                                                                                                                         |
+| "Connection refused"                                                                               | API not running, or bound to 127.0.0.1 only                                                                                                                                                                                                                                                                                                 |
+| Works on laptop, not phone                                                                         | Different networks, or a VPN active on either                                                                                                                                                                                                                                                                                               |
+| **Chrome on the phone reaches `/health`, but the APP says "Network request failed" on every call** | **Cleartext HTTP blocked.** Chrome has its own policy and will happily load `http://`; the app is governed by `usesCleartextTraffic`. Means the APK was built from the `preview` or `production` profile, or `EAS_BUILD_PROFILE` was unset in a way that resolved to production. Rebuild with `--profile development` and re-check step 3c. |
+| Map is blank grey, everything else works                                                           | Missing or unrestricted Google Maps key (step 3a/3b) — not a network fault                                                                                                                                                                                                                                                                  |
 
 ---
 
@@ -185,18 +308,25 @@ _Should:_ distances appear, and your blue dot is on the map.
 This is the amendment you asked for, and it is the hardest thing to test —
 you need to physically move.
 
-| Where to stand                                | Should show                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Inside or beside a seeded lot                 | **Hold this slot** enabled                                                                       |
-| Several km away (e.g. at home)                | "You are about _N_ m away. This lot only holds slots within _R_ m."                              |
-| Indoors near the edge of the radius, poor GPS | "Your position is accurate to about _N_ m, which is not precise enough this close to the limit." |
+With the test lot from step 1a this becomes practical: stand at the
+coordinates you seeded, then walk.
 
-The seeded lots are **Bole Medhanialem** (9.0092, 38.7869) and **Piassa
-Central** (9.0348, 38.7508), each with a 200 m radius by default.
+| Where to stand                                                           | Should show                                                                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| At the test lot's coordinates                                            | **Hold this slot** enabled                                                                       |
+| Well outside the radius — walk 300 m, or use an Addis lot from elsewhere | "You are about _N_ m away. This lot only holds slots within _R_ m."                              |
+| Just past the radius edge, indoors, poor GPS                             | "Your position is accurate to about _N_ m, which is not precise enough this close to the limit." |
+
+If you did not seed a test lot, the Addis lots are **Bole Medhanialem**
+(9.0092, 38.7869) and **Piassa Central** (9.0348, 38.7508), 200 m radius.
 
 _The middle branch is the one I most want confirmed_ — the third may be hard
 to produce deliberately. If you cannot trigger it, say so rather than
 guessing; the logic is unit-tested but the real-accuracy behaviour is not.
+
+A quick way to force the third branch: seed with a very small radius
+(`SEED_TEST_LOT_RADIUS_M=30`) and stand indoors about 30–40 m away, where a
+phone's accuracy is typically 20–50 m and therefore straddles the limit.
 
 ### 12. Book, and the push prompt
 
@@ -221,6 +351,9 @@ ever sent.** Delivery is Phase 5.
 
 > If `push_tokens` is empty, the most likely cause is step 5 not having been
 > run, so there is no EAS project id.
+
+> With the test lot the hold is **3 minutes**, so you can watch it run out.
+> Let it expire and check the slot is released on the dashboard.
 
 ### 13. The countdown against a wrong clock
 

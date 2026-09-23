@@ -716,6 +716,22 @@ one badly-timed prompt costs the channel permanently.
 phone that changes hands must stop receiving the previous owner's bookings,
 which is a privacy leak rather than a constraint violation.
 
+**Cleartext HTTP is explicit, not a debug default.** The dev API is plain
+http on a LAN address, and Android 9+ defaults `usesCleartextTraffic` to
+false, so a build that did not opt in fails every request with "Network
+request failed" — indistinguishable from a firewall problem.
+`expo-build-properties` sets it from `EAS_BUILD_PROFILE`; verified against the
+generated manifest: **development `"true"`, production `"false"`**, with no
+`networkSecurityConfig` involved.
+
+**`SEED_TEST_LOT_LAT`/`LNG` seed a lot where the TESTER is** — 5-minute
+blocks, 3-minute hold, six slots, 150 m default radius — because arrival,
+distance and the gate cannot be tested from outside Addis. `testLotFromEnv`
+throws on production independently of the seed's own guard, and rejects an
+empty, unparseable or out-of-range coordinate. An empty string was a real bug
+the tests caught: `Number('')` is 0, which would have placed the lot in the
+Atlantic and made every booking fail TOO_FAR for an unguessable reason.
+
 ### Phase 4 open items
 
 - [ ] **The entire device pass.** [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md),
@@ -725,7 +741,10 @@ which is a privacy leak rather than a constraint violation.
       must write a real `projectId` into `app.json` or push registration
       cannot work.
 - [ ] **Google Maps Android API key** — the map renders blank grey without
-      one. Currently a committed placeholder.
+      one. Read from `GOOGLE_MAPS_ANDROID_API_KEY`; nothing is committed. The
+      key ships inside the APK and is extractable, so the real protection is
+      the Google Cloud restriction to package + signing SHA-1, not secrecy —
+      DEVICE-TEST.md step 3b.
 - [ ] **iOS is untested.** Configuration is present and valid; no build has
       ever been produced. Device testing is Android-only by decision.
 
