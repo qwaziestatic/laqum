@@ -88,6 +88,38 @@ async function startInstance(withAdapter: boolean): Promise<{
   };
 }
 
+/**
+ * Wait until every adapter can SEE the others.
+ *
+ * createAdapter() subscribes to its Redis channels asynchronously, and
+ * nothing in the Socket.io API reports when that has finished. Emitting
+ * before it has, publishes to a channel no one is listening on yet — the
+ * message is simply lost, and the test fails as though cross-instance
+ * delivery were broken. It passed on a fast machine and failed on a slower
+ * one, which is the signature of exactly this race.
+ *
+ * serverCount() is the honest readiness signal: it round-trips a request
+ * through Redis and counts the Socket.io servers that answer, so reaching
+ * `expected` proves every adapter is subscribed AND mutually visible.
+ */
+async function awaitCluster(expected: number): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    const counts = await Promise.all(
+      servers.map(({ realtime }) =>
+        (realtime.io.of('/').adapter as unknown as { serverCount: () => Promise<number> })
+          .serverCount()
+          .catch(() => 0),
+      ),
+    );
+    if (counts.length > 0 && counts.every((count) => count >= expected)) return;
+    if (Date.now() > deadline) {
+      throw new Error(`adapters never saw ${String(expected)} servers; last saw ${counts.join()}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 async function closeAll(): Promise<void> {
   for (const client of clients.splice(0)) client.disconnect();
   for (const { realtime, http } of servers.splice(0)) {
@@ -98,7 +130,23 @@ async function closeAll(): Promise<void> {
       });
     });
   }
-  for (const redis of redises.splice(0)) redis.disconnect();
+  /*
+   * quit(), not disconnect().
+   *
+   * disconnect() tears the socket down immediately, so any adapter command
+   * still in flight rejects with "Connection is closed" — which surfaces as
+   * an unhandled rejection and fails the run even when every test passed.
+   * quit() lets the pending commands drain first.
+   */
+  await Promise.all(
+    redises.splice(0).map(async (redis) => {
+      try {
+        await redis.quit();
+      } catch {
+        // Already gone; nothing to drain.
+      }
+    }),
+  );
 }
 
 async function connectAndSubscribe(
@@ -196,6 +244,9 @@ describe('with the Redis adapter', () => {
 
       const a = await startInstance(true);
       const b = await startInstance(true);
+      // Both adapters subscribed and visible to each other before anything is
+      // published, or the message would go to an empty channel.
+      await awaitCluster(2);
 
       // The dashboard is on A, and never talks to B at all.
       const dashboard = await connectAndSubscribe(a.port, attendant.token, lot.lotId);
@@ -222,6 +273,7 @@ describe('with the Redis adapter', () => {
 
       const a = await startInstance(true);
       const b = await startInstance(true);
+      await awaitCluster(2);
 
       const publicSocket = ioClient(`http://localhost:${a.port}`, {
         auth: { token: driver.token },
