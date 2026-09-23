@@ -5,74 +5,111 @@
  * DAYLIGHT LEGIBILITY.
  *
  * This runs on a tablet at a lot entrance, often in direct Addis sun at 2,300m.
- * Both themes are therefore built for contrast, not for subtlety:
+ * Both themes are therefore built for contrast, not for subtlety. Every
+ * surface/ink pair below clears WCAG AA (4.5:1) in BOTH themes.
  *
- *   - status hues sit at high chroma and are separated in HUE as well as
- *     lightness, so they survive a washed-out screen;
- *   - every status ALSO carries an icon and a text label (see SlotTile), so
- *     colour is never the only channel — that covers both glare and the ~8% of
- *     men with colour vision deficiency, which a parking attendant workforce
- *     will certainly include;
- *   - text on a status surface is near-black or near-white, whichever wins
- *     against that surface, never a mid-tone.
+ * THESE VALUES ARE MIRRORED FROM packages/shared/src/palette.ts, which the
+ * Phase 4 mobile app also reads. `palette.test.ts` parses this file and
+ * asserts they match value-for-value, so do not edit one without the other.
+ * Hex rather than oklch because React Native cannot parse oklch, and a token
+ * only one consumer can read is not a shared token.
+ *
+ * Colour is never the only channel: every status also carries a glyph and a
+ * translated word (statusPresentation.ts).
  */
 
 @theme {
-  /* Slot status hues, light theme. */
-  --color-slot-free: oklch(0.86 0.16 148);
-  --color-slot-free-ink: oklch(0.26 0.08 148);
-  --color-slot-reserved: oklch(0.88 0.15 85);
-  --color-slot-reserved-ink: oklch(0.3 0.09 70);
-  --color-slot-occupied: oklch(0.72 0.18 252);
-  --color-slot-occupied-ink: oklch(0.22 0.09 252);
-  --color-slot-overstay: oklch(0.65 0.23 25);
-  --color-slot-overstay-ink: oklch(0.99 0.01 25);
-  --color-slot-oos: oklch(0.79 0.02 260);
-  --color-slot-oos-ink: oklch(0.32 0.02 260);
+  /* ── Slot status, light ─────────────────────────────────────────────── */
+  --color-slot-free: #86efac;
+  --color-slot-free-ink: #14532d;
+  --color-slot-reserved: #fcd34d;
+  --color-slot-reserved-ink: #451a03;
+  --color-slot-occupied: #1d4ed8;
+  --color-slot-occupied-ink: #ffffff;
+  --color-slot-overstay: #dc2626;
+  --color-slot-overstay-ink: #ffffff;
+  --color-slot-oos: #cbd5e1;
+  --color-slot-oos-ink: #1e293b;
 
-  /* Surfaces. */
-  --color-surface: oklch(0.99 0.003 260);
-  --color-surface-raised: oklch(1 0 0);
-  --color-surface-sunken: oklch(0.95 0.006 260);
-  --color-ink: oklch(0.21 0.02 260);
-  --color-ink-muted: oklch(0.47 0.02 260);
-  --color-line: oklch(0.87 0.01 260);
-  --color-accent: oklch(0.55 0.17 255);
-  --color-accent-ink: oklch(0.99 0.01 255);
-  --color-danger: oklch(0.55 0.22 25);
-  --color-ok: oklch(0.55 0.15 148);
+  /*
+   * ── Connection indicator, light ───────────────────────────────────────
+   * Deliberately NOT a status hue. "Live" was green, which made it invisible
+   * against a mostly-green grid — and the connection state is the one thing an
+   * attendant must notice changing. `live` is an inverted near-black chip: the
+   * only inverted element on screen, so it reads against any grid and cannot
+   * collide with a future status colour.
+   */
+  --color-conn-live: #0f172a;
+  --color-conn-live-ink: #f8fafc;
+  --color-conn-live-dot: #4ade80;
+  --color-conn-connecting: #e2e8f0;
+  --color-conn-connecting-ink: #334155;
+  --color-conn-connecting-dot: #64748b;
+  --color-conn-reconnecting: #c2410c;
+  --color-conn-reconnecting-ink: #ffffff;
+  --color-conn-reconnecting-dot: #ffffff;
+  --color-conn-offline: #b91c1c;
+  --color-conn-offline-ink: #ffffff;
+  --color-conn-offline-dot: #ffffff;
+
+  /* ── Surfaces, light ────────────────────────────────────────────────── */
+  --color-surface: #fdfdfe;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f1f5f9;
+  --color-ink: #1e293b;
+  --color-ink-muted: #64748b;
+  --color-line: #cbd5e1;
+  --color-accent: #1d4ed8;
+  --color-accent-ink: #ffffff;
+  --color-danger: #b91c1c;
+  --color-ok: #15803d;
 }
 
 /*
  * Dark theme.
  *
- * Not "the light theme dimmed": the status surfaces go DEEP and their ink goes
- * light, which keeps the same contrast ratios the other way up. A dark theme
- * built by lowering opacity ends up grey-on-grey and is unreadable outdoors.
+ * NOT "the light theme dimmed": the status surfaces keep real chroma and their
+ * ink flips, which holds the same contrast the other way up. A dark theme built
+ * by lowering opacity ends up grey-on-grey and is unreadable outdoors —
+ * occupied and overstay suffer most, and those are the two an attendant acts
+ * on, so both are more saturated here than a naive darkening would give.
  */
 @layer base {
   :root[data-theme='dark'] {
-    --color-slot-free: oklch(0.42 0.12 148);
-    --color-slot-free-ink: oklch(0.94 0.08 148);
-    --color-slot-reserved: oklch(0.46 0.12 85);
-    --color-slot-reserved-ink: oklch(0.95 0.1 90);
-    --color-slot-occupied: oklch(0.42 0.14 252);
-    --color-slot-occupied-ink: oklch(0.93 0.06 252);
-    --color-slot-overstay: oklch(0.52 0.21 25);
-    --color-slot-overstay-ink: oklch(0.98 0.02 25);
-    --color-slot-oos: oklch(0.36 0.015 260);
-    --color-slot-oos-ink: oklch(0.82 0.01 260);
+    --color-slot-free: #15803d;
+    --color-slot-free-ink: #dcfce7;
+    --color-slot-reserved: #a16207;
+    --color-slot-reserved-ink: #fef9c3;
+    --color-slot-occupied: #2563eb;
+    --color-slot-occupied-ink: #ffffff;
+    --color-slot-overstay: #e11d48;
+    --color-slot-overstay-ink: #ffffff;
+    --color-slot-oos: #334155;
+    --color-slot-oos-ink: #cbd5e1;
 
-    --color-surface: oklch(0.19 0.012 260);
-    --color-surface-raised: oklch(0.25 0.014 260);
-    --color-surface-sunken: oklch(0.15 0.01 260);
-    --color-ink: oklch(0.97 0.004 260);
-    --color-ink-muted: oklch(0.75 0.012 260);
-    --color-line: oklch(0.36 0.014 260);
-    --color-accent: oklch(0.72 0.15 255);
-    --color-accent-ink: oklch(0.17 0.03 255);
-    --color-danger: oklch(0.68 0.19 25);
-    --color-ok: oklch(0.72 0.15 148);
+    --color-conn-live: #f1f5f9;
+    --color-conn-live-ink: #0f172a;
+    --color-conn-live-dot: #16a34a;
+    --color-conn-connecting: #1e293b;
+    --color-conn-connecting-ink: #cbd5e1;
+    --color-conn-connecting-dot: #64748b;
+    --color-conn-reconnecting: #fb923c;
+    --color-conn-reconnecting-ink: #431407;
+    --color-conn-reconnecting-dot: #431407;
+    --color-conn-offline: #f87171;
+    --color-conn-offline-ink: #450a0a;
+    --color-conn-offline-dot: #450a0a;
+
+    --color-surface: #0f172a;
+    --color-surface-raised: #1e293b;
+    --color-surface-sunken: #020617;
+    --color-ink: #f8fafc;
+    --color-ink-muted: #94a3b8;
+    --color-line: #475569;
+    --color-accent: #60a5fa;
+    --color-accent-ink: #0f172a;
+    --color-danger: #f87171;
+    --color-ok: #4ade80;
   }
 
   html {

@@ -557,6 +557,51 @@ in the state machine becomes a new test. **Verified:** removing the
   dead connection go unnoticed for ~45s, which defeats the point of a
   connection indicator.
 
+### Slot colours — APPROVED DEVIATION from the brief
+
+The brief specifies **occupied = red, overstay = red-purple**. Shipped instead:
+**occupied = BLUE, overstay = RED**. Reviewed and approved by the product
+owner, whose reason to record is that **reserving red for "act now" is better**.
+
+The supporting argument: occupied is the normal, expected state of a working
+lot — on a busy evening most tiles are occupied, and a grid that is mostly red
+trains an attendant to ignore red. Overstay is the state that costs the
+operator money and needs someone to walk over, so it gets the alarm colour
+alone. Different hue families also separate the two under the red-green colour
+vision deficiency affecting roughly one man in twelve.
+
+**The five colours are shared tokens**, in `packages/shared/src/palette.ts`
+(`STATUS_PALETTE`), because the Phase 4 mobile app renders the same five
+states and must not re-pick them:
+
+- **Hex, not oklch.** oklch is better colour science and is what the CSS used
+  first, but React Native cannot parse it. A token only one consumer can read
+  is not a shared token.
+- `apps/dashboard/src/index.css` mirrors the values verbatim and
+  `palette.test.ts` **parses the CSS and asserts they match**, so web and
+  mobile cannot drift.
+- Every surface/ink pair clears **WCAG AA (4.5:1) in both themes**, asserted.
+  This caught two real defects: light `occupied` was 3.68:1 (AA-large only)
+  and the reconnecting chip was 2.80:1.
+- Dark `occupied`/`overstay` additionally must not be near-grey (channel
+  spread > 80), because a dark theme built by dimming makes exactly the two
+  attention states recede.
+
+### The connection indicator is NOT a status colour
+
+It was green, and that was a bug: an empty lot is a field of green tiles, so a
+green dot said nothing — and the connection state is the one thing an attendant
+MUST notice changing, since a dashboard that has silently stopped updating
+looks exactly like a quiet lot.
+
+`live` is now an **inverted chip** — near-black on light, near-white on dark.
+It is the only inverted element on the screen, so it reads against any grid,
+and it is not a hue so it cannot collide with a future status colour.
+`CONNECTION_PALETTE` is separate from `STATUS_PALETTE` for that reason, and a
+test asserts `live` contrasts ≥3:1 against the `free` tile in both themes.
+Degraded states depart from the dark chip loudly: solid orange then red, a `!`
+glyph, and a pulse.
+
 ### Module resolution: TWO paths, both deliberate
 
 Workspace packages (`@laqum/shared`, `@laqum/db`) are consumed two ways, and

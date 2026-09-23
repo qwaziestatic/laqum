@@ -5,6 +5,7 @@ export * from './enums.js';
 export * from './errors.js';
 export * from './geo.js';
 export * from './money.js';
+export * from './palette.js';
 export * from './payments.js';
 export * from './realtime.js';
 export * from './schemas.js';
