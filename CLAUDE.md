@@ -97,10 +97,17 @@ pnpm db:seed                    # deterministic dev data
 
 pnpm lint                       # eslint, type-aware
 pnpm format:check               # prettier
-pnpm -r typecheck               # tsc --noEmit in every package
-pnpm -r build                   # topological: shared -> db/dashboard -> api
-pnpm -r test                    # vitest; db and api tests need test:infra:up
+pnpm typecheck                  # every package, plus e2e/
+pnpm build                      # topological: shared -> db/dashboard -> api
+pnpm test                       # vitest; db and api tests need test:infra:up
+
+pnpm e2e:install                # once: Playwright's Chromium
+pnpm e2e                        # builds, then drives a real browser
 ```
+
+Development needs **no build**: the tsx scripts resolve workspace packages
+from source. `pnpm build` is for e2e, Docker and production — see
+"Module resolution" below.
 
 Test ports (55432/56379) deliberately differ from dev ports so a running dev
 stack cannot collide with a test run, and a mistyped URL cannot point tests at
