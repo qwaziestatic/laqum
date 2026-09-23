@@ -46,7 +46,7 @@ everywhere. All dependencies are pinned exactly (`save-exact=true`).
 | --------- | ------------------------------------------------------------------------------------------ |
 | API       | Express 5.2.1, Socket.io 4.8.3 (Phase 3), BullMQ 6.3.8 (Phase 1), Kysely 0.29.6, pg 8.23.0 |
 | Dashboard | Vite 8.3.0, React 19.3.0, Tailwind 4.3.3, i18next 26.4.2                                   |
-| Mobile    | Expo SDK 57 — **scaffolded in Phase 4, not before**                                        |
+| Mobile    | Expo SDK 57 (react-native 0.86.3, react 19.2.3 — Expo's pins, not the registry's)          |
 | Shared    | zod 4.6.5                                                                                  |
 | Testing   | Vitest 5.0.1, supertest 7.2.2, real Postgres 16 + Redis 7                                  |
 
@@ -70,7 +70,7 @@ everywhere. All dependencies are pinned exactly (`save-exact=true`).
 ```
 apps/api/         @laqum/api        Express + Socket.io + BullMQ
 apps/dashboard/   @laqum/dashboard  Vite + React attendant web app
-apps/mobile/      @laqum/mobile     Expo driver app — PHASE 4, does not exist yet
+apps/mobile/      @laqum/mobile     Expo driver app (expo-router); source-bundled by Metro
 packages/shared/  @laqum/shared     types, zod schemas, state table, billing, constants
 db/               @laqum/db         migrations, seed, Kysely connection + generated types
 ```
