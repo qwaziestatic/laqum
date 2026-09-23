@@ -550,6 +550,54 @@ in the state machine becomes a new test. **Verified:** removing the
   dead connection go unnoticed for ~45s, which defeats the point of a
   connection indicator.
 
+### Module resolution: TWO paths, both deliberate
+
+Workspace packages (`@laqum/shared`, `@laqum/db`) are consumed two ways, and
+`exports` is the only thing that decides which:
+
+```json
+"exports": { ".": {
+  "types":       "./src/index.ts",   ← TypeScript, always source
+  "development": "./src/index.ts",   ← tsx, with --conditions=development
+  "import":      "./dist/...",       ← Node at runtime
+  "default":     "./dist/..."        ← what production gets
+}}
+```
+
+**tsx does NOT redirect bare specifiers to source.** It strips types from the
+files it loads and otherwise uses Node's resolver, which honours `exports`.
+Before the `development` condition existed, every tsx entry point
+(`api dev`, `db migrate`, `db seed`) was silently running against `dist/` and
+worked only because a build had been run at some point — they all failed on a
+fresh clone. Vitest reached source solely through the explicit aliases in its
+config, which is why the unit tests never noticed.
+
+Order matters: `development` must precede `import`/`default`, because Node
+takes the first matching condition. Node applies no `development` condition of
+its own, so production is unaffected — only the `--conditions=development`
+flag in those three scripts turns it on.
+
+**Which path each thing exercises:**
+
+|                                    | Path     | Why                                         |
+| ---------------------------------- | -------- | ------------------------------------------- |
+| `tsc`, all typechecking            | source   | `types` condition                           |
+| Unit tests (vitest)                | source   | explicit aliases in the vitest configs      |
+| `api dev`, `db migrate`, `db seed` | source   | `--conditions=development`                  |
+| **e2e**                            | **dist** | runs `node dist/server.js` + `vite preview` |
+| Docker image, production           | dist     | `import`/`default`                          |
+
+e2e runs the COMPILED API and the BUILT dashboard on purpose: it is the last
+gate before a release, so it should exercise the resolution that ships.
+Otherwise the build is never exercised by a running process and a broken
+`dist/` reaches production untested. `pnpm e2e` builds first so `dist` cannot
+be stale; the CI job keeps its own `Build` step so a build failure reads as
+one rather than as "webServer did not start".
+
+`vite preview` does **not** inherit `server.proxy` — it has its own
+`preview.proxy`. Both share one object in `vite.config.ts` so they cannot
+drift.
+
 ### Phase 3 facts worth keeping
 
 - **Windows reserves TCP ranges** (here 5199-5298) for Hyper-V/WinNAT. Binding

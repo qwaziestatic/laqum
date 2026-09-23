@@ -29,6 +29,11 @@ pnpm --filter @laqum/api dev          # API on :3000
 pnpm --filter @laqum/dashboard dev    # dashboard on :5173
 ```
 
+No build step is needed for development: the tsx-based scripts above resolve
+`@laqum/shared` and `@laqum/db` from TypeScript source via a `development`
+export condition. `pnpm build` is only needed for the e2e suite, the Docker
+image, and production. See CLAUDE.md, "Module resolution".
+
 Or run the whole stack, API included:
 
 ```bash
@@ -52,13 +57,18 @@ mocked.
 ```bash
 pnpm e2e:install       # once: downloads Playwright's Chromium
 pnpm test:infra:up
-pnpm e2e               # starts the API and Vite itself, then runs the browser
+pnpm e2e               # builds, starts the API and web server, runs the browser
 ```
 
-The e2e suite starts its own API (port 3100) and Vite server (port 5673), both
-pointed at the **test** database, and drives a real browser holding a real
-socket. The two-screen test measures how long a change takes to reach a second
-screen and prints it:
+The e2e suite runs the **compiled** API (`node dist/server.js`, port 3100) and
+the **built** dashboard (`vite preview`, port 5673), both pointed at the
+**test** database, and drives a real browser holding a real socket. It runs the
+built artefacts rather than the dev servers because it is the last gate before
+a release and should exercise the same module resolution production uses — so
+`pnpm e2e` builds first, and the build cannot be skipped or go stale.
+
+The two-screen test measures how long a change takes to reach a second screen
+and prints it:
 
 |       | Budget      | Why                                                                                                                              |
 | ----- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
