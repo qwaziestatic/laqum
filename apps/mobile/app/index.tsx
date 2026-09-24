@@ -1,6 +1,6 @@
 import { formatBirr } from '@laqum/shared';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, Map, Marker, UserLocation } from '@maplibre/maplibre-react-native';
 import type { NearbyLot } from '../src/api/endpoints.js';
@@ -11,7 +11,7 @@ import {
   type LocationResult,
   type PermissionPrompt,
 } from '../src/location/useLocation.js';
-import { latestOnly } from '../src/latest.js';
+import { createLotsLoader } from '../src/home/lotsLoader.js';
 import { useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
 import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../src/ui.js';
@@ -34,7 +34,8 @@ export default function Home(): React.JSX.Element {
   const [location, setLocation] = useState<LocationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
-  const [latest] = useState(latestOnly);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   // Not before the saved session is restored: a request sent without the
   // token comes back 401 and would show as an error instead of lots. On the
@@ -47,34 +48,35 @@ export default function Home(): React.JSX.Element {
     if (ready && !session) router.replace('/login');
   }, [ready, session]);
 
-  /**
-   * Fetch lots for one position report. Quick and fresh reports each fetch,
-   * and a newer report must win however the responses interleave.
-   */
-  const showLotsFor = useCallback(
-    async (result: LocationResult) => {
-      const ticket = latest.take();
-      setLocation(result);
-      // No position: fall back to the city centre so the driver still sees
-      // lots and can browse. Distances will be wrong until they allow it,
-      // and the banner says so.
-      const response =
-        result.kind === 'fix'
-          ? await api.nearbyLots(result.fix.latitude, result.fix.longitude)
-          : await api.nearbyLots(9.0192, 38.7525, 10_000);
-      if (!latest.isCurrent(ticket)) return;
-      if (response.ok) setLots(response.data.lots);
-      else setError(response.error.message);
-    },
-    [api, latest],
-  );
-
   /*
    * Lots appear from the platform's LAST-KNOWN position at once, then again
    * for a fresh fix. Measured on the device: the fresh fix took 60 ms, 1.4 s
    * and 17 s on three cold starts, the last-known one under 0.3 s at the
-   * same accuracy, and the list used to wait for the fresh one.
-   *
+   * same accuracy, and the list used to wait for the fresh one. The loader
+   * (src/home/lotsLoader.ts) fetches per report and applies only the newest.
+   */
+  const loader = useMemo(
+    () =>
+      createLotsLoader({
+        locate: getFixQuickThenFresh,
+        // No position: fall back to the city centre so the driver still sees
+        // lots and can browse. Distances will be wrong until they allow it,
+        // and the banner says so.
+        fetchLots: (result) =>
+          result.kind === 'fix'
+            ? api.nearbyLots(result.fix.latitude, result.fix.longitude)
+            : api.nearbyLots(9.0192, 38.7525, 10_000),
+        onLocation: setLocation,
+        onLots: (next) => {
+          setLots(next);
+          setUpdatedAt(new Date());
+        },
+        onError: setError,
+      }),
+    [api],
+  );
+
+  /*
    * `prompt`: see PermissionPrompt. Automatic reloads must never re-ask: on
    * Android every ask pauses and resumes the activity, which is itself a
    * "return to the foreground" and would reload, and ask, again.
@@ -82,12 +84,25 @@ export default function Home(): React.JSX.Element {
   const load = useCallback(
     async (prompt: PermissionPrompt) => {
       setError(null);
-      await getFixQuickThenFresh(prompt, (result) => {
-        void showLotsFor(result);
-      });
+      await loader.load(prompt);
     },
-    [showLotsFor],
+    [loader],
   );
+
+  /**
+   * A tap on Refresh or Try again. Shows that it is working until the new
+   * lots have LANDED: the device test found Refresh gave no feedback, so a
+   * driver could not tell a refresh that changed nothing from one that never
+   * ran.
+   */
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load('on-tap');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
   // On focus AND on return to the foreground: free counts go stale fast.
   useFocusEffect(
@@ -134,7 +149,7 @@ export default function Home(): React.JSX.Element {
                 : 'Your location could not be found, so distances are estimated.'
           }
           actionLabel="Try again"
-          onAction={() => void load('on-tap')}
+          onAction={() => void refresh()}
         />
       ) : null}
 
@@ -230,7 +245,20 @@ export default function Home(): React.JSX.Element {
       />
 
       <View style={[styles.actions, { paddingBottom: bottomInset }]}>
-        <Button label="Refresh" tone="plain" onPress={() => void load('on-tap')} testID="refresh" />
+        {updatedAt ? (
+          // With seconds: a refresh inside the same minute must still visibly
+          // change something, or the driver cannot tell it ran.
+          <Body
+            muted
+          >{`Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}</Body>
+        ) : null}
+        <Button
+          label={refreshing ? 'Refreshing…' : 'Refresh'}
+          tone="plain"
+          busy={refreshing}
+          onPress={() => void refresh()}
+          testID="refresh"
+        />
       </View>
     </View>
   );
