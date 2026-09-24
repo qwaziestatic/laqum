@@ -93,7 +93,7 @@ const config: ExpoConfig = {
            * FALSE in production, explicitly. This is the setting that would
            * be genuinely dangerous to leave on in a shipped app, so it is
            * keyed off EAS_BUILD_PROFILE rather than left to a default, and
-           * `expo prebuild` output is checked in DEVICE-TEST.md step 3c.
+           * `expo prebuild` output is checked in DEVICE-TEST.md step 3a.
            */
           usesCleartextTraffic: !isProduction,
         },
