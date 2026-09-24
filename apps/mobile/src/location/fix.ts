@@ -47,8 +47,20 @@ export interface LocationDeps {
   getPermission: () => Promise<PermissionState>;
   /** May show the dialog, and on Android ALWAYS pauses the activity. */
   requestPermission: () => Promise<PermissionState>;
+  /** A fresh fix. Measured on the device test at 60 ms to 17 s. */
   currentPosition: () => Promise<Fix>;
+  /** The platform's cached fix, or null. Measured at 59–275 ms. */
+  lastKnownPosition: () => Promise<Fix | null>;
+  /** Epoch millis, the same clock as Fix.timestampMs. */
+  now: () => number;
 }
+
+/**
+ * How old a last-known fix may be and still be shown first. The fresh fix
+ * replaces it within seconds, and it never reaches the booking gate, so this
+ * only bounds how wrong the list can look for those seconds.
+ */
+export const QUICK_FIX_MAX_AGE_MS = 10 * 60_000;
 
 /*
  * The three failures are genuinely different problems with different fixes,
@@ -78,10 +90,11 @@ export function shouldAsk(permission: PermissionState, prompt: PermissionPrompt)
   return prompt === 'on-tap' && permission.canAskAgain;
 }
 
-export async function resolveFix(
+/** Services, then permission under `prompt`. Null means a position may be read. */
+async function access(
   prompt: PermissionPrompt,
   deps: LocationDeps,
-): Promise<LocationResult> {
+): Promise<LocationFailure | null> {
   // Services BEFORE permission: a granted permission is useless with the
   // device toggle off, and reporting "permission denied" there is a lie.
   if (!(await deps.servicesEnabled())) return { kind: 'services_off' };
@@ -91,7 +104,10 @@ export async function resolveFix(
   if (permission.status !== 'granted') {
     return { kind: 'permission_denied', canAskAgain: permission.canAskAgain };
   }
+  return null;
+}
 
+async function freshFix(deps: LocationDeps): Promise<LocationResult> {
   try {
     return { kind: 'fix', fix: await deps.currentPosition() };
   } catch (err) {
@@ -100,4 +116,52 @@ export async function resolveFix(
       message: err instanceof Error ? err.message : 'No position could be determined',
     };
   }
+}
+
+/** A fresh fix: what the booking gate needs. */
+export async function resolveFix(
+  prompt: PermissionPrompt,
+  deps: LocationDeps,
+): Promise<LocationResult> {
+  return (await access(prompt, deps)) ?? freshFix(deps);
+}
+
+/**
+ * A quick fix first, then the fresh one: what the lot LIST needs.
+ *
+ * On the device test the list waited for a fresh fix that took 60 ms, 1.4 s
+ * and 17 s on three cold starts, while the platform's last-known fix was
+ * there in under 0.3 s with the same 100 m accuracy.
+ *
+ * `report` is called up to twice, in order: with a last-known fix no older
+ * than QUICK_FIX_MAX_AGE_MS, then with the fresh result. A failed fresh fix
+ * is NOT reported after a quick one, so a usable position is never replaced
+ * by a warning. Failures of access are reported once, and no position is
+ * read without permission.
+ *
+ * NEVER for the booking gate. A last-known fix can be minutes old; the gate
+ * gets resolveFix and checks staleness itself.
+ */
+export async function resolveFixQuickThenFresh(
+  prompt: PermissionPrompt,
+  deps: LocationDeps,
+  report: (result: LocationResult) => void,
+): Promise<void> {
+  const denied = await access(prompt, deps);
+  if (denied) {
+    report(denied);
+    return;
+  }
+
+  let quick: Fix | null = null;
+  try {
+    quick = await deps.lastKnownPosition();
+  } catch {
+    // A cache miss is not worth a warning; the fresh fix decides.
+  }
+  if (quick && deps.now() - quick.timestampMs > QUICK_FIX_MAX_AGE_MS) quick = null;
+  if (quick) report({ kind: 'fix', fix: quick });
+
+  const fresh = await freshFix(deps);
+  if (fresh.kind === 'fix' || !quick) report(fresh);
 }

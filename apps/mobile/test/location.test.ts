@@ -3,7 +3,9 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  QUICK_FIX_MAX_AGE_MS,
   resolveFix,
+  resolveFixQuickThenFresh,
   shouldAsk,
   type LocationDeps,
   type LocationResult,
@@ -26,17 +28,27 @@ const UNDETERMINED: PermissionState = { status: 'undetermined', canAskAgain: tru
 const DENIED: PermissionState = { status: 'denied', canAskAgain: true };
 const BLOCKED: PermissionState = { status: 'denied', canAskAgain: false };
 
-const FIX = { latitude: 9.0092, longitude: 38.7869, accuracyM: 12, timestampMs: 1 };
+const NOW = 1_790_000_000_000;
+const FIX = { latitude: 9.0092, longitude: 38.7869, accuracyM: 12, timestampMs: NOW };
+/** A cached fix 30 s old, as on the device (13–39 s). */
+const CACHED = { latitude: 9.01, longitude: 38.79, accuracyM: 100, timestampMs: NOW - 30_000 };
 
 /**
  * A fake device whose permission behaves like Android's: requesting records
  * the ask (so 'undetermined' becomes 'denied' if refused), and `onRequest`
- * fires the way the activity pause/resume does.
+ * fires the way the activity pause/resume does. No cached fix unless given.
  */
 function device(
   initial: PermissionState,
-  options: { answer?: 'grant' | 'refuse'; onRequest?: () => void } = {},
-): LocationDeps & { requestPermission: ReturnType<typeof vi.fn> } {
+  options: {
+    answer?: 'grant' | 'refuse';
+    onRequest?: () => void;
+    lastKnown?: typeof FIX | null;
+  } = {},
+): LocationDeps & {
+  requestPermission: ReturnType<typeof vi.fn>;
+  lastKnownPosition: ReturnType<typeof vi.fn>;
+} {
   let state = initial;
   const requestPermission = vi.fn(() => {
     options.onRequest?.();
@@ -51,7 +63,19 @@ function device(
     getPermission: () => Promise.resolve(state),
     requestPermission,
     currentPosition: () => Promise.resolve(FIX),
+    lastKnownPosition: vi.fn(() => Promise.resolve(options.lastKnown ?? null)),
+    now: () => NOW,
   };
+}
+
+/** Runs the list's resolver and returns everything it reported, in order. */
+async function reports(
+  prompt: 'first-time' | 'on-tap',
+  deps: LocationDeps,
+): Promise<LocationResult[]> {
+  const seen: LocationResult[] = [];
+  await resolveFixQuickThenFresh(prompt, deps, (result) => seen.push(result));
+  return seen;
 }
 
 describe('shouldAsk', () => {
@@ -137,7 +161,153 @@ describe('resolveFix', () => {
   });
 });
 
-describe('the Android reload loop from the device test', () => {
+describe('resolveFixQuickThenFresh — the lot list', () => {
+  /*
+   * The device test's cold starts: fresh fix 60 ms, 1.4 s and 17 s; the
+   * last-known fix under 0.3 s at the same 100 m accuracy. The list waited
+   * for the fresh one.
+   */
+
+  it('reports the cached fix first, then the fresh one', async () => {
+    const deps = device(GRANTED, { lastKnown: CACHED });
+
+    expect(await reports('first-time', deps)).toEqual([
+      { kind: 'fix', fix: CACHED },
+      { kind: 'fix', fix: FIX },
+    ]);
+  });
+
+  it('does not wait for a slow fresh fix before reporting the cached one', async () => {
+    // A fresh fix that has not arrived yet, like the 17 s one on the device.
+    let arrive: (fix: typeof FIX) => void = () => undefined;
+    const deps = {
+      ...device(GRANTED, { lastKnown: CACHED }),
+      currentPosition: () =>
+        new Promise<typeof FIX>((resolve) => {
+          arrive = resolve;
+        }),
+    };
+    const seen: LocationResult[] = [];
+
+    const done = resolveFixQuickThenFresh('first-time', deps, (result) => seen.push(result));
+    await vi.waitFor(() => {
+      expect(seen).toEqual([{ kind: 'fix', fix: CACHED }]);
+    });
+
+    arrive(FIX);
+    await done;
+    expect(seen).toEqual([
+      { kind: 'fix', fix: CACHED },
+      { kind: 'fix', fix: FIX },
+    ]);
+  });
+
+  it('skips a cached fix older than the limit', async () => {
+    const stale = { ...CACHED, timestampMs: NOW - QUICK_FIX_MAX_AGE_MS - 1 };
+    const deps = device(GRANTED, { lastKnown: stale });
+
+    expect(await reports('first-time', deps)).toEqual([{ kind: 'fix', fix: FIX }]);
+  });
+
+  it('keeps a cached fix exactly at the limit', async () => {
+    const edge = { ...CACHED, timestampMs: NOW - QUICK_FIX_MAX_AGE_MS };
+    const deps = device(GRANTED, { lastKnown: edge });
+
+    expect(await reports('first-time', deps)).toEqual([
+      { kind: 'fix', fix: edge },
+      { kind: 'fix', fix: FIX },
+    ]);
+  });
+
+  it('reports only the fresh fix when nothing is cached', async () => {
+    expect(await reports('first-time', device(GRANTED))).toEqual([{ kind: 'fix', fix: FIX }]);
+  });
+
+  it('never replaces a usable cached fix with a failed fresh one', async () => {
+    const deps = {
+      ...device(GRANTED, { lastKnown: CACHED }),
+      currentPosition: () => Promise.reject(new Error('Location request timed out')),
+    };
+
+    expect(await reports('first-time', deps)).toEqual([{ kind: 'fix', fix: CACHED }]);
+  });
+
+  it('reports the failure when there is nothing better', async () => {
+    const deps = {
+      ...device(GRANTED),
+      currentPosition: () => Promise.reject(new Error('Location request timed out')),
+    };
+
+    expect(await reports('first-time', deps)).toEqual([
+      { kind: 'unavailable', message: 'Location request timed out' },
+    ]);
+  });
+
+  it('treats a failing cache as empty rather than as an error', async () => {
+    const deps = {
+      ...device(GRANTED),
+      lastKnownPosition: () => Promise.reject(new Error('cache unavailable')),
+    };
+
+    expect(await reports('first-time', deps)).toEqual([{ kind: 'fix', fix: FIX }]);
+  });
+
+  it('reads no position at all without permission, and reports the refusal once', async () => {
+    const deps = device(DENIED, { lastKnown: CACHED });
+    const currentPosition = vi.spyOn(deps, 'currentPosition');
+
+    expect(await reports('first-time', deps)).toEqual([
+      { kind: 'permission_denied', canAskAgain: true },
+    ]);
+    expect(deps.lastKnownPosition).not.toHaveBeenCalled();
+    expect(currentPosition).not.toHaveBeenCalled();
+    expect(deps.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it('follows the same asking rules as resolveFix', async () => {
+    const granted = device(GRANTED, { lastKnown: CACHED });
+    await reports('first-time', granted);
+    expect(granted.requestPermission).not.toHaveBeenCalled();
+
+    const fresh = device(UNDETERMINED, { answer: 'grant', lastKnown: CACHED });
+    await reports('first-time', fresh);
+    expect(fresh.requestPermission).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the booking gate never sees a cached fix', () => {
+  it('resolveFix does not read the last-known position', async () => {
+    // A cached fix can be minutes old; the gate must decide on a fresh one.
+    const deps = device(GRANTED, { lastKnown: CACHED });
+
+    expect(await resolveFix('on-tap', deps)).toEqual({ kind: 'fix', fix: FIX });
+    expect(deps.lastKnownPosition).not.toHaveBeenCalled();
+  });
+
+  it('only Home uses the quick-then-fresh resolver', async () => {
+    const app = fileURLToPath(new URL('../app', import.meta.url));
+    const users: string[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) await walk(full);
+        else if ((await readFile(full, 'utf8')).includes('getFixQuickThenFresh')) {
+          users.push(relative(app, full).split('\\').join('/'));
+        }
+      }
+    };
+    await walk(app);
+    expect(users).toEqual(['index.tsx']);
+  });
+});
+
+describe.each([
+  [
+    'Home: quick then fresh',
+    (deps: LocationDeps) => resolveFixQuickThenFresh('first-time', deps, () => undefined),
+  ],
+  ['book screen on mount: fresh', (deps: LocationDeps) => resolveFix('first-time', deps)],
+] as const)('the Android reload loop from the device test — %s', (_name, automaticReload) => {
   const CAP = 100;
 
   /**
@@ -148,7 +318,7 @@ describe('the Android reload loop from the device test', () => {
    */
   async function runHome(
     initial: PermissionState,
-    load: (deps: LocationDeps) => Promise<LocationResult>,
+    load: (deps: LocationDeps) => Promise<unknown>,
     answer: 'grant' | 'refuse' = 'refuse',
   ): Promise<{ requests: number; reloads: number }> {
     let pendingForegrounds = 0;
@@ -168,9 +338,6 @@ describe('the Android reload loop from the device test', () => {
     }
     return { requests: deps.requestPermission.mock.calls.length, reloads };
   }
-
-  const automaticReload = (deps: LocationDeps): Promise<LocationResult> =>
-    resolveFix('first-time', deps);
 
   it('settles at once when permission is already granted — the device-test case', async () => {
     expect(await runHome(GRANTED, automaticReload)).toEqual({ requests: 0, reloads: 1 });
