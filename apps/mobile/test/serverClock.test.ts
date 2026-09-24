@@ -115,3 +115,31 @@ describe('formatting', () => {
     expect(formatRemaining(-5_000)).toBe('00:00');
   });
 });
+
+describe('elapsedMs: overstay counts UP', () => {
+  it('measures time past the planned end on SERVER time', () => {
+    const clock = new ServerClock();
+    clock.sample({ serverMs: SERVER, deviceMs: SERVER + DEVICE_SKEW, monotonicMs: 1_000 });
+    const plannedEnd = new Date(SERVER - 90_000).toISOString();
+
+    // 30 s later on the monotonic clock: 90 s over at the sample, 120 s now.
+    expect(clock.elapsedMs(plannedEnd, 31_000, SERVER + DEVICE_SKEW + 30_000)).toBe(120_000);
+  });
+
+  it('is what remainingMs could never show: remainingMs is stuck at zero', () => {
+    // The device-test bug: "Over by 00:00" for the whole overstay.
+    const clock = new ServerClock();
+    clock.sample({ serverMs: SERVER, deviceMs: SERVER, monotonicMs: 0 });
+    const plannedEnd = new Date(SERVER - 5 * 60_000).toISOString();
+
+    expect(clock.remainingMs(plannedEnd, 0, SERVER)).toBe(0);
+    expect(formatRemaining(clock.elapsedMs(plannedEnd, 0, SERVER))).toBe('05:00');
+  });
+
+  it('is zero before the moment, and for an unparseable one', () => {
+    const clock = new ServerClock();
+    clock.sample({ serverMs: SERVER, deviceMs: SERVER, monotonicMs: 0 });
+    expect(clock.elapsedMs(new Date(SERVER + 60_000).toISOString(), 0, SERVER)).toBe(0);
+    expect(clock.elapsedMs('not a date', 0, SERVER)).toBe(0);
+  });
+});

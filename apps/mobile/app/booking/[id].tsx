@@ -1,10 +1,11 @@
-import { formatBirr } from '@laqum/shared';
+import { formatBirr, isLiveStatus } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import * as Linking from 'expo-linking';
 import type { DriverBooking, LotSummary } from '../../src/api/endpoints.js';
+import { bookingView } from '../../src/booking/view.js';
 import { navigateTo } from '../../src/nav/mapsLink.js';
 import { maybeRegisterForPush } from '../../src/push/registration.js';
 import { pushDeps } from '../../src/push/expoDeps.js';
@@ -18,6 +19,10 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  * RESERVED → the hold countdown, navigate, and the QR to show at the gate.
  * CHECKED_IN / OVERSTAY → time remaining and extend.
  * CHECKED_OUT → straight to payment.
+ * PAID / EXPIRED / CANCELLED → a sentence and "Find another slot".
+ *
+ * WHAT shows in each state — sentence, timer, actions — is decided in one
+ * table, src/booking/view.ts, which view.test.ts checks for every status.
  *
  * One screen rather than three because the booking moves between these states
  * WHILE the driver is looking at it, and a navigation on every transition
@@ -80,8 +85,8 @@ export default function BookingScreen(): React.JSX.Element {
   // if the driver never leaves the screen.
   useEffect(() => {
     if (!booking) return;
-    const live = ['PENDING_PAYMENT', 'RESERVED', 'CHECKED_IN', 'OVERSTAY'].includes(booking.status);
-    if (!live) return;
+    // LIVE_STATUSES is the one definition of "live"; never a local copy.
+    if (!isLiveStatus(booking.status)) return;
     const timer = setInterval(() => void load(), 20_000);
     return () => {
       clearInterval(timer);
@@ -103,21 +108,22 @@ export default function BookingScreen(): React.JSX.Element {
   }
   if (!booking) return <Loading label="Loading your booking…" />;
 
-  const deadline = booking.holdExpiresAt ?? booking.plannedEndAt;
-  const remainingMs = deadline
-    ? client.clock.remainingMs(deadline, performance.now(), Date.now())
-    : null;
-  // `tick` exists only to re-render the countdown each second; the VALUE
-  // above comes from the server clock, not from this counter.
-  const _renderTick = tick;
+  // Everything this screen shows for the status: src/booking/view.ts.
+  const view = bookingView(booking);
 
-  const isHeld = booking.status === 'RESERVED' || booking.status === 'PENDING_PAYMENT';
-  const isParked = booking.status === 'CHECKED_IN' || booking.status === 'OVERSTAY';
+  // The VALUE comes from the server clock; `tick` only re-renders each second.
+  // Overstay counts UP from the planned end (remainingMs clamps at zero).
+  const _renderTick = tick;
+  const timerMs = view.timer
+    ? view.timer.counts === 'down'
+      ? client.clock.remainingMs(view.timer.deadline, performance.now(), Date.now())
+      : client.clock.elapsedMs(view.timer.deadline, performance.now(), Date.now())
+    : null;
 
   return (
     <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
       <Title>{lot?.name ?? 'Your booking'}</Title>
-      <Body muted>{booking.status.replace('_', ' ').toLowerCase()}</Body>
+      <Body muted>{view.sentence}</Body>
 
       {!client.clock.synced ? (
         <Notice
@@ -127,17 +133,15 @@ export default function BookingScreen(): React.JSX.Element {
         />
       ) : null}
 
-      {remainingMs !== null ? (
+      {view.timer && timerMs !== null ? (
         <Card>
-          <Body muted>
-            {isHeld
-              ? 'Slot held for'
-              : booking.status === 'OVERSTAY'
-                ? 'Over by'
-                : 'Time remaining'}
-          </Body>
-          <Title>{formatRemaining(remainingMs)}</Title>
-          {remainingMs === 0 ? <Body muted>Checking with the server…</Body> : null}
+          <Body muted>{view.timer.label}</Body>
+          <Title>{formatRemaining(timerMs)}</Title>
+          {/* A countdown at zero on a LIVE status: the server has yet to move it
+              on (expire, overstay). A finished booking has no card at all. */}
+          {view.timer.counts === 'down' && timerMs === 0 ? (
+            <Body muted>Checking with the server…</Body>
+          ) : null}
         </Card>
       ) : null}
 
@@ -149,7 +153,7 @@ export default function BookingScreen(): React.JSX.Element {
         />
       ) : null}
 
-      {isHeld && booking.qrToken ? (
+      {view.actions.showQr && booking.qrToken ? (
         <Card>
           <Body muted>Show this at the gate</Body>
           <View style={styles.qr}>
@@ -160,7 +164,17 @@ export default function BookingScreen(): React.JSX.Element {
         </Card>
       ) : null}
 
-      {lot ? (
+      {view.actions.findAnotherSlot ? (
+        <Button
+          testID="find-another-slot"
+          label="Find another slot"
+          onPress={() => {
+            router.replace('/');
+          }}
+        />
+      ) : null}
+
+      {lot && view.actions.navigate ? (
         <Button
           testID="navigate"
           label="Navigate"
@@ -190,10 +204,11 @@ export default function BookingScreen(): React.JSX.Element {
         />
       ) : null}
 
-      {isParked ? (
+      {view.actions.extend ? (
         <Button
           testID="extend"
-          label={`Extend by ${String(lot?.blockMinutes ?? 30)} minutes`}
+          // One block: its length is the lot's, and unknown until the lot loads.
+          label={lot ? `Extend by ${String(lot.blockMinutes)} minutes` : 'Extend by one block'}
           busy={busy}
           onPress={() => {
             setBusy(true);
@@ -208,7 +223,7 @@ export default function BookingScreen(): React.JSX.Element {
         />
       ) : null}
 
-      {booking.status === 'CHECKED_OUT' ? (
+      {view.actions.pay ? (
         <Button
           testID="go-to-checkout"
           label={`Pay ${formatBirr(booking.amountDueSantim ?? 0)}`}
@@ -218,7 +233,7 @@ export default function BookingScreen(): React.JSX.Element {
         />
       ) : null}
 
-      {isHeld ? (
+      {view.actions.cancel ? (
         <Button
           testID="cancel-booking"
           label="Cancel booking"

@@ -89,6 +89,18 @@ export class ServerClock {
     if (Number.isNaN(deadline)) return 0;
     return Math.max(0, deadline - this.now(monotonicMs, deviceMs));
   }
+
+  /**
+   * Milliseconds PAST `sinceIso` (server time). Never negative.
+   *
+   * For overstay, which counts up from the planned end. remainingMs clamps at
+   * zero, so the overstay card used to read "Over by 00:00" forever.
+   */
+  elapsedMs(sinceIso: string, monotonicMs: number, deviceMs: number): number {
+    const since = Date.parse(sinceIso);
+    if (Number.isNaN(since)) return 0;
+    return Math.max(0, this.now(monotonicMs, deviceMs) - since);
+  }
 }
 
 /** Parse an HTTP `Date` header into epoch millis, or null if absent/unparseable. */
