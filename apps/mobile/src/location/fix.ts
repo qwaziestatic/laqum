@@ -41,14 +41,24 @@ export interface PermissionState {
   canAskAgain: boolean;
 }
 
+/**
+ * How hard to try for a fresh fix.
+ *
+ * 'balanced' is the default: fast, and usually enough — the gate decides
+ * whether the accuracy is good enough for THIS lot. 'highest' is for when the
+ * gate has just said it is not (need_better_fix): the device test showed the
+ * Retry there asking Balanced again, and getting the same imprecise answer.
+ */
+export type FixAccuracy = 'balanced' | 'highest';
+
 export interface LocationDeps {
   servicesEnabled: () => Promise<boolean>;
   /** A CHECK. Never shows UI and never pauses the activity. */
   getPermission: () => Promise<PermissionState>;
   /** May show the dialog, and on Android ALWAYS pauses the activity. */
   requestPermission: () => Promise<PermissionState>;
-  /** A fresh fix. Measured on the device test at 60 ms to 17 s. */
-  currentPosition: () => Promise<Fix>;
+  /** A fresh fix. Measured on the device test at 60 ms to 17 s (Balanced). */
+  currentPosition: (accuracy: FixAccuracy) => Promise<Fix>;
   /** The platform's cached fix, or null. Measured at 59–275 ms. */
   lastKnownPosition: () => Promise<Fix | null>;
   /** Epoch millis, the same clock as Fix.timestampMs. */
@@ -107,9 +117,9 @@ async function access(
   return null;
 }
 
-async function freshFix(deps: LocationDeps): Promise<LocationResult> {
+async function freshFix(deps: LocationDeps, accuracy: FixAccuracy): Promise<LocationResult> {
   try {
-    return { kind: 'fix', fix: await deps.currentPosition() };
+    return { kind: 'fix', fix: await deps.currentPosition(accuracy) };
   } catch (err) {
     return {
       kind: 'unavailable',
@@ -122,8 +132,9 @@ async function freshFix(deps: LocationDeps): Promise<LocationResult> {
 export async function resolveFix(
   prompt: PermissionPrompt,
   deps: LocationDeps,
+  accuracy: FixAccuracy = 'balanced',
 ): Promise<LocationResult> {
-  return (await access(prompt, deps)) ?? freshFix(deps);
+  return (await access(prompt, deps)) ?? freshFix(deps, accuracy);
 }
 
 /**
@@ -162,6 +173,29 @@ export async function resolveFixQuickThenFresh(
   if (quick && deps.now() - quick.timestampMs > QUICK_FIX_MAX_AGE_MS) quick = null;
   if (quick) report({ kind: 'fix', fix: quick });
 
-  const fresh = await freshFix(deps);
+  const fresh = await freshFix(deps, 'balanced');
   if (fresh.kind === 'fix' || !quick) report(fresh);
+}
+
+/**
+ * Rejects if `work` has not settled within `ms`. For the highest-accuracy
+ * request, which indoors can take far longer than a driver will wait, or
+ * never arrive at all; resolveFix turns the rejection into 'unavailable'.
+ */
+export function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(message));
+    }, ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
 }

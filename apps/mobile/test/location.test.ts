@@ -7,6 +7,7 @@ import {
   resolveFix,
   resolveFixQuickThenFresh,
   shouldAsk,
+  withTimeout,
   type LocationDeps,
   type LocationResult,
   type PermissionState,
@@ -364,7 +365,7 @@ describe.each([
     // loop rather than to pass by construction.
     const requestEveryTime = async (deps: LocationDeps): Promise<LocationResult> => {
       await deps.requestPermission();
-      return { kind: 'fix', fix: await deps.currentPosition() };
+      return { kind: 'fix', fix: await deps.currentPosition('balanced') };
     };
 
     const run = await runHome(GRANTED, requestEveryTime);
@@ -405,5 +406,76 @@ describe('only the binding may request location permission', () => {
     expect(await readFile(join(MOBILE, BINDING), 'utf8')).toContain(
       'requestForegroundPermissionsAsync',
     );
+  });
+});
+
+describe('fix accuracy', () => {
+  /*
+   * On the device test the imprecise-fix Retry asked Balanced again and got
+   * the same imprecise answer. 'highest' is now asked for there, and only
+   * there; everything else stays Balanced, which is fast.
+   */
+
+  function spyingDevice(): LocationDeps & { currentPosition: ReturnType<typeof vi.fn> } {
+    return { ...device(GRANTED), currentPosition: vi.fn(() => Promise.resolve(FIX)) };
+  }
+
+  it('asks Balanced by default', async () => {
+    const deps = spyingDevice();
+    await resolveFix('on-tap', deps);
+    expect(deps.currentPosition).toHaveBeenCalledWith('balanced');
+  });
+
+  it("asks the platform's highest accuracy when told to", async () => {
+    const deps = spyingDevice();
+    await resolveFix('on-tap', deps, 'highest');
+    expect(deps.currentPosition).toHaveBeenCalledWith('highest');
+  });
+
+  it('keeps the lot list on Balanced', async () => {
+    const deps = spyingDevice();
+    await reports('first-time', deps);
+    expect(deps.currentPosition.mock.calls).toEqual([['balanced']]);
+  });
+});
+
+describe('withTimeout', () => {
+  it('passes a value through when it arrives in time', async () => {
+    await expect(withTimeout(Promise.resolve(7), 1_000, 'late')).resolves.toBe(7);
+  });
+
+  it('rejects with the message when the work does not settle in time', async () => {
+    vi.useFakeTimers();
+    try {
+      const never = new Promise<never>(() => undefined);
+      const bounded = withTimeout(never, 20_000, 'No precise position within 20 seconds');
+      const settled = expect(bounded).rejects.toThrow('No precise position within 20 seconds');
+      await vi.advanceTimersByTimeAsync(20_000);
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('passes a failure through unchanged', async () => {
+    await expect(withTimeout(Promise.reject(new Error('GPS off')), 1_000, 'late')).rejects.toThrow(
+      'GPS off',
+    );
+  });
+
+  it('turns a timed-out highest-accuracy fix into "unavailable"', async () => {
+    vi.useFakeTimers();
+    try {
+      const deps = {
+        ...device(GRANTED),
+        currentPosition: () =>
+          withTimeout(new Promise<typeof FIX>(() => undefined), 20_000, 'No precise position'),
+      };
+      const result = resolveFix('on-tap', deps, 'highest');
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await result).toEqual({ kind: 'unavailable', message: 'No precise position' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

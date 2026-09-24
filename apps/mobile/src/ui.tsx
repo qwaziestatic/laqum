@@ -61,11 +61,15 @@ export function Button({
         },
       ]}
     >
-      {busy ? (
-        <ActivityIndicator color={color} />
-      ) : (
+      {/*
+       * The label stays visible while busy, next to the spinner: it says WHAT
+       * is in progress ("Getting a more precise location…", "Refreshing…").
+       * A bare spinner hid that, which the device test found on two screens.
+       */}
+      <View style={styles.buttonRow}>
+        {busy ? <ActivityIndicator color={color} /> : null}
         <Text style={[styles.buttonLabel, { color }]}>{label}</Text>
-      )}
+      </View>
     </Pressable>
   );
 }
@@ -169,6 +173,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
+  buttonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   buttonLabel: { fontSize: 17, fontWeight: '800' },
   card: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 8 },
   title: { fontSize: 22, fontWeight: '800' },

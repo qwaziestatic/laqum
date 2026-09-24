@@ -4,13 +4,18 @@ import type { Fix } from './gate.js';
 import {
   resolveFix,
   resolveFixQuickThenFresh,
+  withTimeout,
+  type FixAccuracy,
   type LocationDeps,
   type LocationResult,
   type PermissionPrompt,
   type PermissionState,
 } from './fix.js';
 
-export type { LocationFailure, LocationResult, PermissionPrompt } from './fix.js';
+export type { FixAccuracy, LocationFailure, LocationResult, PermissionPrompt } from './fix.js';
+
+/** How long a highest-accuracy request may take before it counts as unavailable. */
+const HIGHEST_ACCURACY_TIMEOUT_MS = 20_000;
 
 /**
  * The expo-location binding for fix.ts, which holds the decisions — above all
@@ -43,16 +48,26 @@ export const expoLocationDeps: LocationDeps = {
   servicesEnabled: () => Location.hasServicesEnabledAsync(),
   getPermission: async () => toPermission(await Location.getForegroundPermissionsAsync()),
   requestPermission: async () => toPermission(await Location.requestForegroundPermissionsAsync()),
-  currentPosition: async () =>
-    toFix(
-      await Location.getCurrentPositionAsync({
-        // Balanced, not Highest: Highest waits for GPS lock, which in a city
-        // street can take 30s or never. The gate decides whether the accuracy
-        // we got is good enough for THIS lot, so a fast coarse fix is often
-        // sufficient and a slow precise one often unnecessary.
-        accuracy: Location.Accuracy.Balanced,
-      }),
-    ),
+  currentPosition: async (accuracy) => {
+    if (accuracy === 'balanced') {
+      // Balanced by default, not Highest: Highest waits for GPS lock, which
+      // in a city street can take 30 s or never. The gate decides whether
+      // the accuracy we got is good enough for THIS lot, so a fast coarse fix
+      // is often sufficient and a slow precise one often unnecessary.
+      return toFix(
+        await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      );
+    }
+    // Highest, only once the gate has said Balanced was not precise enough —
+    // and bounded, because it may never lock indoors.
+    return toFix(
+      await withTimeout(
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest }),
+        HIGHEST_ACCURACY_TIMEOUT_MS,
+        'No precise position within 20 seconds',
+      ),
+    );
+  },
   lastKnownPosition: async () => {
     const position = await Location.getLastKnownPositionAsync();
     return position ? toFix(position) : null;
@@ -60,9 +75,15 @@ export const expoLocationDeps: LocationDeps = {
   now: () => Date.now(),
 };
 
-/** See PermissionPrompt: 'first-time' unless the driver just pressed a button. */
-export function getFix(prompt: PermissionPrompt): Promise<LocationResult> {
-  return resolveFix(prompt, expoLocationDeps);
+/**
+ * See PermissionPrompt: 'first-time' unless the driver just pressed a button.
+ * See FixAccuracy: 'highest' only after the gate said the fix was too coarse.
+ */
+export function getFix(
+  prompt: PermissionPrompt,
+  accuracy: FixAccuracy = 'balanced',
+): Promise<LocationResult> {
+  return resolveFix(prompt, expoLocationDeps, accuracy);
 }
 
 /**

@@ -5,7 +5,8 @@ import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'rea
 import * as WebBrowser from 'expo-web-browser';
 import type { LotSummary } from '../../src/api/endpoints.js';
 import { decide, gate, type GateDecision } from '../../src/location/gate.js';
-import { getFix, type PermissionPrompt } from '../../src/location/useLocation.js';
+import { getFix, type FixAccuracy, type PermissionPrompt } from '../../src/location/useLocation.js';
+import { bookButton } from '../../src/booking/button.js';
 import { bookingRequest } from '../../src/booking/request.js';
 import { useApp } from '../../src/state/app.js';
 import { useTheme } from '../../src/theme.js';
@@ -20,6 +21,11 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  * The server is still the authority: a `proceed` here can still come back
  * TOO_FAR, and that answer wins.
  */
+/** A location failure on screen, with the recovery that actually helps. */
+type LocationProblem =
+  | { kind: 'blocked'; message: string }
+  | { kind: 'unavailable'; message: string; retryAccuracy: FixAccuracy };
+
 export default function Book(): React.JSX.Element {
   const { lotId } = useLocalSearchParams<{ lotId: string }>();
   const theme = useTheme();
@@ -30,10 +36,11 @@ export default function Book(): React.JSX.Element {
   const [blocks, setBlocks] = useState(2);
   const [plate, setPlate] = useState('');
   const [decision, setDecision] = useState<GateDecision | null>(null);
-  const [locating, setLocating] = useState(false);
+  // The accuracy of the check in flight; false when none is running.
+  const [locating, setLocating] = useState<false | FixAccuracy>(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [locationProblem, setLocationProblem] = useState<string | null>(null);
+  const [locationProblem, setLocationProblem] = useState<LocationProblem | null>(null);
 
   useEffect(() => {
     if (!lotId) return;
@@ -48,29 +55,47 @@ export default function Book(): React.JSX.Element {
    *
    * `prompt`: 'first-time' when it runs by itself, 'on-tap' from a button.
    * See PermissionPrompt for why an automatic check must never re-ask.
+   * `accuracy`: 'highest' only for the Retry after need_better_fix.
    */
   const checkLocation = useCallback(
-    async (prompt: PermissionPrompt): Promise<GateDecision | null> => {
+    async (
+      prompt: PermissionPrompt,
+      accuracy: FixAccuracy = 'balanced',
+    ): Promise<GateDecision | null> => {
       if (!lot) return null;
-      setLocating(true);
+      setLocating(accuracy);
       setLocationProblem(null);
       try {
-        const fix = await getFix(prompt);
+        const fix = await getFix(prompt, accuracy);
+        // A failed check replaces the last decision, so the screen never shows
+        // a stale gate notice next to the new problem.
+        if (fix.kind !== 'fix') setDecision(null);
 
         if (fix.kind === 'services_off') {
-          setLocationProblem('Location is switched off. Turn it on to book a slot.');
+          setLocationProblem({
+            kind: 'blocked',
+            message: 'Location is switched off. Turn it on to book a slot.',
+          });
           return null;
         }
         if (fix.kind === 'permission_denied') {
-          setLocationProblem(
-            fix.canAskAgain
+          setLocationProblem({
+            kind: 'blocked',
+            message: fix.canAskAgain
               ? 'Laqum needs your location to confirm you are close enough to this lot.'
               : 'Location permission is blocked. Allow it in Settings to book.',
-          );
+          });
           return null;
         }
         if (fix.kind === 'unavailable') {
-          setLocationProblem('Your position could not be found. Step outside and try again.');
+          setLocationProblem({
+            kind: 'unavailable',
+            message:
+              accuracy === 'highest'
+                ? 'A precise position did not arrive in time. Step into the open, away from buildings, and try again.'
+                : 'Your position could not be found. Step outside and try again.',
+            retryAccuracy: accuracy,
+          });
           return null;
         }
 
@@ -113,7 +138,11 @@ export default function Book(): React.JSX.Element {
     const fix = await getFix('on-tap');
     if (fix.kind !== 'fix') {
       setBusy(false);
-      setLocationProblem('Your position could not be confirmed. Try again.');
+      setLocationProblem({
+        kind: 'unavailable',
+        message: 'Your position could not be confirmed. Try again.',
+        retryAccuracy: 'balanced',
+      });
       return;
     }
 
@@ -167,7 +196,12 @@ export default function Book(): React.JSX.Element {
     new Date(minutes * 60_000),
   );
 
-  const canBook = decision?.kind === 'proceed';
+  const button = bookButton({
+    locating,
+    decision,
+    locationProblem: locationProblem?.kind ?? false,
+    booking: busy,
+  });
 
   return (
     <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
@@ -232,9 +266,14 @@ export default function Book(): React.JSX.Element {
         <Notice
           tone="warn"
           testID="location-problem"
-          message={locationProblem}
-          actionLabel="Open settings"
-          onAction={() => void Linking.openSettings()}
+          message={locationProblem.message}
+          // Settings fixes a switch or a permission; only retrying fixes a
+          // position that did not arrive.
+          actionLabel={locationProblem.kind === 'blocked' ? 'Open settings' : 'Retry'}
+          onAction={() => {
+            if (locationProblem.kind === 'blocked') void Linking.openSettings();
+            else void checkLocation('on-tap', locationProblem.retryAccuracy);
+          }}
         />
       ) : null}
 
@@ -251,8 +290,10 @@ export default function Book(): React.JSX.Element {
           tone="warn"
           testID="gate-need-better-fix"
           message={`Your position is accurate to about ${String(Math.round(decision.accuracyM))} m, which is not precise enough this close to the limit. Step into the open and try again.`}
-          actionLabel="Retry"
-          onAction={() => void checkLocation('on-tap')}
+          actionLabel="Retry precisely"
+          // Balanced just said it was not precise enough; asking Balanced again
+          // gets the same answer. The platform's highest accuracy, bounded.
+          onAction={() => void checkLocation('on-tap', 'highest')}
         />
       ) : null}
 
@@ -270,9 +311,9 @@ export default function Book(): React.JSX.Element {
 
       <Button
         testID="confirm-booking"
-        label={canBook ? 'Hold this slot' : 'Checking your location…'}
-        busy={busy || locating}
-        disabled={!canBook}
+        label={button.label}
+        busy={busy || locating !== false}
+        disabled={!button.enabled}
         onPress={() => void book()}
       />
     </ScrollView>
