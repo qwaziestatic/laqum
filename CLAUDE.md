@@ -803,6 +803,25 @@ request failed" — indistinguishable from a firewall problem.
 generated manifest: **development `"true"`, production `"false"`**, with no
 `networkSecurityConfig` involved.
 
+**The development APK carries NO JavaScript.** `developmentClient: true` makes
+the EAS worker run `:app:assembleDebug`, and RN 0.86 does not bundle
+debuggable variants. The app's code AND its config come from Metro when the
+`expo-dev-client` launcher connects. That package was missing until it was
+added deliberately; eas-cli refuses a dev-client build without it and offers
+to install it mid-build. Consequences, verified by reading the manifest Metro
+serves:
+
+- `EXPO_PUBLIC_API_URL` and `extra.eas.projectId` reach the app from **Metro's
+  environment when Metro starts**: `apps/mobile/.env.local`, with an exported
+  shell value winning. The repo-root `.env` is not read by Metro.
+- `eas.json`'s `build.development.env` never reaches the app in this build.
+- On a real phone the launcher's server list stays empty: Expo CLI advertises
+  over mDNS only with `EXPO_UNSTABLE_BONJOUR`. Connect by QR or typed URL.
+
+**Nothing loads `.env`.** The API and the db scripts read `process.env` only,
+so a shell must export it first (`set -a; . ./.env; set +a` in Git Bash).
+The db CLI's hint "Copy .env.example to .env" is not sufficient on its own.
+
 **`SEED_TEST_LOT_LAT`/`LNG` seed a lot where the TESTER is** — 5-minute
 blocks, 3-minute hold, six slots, 150 m default radius — because arrival,
 distance and the gate cannot be tested from outside Addis. `testLotFromEnv`
@@ -816,14 +835,19 @@ Atlantic and made every booking fail TOO_FAR for an unguessable reason.
 - [ ] **The entire device pass.** [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md),
       18 numbered steps. Nothing touching a camera, GPS, Keystore, Chapa's
       browser, the Maps hand-off, or push has been run.
-- [ ] **EAS login.** Blocked on the product owner's Expo account; `eas init`
-      must write a real `projectId` into `app.json` or push registration
-      cannot work.
-- [ ] **Google Maps Android API key** — the map renders blank grey without
-      one. Read from `GOOGLE_MAPS_ANDROID_API_KEY`; nothing is committed. The
-      key ships inside the APK and is extractable, so the real protection is
-      the Google Cloud restriction to package + signing SHA-1, not secrecy —
-      DEVICE-TEST.md step 3b.
+- [ ] **Link the EXISTING Expo project `@dagisha-dev-works/laqum`** (owner
+      is the organisation; `dagi-dev` is only the login). DEVICE-TEST step 5.
+      **Decided:** `owner` and `extra.eas.projectId` are written LITERALLY
+      in `app.config.ts`, replacing `EAS_PROJECT_ID`. `eas init --id` cannot
+      write a dynamic config, and an env var would have to reach eas-cli, the
+      EAS worker and Metro separately. The ID is not a secret — it ships in
+      every APK. Never let eas-cli create a project: with no ID in the config
+      it prints "EAS project not configured." and fetches-or-creates.
+- [ ] **FCM credentials for Android push.** `getExpoPushTokenAsync` needs
+      Firebase (`googleServicesFile`), which the app does not have; the call
+      rejects and `src/push/expoDeps.ts` swallows it by design, so
+      DEVICE-TEST step 12 expects NO `push_tokens` row. Needed before Phase 5
+      can deliver anything. Firebase Spark is card-free.
 - [ ] **iOS is untested.** Configuration is present and valid; no build has
       ever been produced. Device testing is Android-only by decision.
 
