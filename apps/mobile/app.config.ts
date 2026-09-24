@@ -28,6 +28,12 @@ const isProduction = profile === 'production';
 const config: ExpoConfig = {
   name: 'ላቁም?',
   slug: 'laqum',
+  /*
+   * The project belongs to the ORGANISATION, not to whoever is logged in.
+   * Without `owner`, Expo tooling assumes the logged-in account (dagi-dev)
+   * and the project id below would not match it. See extra.eas.projectId.
+   */
+  owner: 'dagisha-dev-works',
   version: '0.1.0',
   orientation: 'portrait',
   scheme: 'laqum',
@@ -106,9 +112,21 @@ const config: ExpoConfig = {
   extra: {
     apiUrl,
     eas: {
-      // Written by `eas init`; empty until then, which is why push
-      // registration cannot work before it.
-      projectId: process.env.EAS_PROJECT_ID ?? '',
+      /*
+       * The EXISTING project @dagisha-dev-works/laqum. Literal, by decision
+       * (CLAUDE.md, Phase 4 open items):
+       *
+       * - `eas init --id` cannot write into a dynamic config, so it cannot
+       *   put this here itself;
+       * - it is not a secret: it ships inside every APK;
+       * - a literal reaches all three readers alike: eas-cli, the EAS build
+       *   machine (which never sees a developer's shell), and Metro, which
+       *   serves it to the app for push registration.
+       *
+       * Never remove it to "re-link": with no id, eas-cli prints
+       * "EAS project not configured." and fetches or CREATES a project.
+       */
+      projectId: 'e886a245-6e7e-4e4f-8032-f28b92ec202c',
     },
   },
 };

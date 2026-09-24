@@ -852,6 +852,9 @@ Atlantic and made every booking fail TOO_FAR for an unguessable reason.
       browser, the Maps hand-off, or push has been run.
 - [ ] **Link the EXISTING Expo project `@dagisha-dev-works/laqum`** (owner
       is the organisation; `dagi-dev` is only the login). DEVICE-TEST step 5.
+      **Written:** project id `e886a245-6e7e-4e4f-8032-f28b92ec202c` and
+      `owner` are in `app.config.ts`. Tick this when `eas init --id` and
+      `eas project:info` have confirmed them against Expo's servers.
       **Decided:** `owner` and `extra.eas.projectId` are written LITERALLY
       in `app.config.ts`, replacing `EAS_PROJECT_ID`. `eas init --id` cannot
       write a dynamic config, and an env var would have to reach eas-cli, the
