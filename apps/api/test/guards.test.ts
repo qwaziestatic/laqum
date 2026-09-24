@@ -151,3 +151,35 @@ describe('THE CLOCK LAW: no now() in business SQL', () => {
     expect(ddl).toMatch(/DEFAULT now\(\)/u);
   });
 });
+
+describe('THE BIND LAW: only listen.ts binds a port', () => {
+  /*
+   * Express 5's app.listen(port, callback) hands a bind error TO THE
+   * CALLBACK, so the usual "listening" callback logs success over a process
+   * bound to nothing — and Node does not crash, because the error now has a
+   * listener. That shipped once (see src/listen.ts). listen() resolves only
+   * on a real 'listening' event and rejects everything else.
+   */
+  const LISTEN_CALL = /\.listen\s*\(/u;
+
+  it('finds no .listen( outside listen.ts', async () => {
+    const files = await sourceFiles(SRC);
+    expect(files.map((f) => f.path)).toContain('listen.ts');
+
+    const offenders = files
+      .filter((file) => file.path !== 'listen.ts')
+      .filter((file) => LISTEN_CALL.test(stripComments(file.text)))
+      .map((file) => file.path);
+
+    expect(offenders, 'bind ports through listen() in src/listen.ts').toEqual([]);
+  });
+
+  it('flags a listen call while ignoring prose about one', () => {
+    // Negative-test of the rule, so it cannot rot into a regex matching
+    // nothing, or into one tripped by a comment.
+    expect(LISTEN_CALL.test("app.listen(config.PORT, () => log('up'))")).toBe(true);
+    expect(LISTEN_CALL.test('server.listen (3000)')).toBe(true);
+    expect(LISTEN_CALL.test(stripComments('// NOT app.listen(port, callback)'))).toBe(false);
+    expect(LISTEN_CALL.test('const listener = onListening;')).toBe(false);
+  });
+});

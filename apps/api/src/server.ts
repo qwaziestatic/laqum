@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { createDb, createPool } from '@laqum/db';
 import { systemClock } from '@laqum/shared';
 import { createApp } from './app.js';
@@ -6,6 +7,7 @@ import { ConsoleSmsProvider } from './auth/sms.js';
 import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { BullMqScheduler, startWorkers } from './jobs/bullmq.js';
+import { listen } from './listen.js';
 import { createLogger } from './logger.js';
 import { ChapaProvider } from './payments/chapa.js';
 import { FakePaymentProvider } from './payments/fake.js';
@@ -19,8 +21,11 @@ import { createAdapter } from '@socket.io/redis-adapter';
  *
  * Shutdown here closes the HTTP server and the connection pools. Draining
  * in-flight BullMQ jobs and Socket.io connections is Phase 5.
+ *
+ * The port is bound BEFORE the job workers start, so a process that cannot
+ * serve HTTP exits without having picked up any work.
  */
-function main(): void {
+async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config);
 
@@ -61,25 +66,13 @@ function main(): void {
     sms: new ConsoleSmsProvider(logger),
     rateLimiter: new RateLimiter({ redis, clock: systemClock }),
     provider,
-    // Replaced below, once app.listen() has given us an HTTP server to attach
-    // Socket.io to.
+    // Replaced below, once there is an HTTP server to attach Socket.io to.
     emitter: nullEmitter,
   };
 
-  // One process by default. Phase 5 can split the worker out by running a
-  // second instance with RUN_WORKER=false here and true there.
-  const workers = config.RUN_WORKER
-    ? startWorkers(
-        { db, clock: systemClock, logger, payments: ctx },
-        { connection: queueRedis, clock: systemClock, logger },
-      )
-    : null;
-  if (workers) logger.info({ queues: workers.queueWorkers.length }, 'job workers started');
-
-  const app = createApp(ctx);
-  const server = app.listen(config.PORT, () => {
-    logger.info({ port: config.PORT, env: config.NODE_ENV }, 'ላቁም? API listening');
-  });
+  // NOT app.listen(port, callback): Express 5 calls that callback with the
+  // bind error, so a failed bind would log "listening". See listen.ts.
+  const server = createServer(createApp(ctx));
 
   /*
    * Realtime, with the Redis adapter.
@@ -100,6 +93,24 @@ function main(): void {
   });
   ctx.emitter = new SocketEmitter(realtime.io);
   logger.info('realtime server attached');
+
+  // Rejects with a ListenError if the bind fails; the catch at the bottom of
+  // this file turns that into a loud non-zero exit.
+  const bound = await listen(server, config.PORT);
+  logger.info(
+    { address: bound.address, family: bound.family, port: bound.port, env: config.NODE_ENV },
+    'ላቁም? API listening',
+  );
+
+  // One process by default. Phase 5 can split the worker out by running a
+  // second instance with RUN_WORKER=false here and true there.
+  const workers = config.RUN_WORKER
+    ? startWorkers(
+        { db, clock: systemClock, logger, payments: ctx },
+        { connection: queueRedis, clock: systemClock, logger },
+      )
+    : null;
+  if (workers) logger.info({ queues: workers.queueWorkers.length }, 'job workers started');
 
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
@@ -143,11 +154,19 @@ function main(): void {
   });
 }
 
-try {
-  main();
-} catch (err: unknown) {
-  // The logger may not exist yet (bad config is the usual cause), so this
-  // writes to stderr directly.
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-}
+main().catch((err: unknown) => {
+  /*
+   * Straight to stderr, not the logger: the logger may not exist yet (bad
+   * config is the usual cause), and in development pino writes through a
+   * worker-thread transport that an immediate process.exit can cut off.
+   * Exiting from the write callback means the message is out first.
+   *
+   * The exit is explicit because nothing else would end the process: the
+   * Redis, BullMQ and Socket.io adapter connections opened before the
+   * failure keep the event loop alive indefinitely.
+   */
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`ላቁም? API failed to start: ${message}\n`, () => {
+    process.exit(1);
+  });
+});

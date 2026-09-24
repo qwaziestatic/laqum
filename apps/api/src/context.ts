@@ -26,8 +26,8 @@ export interface AppContext {
   rateLimiter: RateLimiter;
   provider: PaymentProvider;
   /**
-   * Realtime emits. Mutable because the Socket.io server needs the HTTP server
-   * that app.listen() returns, which does not exist until after the context is
+   * Realtime emits. Mutable because the Socket.io server needs the HTTP server,
+   * which wraps the app and so does not exist until after the context is
    * built. Defaults to nullEmitter so nothing has to check for undefined.
    */
   emitter: RealtimeEmitter;
