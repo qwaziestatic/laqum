@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createLotSchema,
   looksLikeShortCode,
+  lotSummarySchema,
+  nearbyLotSchema,
   otpVerifySchema,
   phoneSchema,
   updateLotSchema,
@@ -95,5 +97,49 @@ describe('updateLotSchema', () => {
     expect(created.paymentWindowMinutes).toBe(3);
     expect(created.depositAmountSantim).toBe(0);
     expect(created.maxBookingDistanceM).toBe(10_000);
+  });
+});
+
+describe('lot response schemas', () => {
+  const lot = {
+    id: 'c0911390-4d9f-446d-a29f-3cdd5f6caa5a',
+    name: 'TEST LOT (device testing)',
+    address: null,
+    latitude: 9.040093,
+    longitude: 38.762541,
+    contactPhone: '+251911000000',
+    blockMinutes: 5,
+    ratePerBlockSantim: 500,
+    overstayRatePerBlockSantim: 1000,
+    depositAmountSantim: 0,
+    holdMinutes: 3,
+    paymentWindowMinutes: 3,
+    maxBookingDistanceM: 150,
+    freeSlots: 6,
+    totalAppBookableSlots: 6,
+  };
+
+  it('accepts a lot summary', () => {
+    expect(lotSummarySchema.parse(lot)).toEqual(lot);
+  });
+
+  it("rejects the database's snake_case names", () => {
+    const { blockMinutes: _blockMinutes, ...rest } = lot;
+    expect(lotSummarySchema.safeParse({ ...rest, block_minutes: 5 }).success).toBe(false);
+  });
+
+  it('rejects a number sent as a string', () => {
+    expect(lotSummarySchema.safeParse({ ...lot, ratePerBlockSantim: '500' }).success).toBe(false);
+  });
+
+  it('drops unknown fields rather than failing, for older app versions', () => {
+    expect(lotSummarySchema.parse({ ...lot, addedLater: true })).toEqual(lot);
+  });
+
+  it('requires the distance fields only on a nearby lot', () => {
+    expect(nearbyLotSchema.safeParse(lot).success).toBe(false);
+    expect(
+      nearbyLotSchema.safeParse({ ...lot, distanceM: 0, withinBookingRange: true }).success,
+    ).toBe(true);
   });
 });

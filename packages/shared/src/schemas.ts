@@ -71,6 +71,57 @@ export const nearbyQuerySchema = z.object({
 });
 export type NearbyQuery = z.infer<typeof nearbyQuerySchema>;
 
+/*
+ * RESPONSES. The API's lot service returns these types and the mobile client
+ * parses with these schemas, so the two cannot describe a lot differently.
+ * Before they existed the app hand-wrote its own lot type, typed GET
+ * /lots/:id as a NearbyLot it is not (no distanceM, no withinBookingRange),
+ * and the Book screen cast the camelCase response into computeBill's
+ * snake_case BillableLot — a render crash on the device test.
+ *
+ * Plain z.object, which drops unknown keys: an older app must keep working
+ * when the API adds a field. The API's contract test parses its real
+ * responses STRICTLY (z.strictObject over the same shape) so an addition
+ * the schema does not describe fails there instead.
+ *
+ * No coerce, unlike the query schemas: a number arriving as a string IS the
+ * drift these exist to catch.
+ */
+const santim = z.number().int().nonnegative();
+const count = z.number().int().nonnegative();
+
+export const lotSummarySchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  address: z.string().nullable(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  contactPhone: z.string(),
+  blockMinutes: z.number().int().positive(),
+  ratePerBlockSantim: santim,
+  overstayRatePerBlockSantim: santim,
+  depositAmountSantim: santim,
+  holdMinutes: z.number().int().positive(),
+  paymentWindowMinutes: z.number().int().positive(),
+  maxBookingDistanceM: z.number().int().positive(),
+  /** App-bookable, in-service slots with no live booking. */
+  freeSlots: count,
+  totalAppBookableSlots: count,
+});
+/** GET /v1/lots/:id */
+export type LotSummary = z.infer<typeof lotSummarySchema>;
+
+export const nearbyLotSchema = lotSummarySchema.extend({
+  distanceM: count,
+  /** False when the driver is outside maxBookingDistanceM. */
+  withinBookingRange: z.boolean(),
+});
+export type NearbyLot = z.infer<typeof nearbyLotSchema>;
+
+/** GET /v1/lots/nearby */
+export const nearbyLotsResponseSchema = z.object({ lots: z.array(nearbyLotSchema) });
+export type NearbyLotsResponse = z.infer<typeof nearbyLotsResponseSchema>;
+
 // ─── Bookings ─────────────────────────────────────────────────────────────
 
 export const createBookingSchema = z.object({

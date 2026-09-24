@@ -1,9 +1,9 @@
-import { computeBill, formatBirr, haversineMeters } from '@laqum/shared';
+import { billableLotFromSummary, computeBill, formatBirr, haversineMeters } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import type { NearbyLot } from '../../src/api/endpoints.js';
+import type { LotSummary } from '../../src/api/endpoints.js';
 import { decide, gate, type GateDecision } from '../../src/location/gate.js';
 import { getFix, type PermissionPrompt } from '../../src/location/useLocation.js';
 import { useApp } from '../../src/state/app.js';
@@ -25,7 +25,7 @@ export default function Book(): React.JSX.Element {
   const { api } = useApp();
   const bottomInset = useBottomInset(20);
 
-  const [lot, setLot] = useState<NearbyLot | null>(null);
+  const [lot, setLot] = useState<LotSummary | null>(null);
   const [blocks, setBlocks] = useState(2);
   const [plate, setPlate] = useState('');
   const [decision, setDecision] = useState<GateDecision | null>(null);
@@ -157,7 +157,9 @@ export default function Book(): React.JSX.Element {
       planned_end_at: new Date(minutes * 60_000),
       deposit_paid_santim: 0,
     },
-    lot as unknown as Parameters<typeof computeBill>[1],
+    // The API sends camelCase; computeBill bills from the DB row's names.
+    // This bridge replaced a double cast that crashed the device test.
+    billableLotFromSummary(lot),
     new Date(minutes * 60_000),
   );
 

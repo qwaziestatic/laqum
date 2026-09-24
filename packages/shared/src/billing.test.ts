@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { computeBill, type BillableBooking, type BillableLot } from './billing.js';
+import {
+  billableLotFromSummary,
+  computeBill,
+  type BillableBooking,
+  type BillableLot,
+} from './billing.js';
 
 /** Bole's seeded economics: 30-minute blocks, 20 ETB, 40 ETB overstay. */
 const LOT: BillableLot = {
@@ -209,5 +214,21 @@ describe('the breakdown itself', () => {
   it('omits the deposit line entirely when no deposit was paid', () => {
     const bill = computeBill(appBooking(), LOT, PLANNED_END);
     expect(bill.lines.some((l) => l.kind === 'deposit_credit')).toBe(false);
+  });
+});
+
+describe('billableLotFromSummary', () => {
+  it("maps the API's camelCase lot onto the names computeBill bills from", () => {
+    expect(
+      billableLotFromSummary({
+        blockMinutes: 5,
+        ratePerBlockSantim: 500,
+        overstayRatePerBlockSantim: 1000,
+      }),
+    ).toEqual({
+      block_minutes: 5,
+      rate_per_block_santim: 500,
+      overstay_rate_per_block_santim: 1000,
+    });
   });
 });

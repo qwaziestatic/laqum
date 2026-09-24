@@ -1,3 +1,9 @@
+import {
+  type LotSummary,
+  type NearbyLotsResponse,
+  lotSummarySchema,
+  nearbyLotsResponseSchema,
+} from '@laqum/shared';
 import type { ApiClient, ApiResult, Session } from './client.js';
 
 /**
@@ -8,24 +14,33 @@ import type { ApiClient, ApiResult, Session } from './client.js';
  * a glance rather than scattered through screens.
  */
 
-export interface NearbyLot {
-  id: string;
-  name: string;
-  address: string | null;
-  latitude: number;
-  longitude: number;
-  contactPhone: string;
-  blockMinutes: number;
-  ratePerBlockSantim: number;
-  overstayRatePerBlockSantim: number;
-  depositAmountSantim: number;
-  holdMinutes: number;
-  paymentWindowMinutes: number;
-  maxBookingDistanceM: number;
-  freeSlots: number;
-  totalAppBookableSlots: number;
-  distanceM: number;
-  withinBookingRange: boolean;
+export type { LotSummary, NearbyLot } from '@laqum/shared';
+
+/** Anything with zod's safeParse. Structural, so this app need not depend on zod. */
+interface ResponseSchema<T> {
+  safeParse: (data: unknown) => { success: true; data: T } | { success: false; error: unknown };
+}
+
+/**
+ * Checks a response against the SHARED schema the API's own types come from.
+ *
+ * A mismatch becomes an ordinary error result the screen can show, rather
+ * than a field that reads undefined somewhere deep in a render — which is how
+ * the device test's Book-screen crash surfaced. apps/api/test/lots.test.ts
+ * parses the API's REAL responses with the same schemas.
+ */
+export function parsed<T>(result: ApiResult<unknown>, schema: ResponseSchema<T>): ApiResult<T> {
+  if (!result.ok) return result;
+  const check = schema.safeParse(result.data);
+  if (check.success) return { ok: true, data: check.data };
+  return {
+    ok: false,
+    error: {
+      code: 'BAD_RESPONSE',
+      message: 'The server sent a response this version of the app does not understand.',
+      details: check.error,
+    },
+  };
 }
 
 export interface DriverBooking {
@@ -76,17 +91,25 @@ export class Api {
     });
   }
 
-  nearbyLots(lat: number, lng: number, radiusM = 5000): Promise<ApiResult<{ lots: NearbyLot[] }>> {
+  async nearbyLots(
+    lat: number,
+    lng: number,
+    radiusM = 5000,
+  ): Promise<ApiResult<NearbyLotsResponse>> {
     const query = new URLSearchParams({
       lat: String(lat),
       lng: String(lng),
       radius_m: String(radiusM),
     });
-    return this.#client.request(`/lots/nearby?${query.toString()}`);
+    return parsed(
+      await this.#client.request<unknown>(`/lots/nearby?${query.toString()}`),
+      nearbyLotsResponseSchema,
+    );
   }
 
-  lot(id: string): Promise<ApiResult<NearbyLot>> {
-    return this.#client.request(`/lots/${id}`);
+  /** A LotSummary: unlike the nearby list, no distanceM or withinBookingRange. */
+  async lot(id: string): Promise<ApiResult<LotSummary>> {
+    return parsed(await this.#client.request<unknown>(`/lots/${id}`), lotSummarySchema);
   }
 
   lotLayout(

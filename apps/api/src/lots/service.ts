@@ -1,5 +1,11 @@
 import type { Database } from '@laqum/db';
-import { AppError, type PublicSnapshot, haversineMeters } from '@laqum/shared';
+import {
+  AppError,
+  type LotSummary,
+  type NearbyLot,
+  type PublicSnapshot,
+  haversineMeters,
+} from '@laqum/shared';
 import type { Kysely, Selectable } from 'kysely';
 import { publicSnapshot } from '../realtime/slots.js';
 
@@ -14,30 +20,8 @@ import { publicSnapshot } from '../realtime/slots.js';
 
 type LotRow = Selectable<Database['lots']>;
 
-export interface LotSummary {
-  id: string;
-  name: string;
-  address: string | null;
-  latitude: number;
-  longitude: number;
-  contactPhone: string;
-  blockMinutes: number;
-  ratePerBlockSantim: number;
-  overstayRatePerBlockSantim: number;
-  depositAmountSantim: number;
-  holdMinutes: number;
-  paymentWindowMinutes: number;
-  maxBookingDistanceM: number;
-  /** App-bookable, in-service slots with no live booking. */
-  freeSlots: number;
-  totalAppBookableSlots: number;
-}
-
-export interface NearbyLot extends LotSummary {
-  distanceM: number;
-  /** False when the driver is outside max_booking_distance_m. */
-  withinBookingRange: boolean;
-}
+// The response types are SHARED (lotSummarySchema, nearbyLotSchema), so the
+// mobile client parses exactly what toSummary builds. See apps/api/test/lots.test.ts.
 
 function toSummary(lot: LotRow, freeSlots: number, totalAppBookable: number): LotSummary {
   return {

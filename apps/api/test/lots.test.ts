@@ -1,4 +1,13 @@
-import { STAFF_ONLY_FIELDS, publicSnapshotSchema } from '@laqum/shared';
+import {
+  STAFF_ONLY_FIELDS,
+  type BillableLot,
+  billableLotFromSummary,
+  computeBill,
+  lotSummarySchema,
+  nearbyLotSchema,
+  publicSnapshotSchema,
+} from '@laqum/shared';
+import { z } from 'zod';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { makeActor, type Actor } from './helpers/auth.js';
@@ -253,5 +262,104 @@ describe('GET /v1/lots/:id', () => {
     expect(body.freeSlots).toBe(3);
     // The tap-to-call target.
     expect(body.contactPhone).toMatch(/^\+251/u);
+  });
+});
+
+/*
+ * THE MOBILE APP'S CONTRACT, against REAL responses.
+ *
+ * The app parses lot responses with the shared schemas (apps/mobile/src/api/
+ * endpoints.ts) and prices a booking preview with billableLotFromSummary +
+ * computeBill. The unit tests on both sides passed while the device crashed:
+ * the Book screen cast the API's camelCase lot straight into computeBill's
+ * snake_case BillableLot, and nothing ran the one against the other. These
+ * run the app's exact path on what this API actually sends.
+ */
+describe("the mobile app's contract, on real responses", () => {
+  // TEST LOT's values from the device test: 5-minute blocks, no deposit.
+  const TEST_LOT = {
+    blockMinutes: 5,
+    ratePerBlockSantim: 500,
+    overstayRatePerBlockSantim: 1000,
+    depositSantim: 0,
+  };
+  const strictLot = z.strictObject(lotSummarySchema.shape);
+  const strictNearbyLot = z.strictObject(nearbyLotSchema.shape);
+
+  it('GET /lots/:id is exactly a LotSummary: no field missing, none undescribed', async () => {
+    const lot = await createLot(t.db.db, { slots: 6, ...TEST_LOT, ...BOLE });
+
+    const res = await request(t.app).get(`/v1/lots/${lot.lotId}`).set(driver.header);
+
+    expect(res.status).toBe(200);
+    const parsed = strictLot.safeParse(res.body);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+
+  it('GET /lots/nearby is exactly a list of NearbyLot', async () => {
+    await createLot(t.db.db, { slots: 6, ...TEST_LOT, ...BOLE });
+
+    const res = await request(t.app)
+      .get(`/v1/lots/nearby?lat=${String(BOLE.latitude)}&lng=${String(BOLE.longitude)}`)
+      .set(driver.header);
+
+    expect(res.status).toBe(200);
+    const parsed = z.strictObject({ lots: z.array(strictNearbyLot) }).safeParse(res.body);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    expect((res.body as { lots: unknown[] }).lots).toHaveLength(1);
+  });
+
+  it('GET /lots/:id is NOT a NearbyLot, which the app used to assume', async () => {
+    // The old client typed this endpoint as NearbyLot; it has no distance.
+    const lot = await createLot(t.db.db, { slots: 1, ...TEST_LOT, ...BOLE });
+
+    const res = await request(t.app).get(`/v1/lots/${lot.lotId}`).set(driver.header);
+
+    expect(nearbyLotSchema.safeParse(res.body).success).toBe(false);
+  });
+
+  it('prices the real response exactly as the Book screen does', async () => {
+    const created = await createLot(t.db.db, { slots: 6, ...TEST_LOT, ...BOLE });
+    const res = await request(t.app).get(`/v1/lots/${created.lotId}`).set(driver.header);
+
+    // The app's path: parse with the shared schema, bridge, bill.
+    const lot = lotSummarySchema.parse(res.body);
+    const blocks = 2;
+    const minutes = blocks * lot.blockMinutes;
+    const bill = computeBill(
+      {
+        source: 'app',
+        planned_minutes: minutes,
+        checked_in_at: new Date(0),
+        planned_end_at: new Date(minutes * 60_000),
+        deposit_paid_santim: 0,
+      },
+      billableLotFromSummary(lot),
+      new Date(minutes * 60_000),
+    );
+
+    expect(bill.subtotalSantim).toBe(blocks * TEST_LOT.ratePerBlockSantim);
+    expect(bill.amountDueSantim).toBe(1000);
+  });
+
+  it('reproduces the device crash when the raw response is passed as a BillableLot', async () => {
+    // What the Book screen did (`as unknown as`), on a real response: the
+    // exact render error from the device. billableLotFromSummary is the fix.
+    const created = await createLot(t.db.db, { slots: 1, ...TEST_LOT, ...BOLE });
+    const res = await request(t.app).get(`/v1/lots/${created.lotId}`).set(driver.header);
+
+    expect(() =>
+      computeBill(
+        {
+          source: 'app',
+          planned_minutes: 10,
+          checked_in_at: new Date(0),
+          planned_end_at: new Date(10 * 60_000),
+          deposit_paid_santim: 0,
+        },
+        res.body as BillableLot,
+        new Date(10 * 60_000),
+      ),
+    ).toThrow('blockMinutes must be a positive safe integer, received undefined');
   });
 });

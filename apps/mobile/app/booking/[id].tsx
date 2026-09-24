@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import * as Linking from 'expo-linking';
-import type { DriverBooking, NearbyLot } from '../../src/api/endpoints.js';
+import type { DriverBooking, LotSummary } from '../../src/api/endpoints.js';
 import { navigateTo } from '../../src/nav/mapsLink.js';
 import { maybeRegisterForPush } from '../../src/push/registration.js';
 import { pushDeps } from '../../src/push/expoDeps.js';
@@ -29,7 +29,7 @@ export default function BookingScreen(): React.JSX.Element {
   const bottomInset = useBottomInset(20);
 
   const [booking, setBooking] = useState<DriverBooking | null>(null);
-  const [lot, setLot] = useState<NearbyLot | null>(null);
+  const [lot, setLot] = useState<LotSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [coordinates, setCoordinates] = useState<string | null>(null);

@@ -2,7 +2,7 @@ import { formatBirr } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet } from 'react-native';
-import type { NearbyLot } from '../../src/api/endpoints.js';
+import type { LotSummary } from '../../src/api/endpoints.js';
 import { useApp } from '../../src/state/app.js';
 import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
 
@@ -11,7 +11,7 @@ export default function LotDetail(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { api, foregroundEpoch } = useApp();
   const bottomInset = useBottomInset(20);
-  const [lot, setLot] = useState<NearbyLot | null>(null);
+  const [lot, setLot] = useState<LotSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {

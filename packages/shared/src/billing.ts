@@ -26,10 +26,31 @@ export interface BillableBooking {
   deposit_paid_santim: number;
 }
 
+/** The DATABASE row's names: the API bills straight from `lots` rows. */
 export interface BillableLot {
   block_minutes: number;
   rate_per_block_santim: number;
   overstay_rate_per_block_santim: number;
+}
+
+/**
+ * A lot as the API SENDS it (camelCase, see lotSummarySchema) → the lot
+ * computeBill takes. The one sanctioned bridge between the two namings.
+ *
+ * The device test crashed because the Book screen cast a LotSummary straight
+ * to BillableLot: `block_minutes` read undefined and blocksFor threw during
+ * render. Structural on purpose, so it needs no schema import here.
+ */
+export function billableLotFromSummary(lot: {
+  blockMinutes: number;
+  ratePerBlockSantim: number;
+  overstayRatePerBlockSantim: number;
+}): BillableLot {
+  return {
+    block_minutes: lot.blockMinutes,
+    rate_per_block_santim: lot.ratePerBlockSantim,
+    overstay_rate_per_block_santim: lot.overstayRatePerBlockSantim,
+  };
 }
 
 export type BillLineKind = 'planned' | 'overstay' | 'walk_in' | 'deposit_credit';
