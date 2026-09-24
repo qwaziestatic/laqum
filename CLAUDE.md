@@ -369,6 +369,16 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
     past `ACCESS_TOKEN_TTL_MINUTES` must re-issue (`reissue()` in
     test/helpers/auth.ts), which is incidental proof JWT expiry uses the
     injected clock.
+21. **Express 5's `app.listen(port, callback)` passes a bind error TO THE
+    CALLBACK.** It registers the callback as the server's one-shot `'error'`
+    listener as well, so a failed bind runs the "listening" callback with
+    the error as its argument, and Node does not throw because the error has
+    a listener. The API logged "API listening" while bound to nothing, kept
+    alive by Redis and BullMQ. Bind only through `listen()` in
+    `apps/api/src/listen.ts`, which resolves on a real `'listening'` event.
+    `guards.test.ts` forbids `.listen(` anywhere else, and
+    `server-startup.test.ts` runs the real entry to prove a bind failure
+    exits 1.
 
 ---
 
@@ -698,10 +708,15 @@ drift.
 
 ### Phase 3 facts worth keeping
 
-- **Windows reserves TCP ranges** (here 5199-5298) for Hyper-V/WinNAT. Binding
-  inside one fails `EACCES`, which reads like a permissions problem rather than
-  "that port is taken". `netsh interface ipv4 show excludedportrange
-protocol=tcp` lists them. The e2e web port is 5673 for this reason.
+- **Windows reserves TCP ranges** for Hyper-V/WinNAT. Binding inside one fails
+  `EACCES`, which reads like a permissions problem rather than "that port is
+  taken". `netsh interface ipv4 show excludedportrange protocol=tcp` lists
+  them. **The ranges move on every boot** (5199-5298 once; 2983-3082 on
+  2026-09-24, which took the API's 3000). They come from the TCP dynamic
+  range, which on the dev machine starts at 1024 (`netsh int ipv4 show
+dynamicport tcp`), so ANY port from 1024 to 15000 can be taken, including
+  3000, 8081, 5173 and e2e's 3100/5673. The device test therefore runs the
+  API on 18000 and Metro on 18081, above that range.
 - **`navigator.mediaDevices` is `undefined`** outside a secure context, not
   throwing — so the scanner feature-detects rather than catching, or an
   insecure origin would be reported as a denied permission.

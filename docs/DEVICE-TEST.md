@@ -20,10 +20,11 @@ been built or run. Do not treat it as working.
 
 | #   | I need                                                                                                          | At step |
 | --- | --------------------------------------------------------------------------------------------------------------- | ------- |
-| 1   | The native PostgreSQL service stopped while you test. It holds port 5432                                        | 1       |
-| 2   | A Wi-Fi network you control, in Windows' **Private** profile                                                    | 2       |
-| 3   | `eas login` as **dagi-dev**. I cannot do this: it needs your password, which I must never hold                  | 4       |
-| 4   | The project ID of the existing project **@dagisha-dev-works/laqum**. I write it into `app.config.ts` and commit | 5       |
+| 1   | `PORT=18000` in your `.env`: Windows has reserved 3000 on this machine                                          | 1       |
+| 2   | The native PostgreSQL service stopped while you test. It holds port 5432                                        | 1       |
+| 3   | A Wi-Fi network you control, in Windows' **Private** profile                                                    | 2       |
+| 4   | `eas login` as **dagi-dev**. I cannot do this: it needs your password, which I must never hold                  | 4       |
+| 5   | The project ID of the existing project **@dagisha-dev-works/laqum**. I write it into `app.config.ts` and commit | 5       |
 
 Nothing in this document creates an Expo account or an Expo project.
 
@@ -65,7 +66,50 @@ Metro does not need this. It reads its own file (step 3).
 
 ## Part 1 — Before you touch the phone
 
-### 1. Free port 5432, then start the backend
+### 1. Ports, then start the backend
+
+#### Ports Windows can take away
+
+**Windows can reserve ports out from under the dev stack, and on this machine
+that includes 3000 and 8081.** Hyper-V/WinNAT reserves blocks of ports from
+the TCP _dynamic_ range, and the blocks move on every boot. Here that range
+starts at **1024** (the Windows default is 49152), so any port from 1024 to
+15000 can be reserved. On 2026-09-24 the block 2983–3082 covered the API's
+3000, and binding it failed with `EACCES` (verified).
+
+So this pass uses ports **above 15000**, which Windows cannot reserve:
+
+|           | Port      | Set in                                                |
+| --------- | --------- | ----------------------------------------------------- |
+| API       | **18000** | `PORT` in the repo-root `.env`                        |
+| Metro     | **18081** | `RCT_METRO_PORT` in `apps/mobile/.env.local` (step 3) |
+| Dashboard | 5173      | its Vite config; only checked here                    |
+
+Set the API port. **Git Bash**, repo root:
+
+```bash
+sed -i 's/^PORT=.*/PORT=18000/' .env
+grep '^PORT=' .env
+```
+
+Check the ports are free and not reserved. Do this **after every reboot**,
+since the reserved blocks move. **PowerShell**:
+
+```powershell
+$ranges = netsh interface ipv4 show excludedportrange protocol=tcp |
+  Select-String '^\s*(\d+)\s+(\d+)' |
+  ForEach-Object { ,@([int]$_.Matches[0].Groups[1].Value, [int]$_.Matches[0].Groups[2].Value) }
+foreach ($p in 18000, 18081, 5173) {
+  $hit = $ranges | Where-Object { $p -ge $_[0] -and $p -le $_[1] }
+  $busy = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+  "{0,5}: {1}, {2}" -f $p, $(if ($hit) { "RESERVED ($($hit[0])-$($hit[1]))" } else { 'not reserved' }), $(if ($busy) { 'in use' } else { 'free' })
+}
+```
+
+_Should:_ `not reserved, free` for all three. The dashboard's 5173 is inside
+the reservable range. If it ever shows `RESERVED`, tell me before step 16.
+
+#### Port 5432
 
 **A native PostgreSQL 18 is installed on this machine and holds port 5432.**
 Docker publishes the dev database on 5432 too. But connections to
@@ -91,7 +135,9 @@ Stop-Service postgresql-x64-18
 It starts automatically, so stop it again after a reboot. The "Afterwards"
 section turns it back on.
 
-Start the backend in window A. **Git Bash**, repo root:
+#### Start the backend
+
+In window A. **Git Bash**, repo root:
 
 ```bash
 set -a; . ./.env; set +a
@@ -108,7 +154,24 @@ the native server still has the port: stop and tell me. I could not stop your
 service myself, so I have **not** seen the Docker database answer on
 `localhost:5432` on this machine.
 
-Leave the API running. It listens on **:3000**, on every interface.
+_Should:_ window A shows the line below, then `job workers started`. It
+appears only once the port is really bound, and shows the address actually
+bound (verified). `::` means every interface, IPv4 included.
+
+```
+INFO (…): ላቁም? API listening
+    address: "::"
+    family: "IPv6"
+    port: 18000
+```
+
+If the port cannot be bound, the API exits at once, and window A shows
+`ላቁም? API failed to start: Cannot listen on port …` with the reason and what
+to do. `tsx watch` then waits for a file change instead of returning the
+prompt, so that line is your signal. Fix `PORT`, then Ctrl+C and start it
+again.
+
+Leave the API running. It listens on **:18000**, on every interface.
 
 ### 1a. Seed a test lot where YOU are
 
@@ -189,25 +252,34 @@ Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private
 control instead. Shared networks usually isolate clients as well (step 8), so
 they would not work anyway.
 
-Allow inbound TCP **3000 (the API) and 8081 (Metro)**. **PowerShell
-(Administrator)**:
+Allow inbound TCP **18000 (the API) and 18081 (Metro)**, the ports from step
+
+1. **PowerShell (Administrator)**:
 
 ```powershell
-New-NetFirewallRule -DisplayName "Laqum dev: API 3000, Metro 8081" -Direction Inbound `
-  -LocalPort 3000,8081 -Protocol TCP -Action Allow -Profile Private
+New-NetFirewallRule -DisplayName "Laqum dev: API 18000, Metro 18081" -Direction Inbound `
+  -LocalPort 18000,18081 -Protocol TCP -Action Allow -Profile Private
 ```
 
-8081 is needed because the APK contains no JavaScript. The phone downloads the
-app from Metro on 8081 (step 6 explains why). An older 3000-only rule named
-`Laqum API dev` is harmless, but now redundant:
-`Remove-NetFirewallRule -DisplayName "Laqum API dev"`.
+Metro's port is needed because the APK contains no JavaScript. The phone
+downloads the app from Metro (step 6 explains why).
+
+Rules from earlier versions of this document open ports this pass no longer
+uses. If you created either, remove it. **PowerShell (Administrator)**:
+
+```powershell
+Remove-NetFirewallRule -DisplayName "Laqum dev: API 3000, Metro 8081" -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName "Laqum API dev" -ErrorAction SilentlyContinue
+```
 
 Check the API answers on that address **from your machine first**. **Git
 Bash**:
 
 ```bash
-curl http://<LAN-IP>:3000/health
+curl http://<LAN-IP>:18000/health
 ```
+
+_Should:_ `{"status":"ok",…}`.
 
 If that fails, the phone has no chance.
 
@@ -218,15 +290,20 @@ config**, including the API URL, come from Metro each time the app connects.
 So `EXPO_PUBLIC_API_URL` is read from **Metro's environment at the moment
 Metro starts**. It is not read from `eas.json`, and not at build time.
 
-Put it in `apps/mobile/.env.local`, which is gitignored. **Git Bash**, repo
-root:
+Put it in `apps/mobile/.env.local`, which is gitignored, together with
+Metro's own port from step 1. **Git Bash**, repo root:
 
 ```bash
-printf 'EXPO_PUBLIC_API_URL=http://<LAN-IP>:3000/v1\n' > apps/mobile/.env.local
+printf 'EXPO_PUBLIC_API_URL=http://<LAN-IP>:18000/v1\nRCT_METRO_PORT=18081\n' > apps/mobile/.env.local
+cat apps/mobile/.env.local
 ```
 
 Write the file from Git Bash. In Windows PowerShell 5.1, `>` can write
 UTF-16, which Expo's env loader reads as a garbage key (verified).
+
+`RCT_METRO_PORT` is Expo CLI's default-port setting. Expo loads this file
+before it picks the port, so Metro starts on 18081 with no flag, and the QR
+code and every bundle URL carry that port (verified).
 
 How Metro resolves it. Each row was verified by starting Metro that way and
 reading what it serves to the phone:
@@ -410,7 +487,7 @@ like the app being broken.
 **Check from the phone before launching the app.** Open Chrome and visit:
 
 ```
-http://<LAN-IP>:3000/health
+http://<LAN-IP>:18000/health
 ```
 
 You should see JSON. If you do not, fix that before going further:
@@ -419,8 +496,9 @@ You should see JSON. If you do not, fix that before going further:
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Times out                                                                       | Firewall rule or network profile (step 2), or client isolation on the Wi-Fi                                                                                                                                                                                                                                                                 |
 | "Connection refused"                                                            | Nothing listening there: the API (step 1) or Metro (step 8a) is not running                                                                                                                                                                                                                                                                 |
+| Window A shows `ላቁም? API failed to start: Cannot listen on port …`              | The API could not bind its port, and the line says why. Usually a port Windows has reserved since the last reboot: re-run the port check in step 1                                                                                                                                                                                          |
 | Works on laptop, not phone                                                      | Different networks, or a VPN active on either                                                                                                                                                                                                                                                                                               |
-| Launcher says "There was a problem loading the project." or "Error loading app" | The phone cannot reach Metro: Metro is not running, 8081 is missing from the firewall rule (step 2), or the `Metro:` URL has the wrong address (step 8a)                                                                                                                                                                                    |
+| Launcher says "There was a problem loading the project." or "Error loading app" | The phone cannot reach Metro: Metro is not running, 18081 is missing from the firewall rule (step 2), or the `Metro:` URL has the wrong address or port (step 8a)                                                                                                                                                                           |
 | The app loads, but every call fails with "Network request failed"               | Run the `apiUrl` check in step 8a first. `localhost` means step 3 did not take effect: fix it and restart Metro                                                                                                                                                                                                                             |
 | **Same, but `apiUrl` is right AND Chrome on the phone reaches `/health`**       | **Cleartext HTTP blocked.** Chrome has its own policy and will happily load `http://`; the app is governed by `usesCleartextTraffic`. Means the APK was built from the `preview` or `production` profile, or `EAS_BUILD_PROFILE` was unset in a way that resolved to production. Rebuild with `--profile development` and re-check step 3a. |
 
@@ -438,15 +516,17 @@ its `.env.local` from step 3 is read. Leave Metro running for the whole pass.
 
 _Should_ (verified against Expo CLI 57.0.26):
 
+- `env: export EXPO_PUBLIC_API_URL RCT_METRO_PORT`: it read `.env.local`.
 - `Using development build`, **not** `Using Expo Go`. Expo picks this
   automatically because `expo-dev-client` is a dependency.
 - A QR code, with `Scan the QR code above to open in a development build.`
-- `Metro: exp+laqum://expo-development-client/?url=http%3A%2F%2F<LAN-IP>%3A8081`
+- `Metro: exp+laqum://expo-development-client/?url=http%3A%2F%2F<LAN-IP>%3A18081`
 
-**Check the address inside that `Metro:` line.** If it is not your
-`<LAN-IP>` (for example a `172.x` address belonging to the WSL/Docker
-adapter), press Ctrl+C and restart with the address forced. **Git Bash**, in
-`apps/mobile`:
+**Check the address and port inside that `Metro:` line.** `%3A18081` is
+`:18081`; `%3A8081` means `RCT_METRO_PORT` was not read, so fix `.env.local`
+and restart. If the address is not your `<LAN-IP>` (for example a `172.x`
+address belonging to the WSL/Docker adapter), press Ctrl+C and restart with
+the address forced. **Git Bash**, in `apps/mobile`:
 
 ```bash
 REACT_NATIVE_PACKAGER_HOSTNAME=<LAN-IP> pnpm exec expo start
@@ -456,14 +536,14 @@ Check what Metro will hand the app. **Git Bash**, any folder:
 
 ```bash
 curl -s -H "expo-platform: android" -H "accept: application/expo+json,application/json" \
-  http://localhost:8081/ | grep -oE '"(apiUrl|projectId)":"[^"]*"'
+  http://localhost:18081/ | grep -oE '"(apiUrl|projectId)":"[^"]*"'
 ```
 
-_Should:_ `"apiUrl":"http://<LAN-IP>:3000/v1"`, and after step 5 a non-empty
+_Should:_ `"apiUrl":"http://<LAN-IP>:18000/v1"`, and after step 5 a non-empty
 `"projectId"`. If `apiUrl` shows `localhost`, step 3 did not take effect: fix
 `.env.local` and restart Metro.
 
-Then check from **Chrome on the phone**: `http://<LAN-IP>:8081/status` should
+Then check from **Chrome on the phone**: `http://<LAN-IP>:18081/status` should
 show `packager-status:running`.
 
 The first time it starts, Expo CLI creates `apps/mobile/expo-env.d.ts` and
@@ -490,7 +570,7 @@ Connect with either:
 
 - **Scan QR Code**, pointed at the QR in window B. The phone's own camera app
   works too, because the QR opens `exp+laqum://…`.
-- Or type `<LAN-IP>:8081` after the `http://` and tap **Connect**.
+- Or type `<LAN-IP>:18081` after the `http://` and tap **Connect**.
 
 _Should:_ the first load takes a while, because Metro is bundling the whole
 app. Then a one-time overlay appears: "This is the developer menu. It gives
@@ -701,8 +781,13 @@ This needs the dashboard open too.
 1. Start the dashboard in window C. **Git Bash**, repo root:
 
    ```bash
-   pnpm --filter @laqum/dashboard dev
+   VITE_API_TARGET=http://localhost:18000 pnpm --filter @laqum/dashboard dev
    ```
+
+   The dashboard reaches the API through its own dev proxy, which targets
+   port 3000 unless told otherwise. Without `VITE_API_TARGET` every request
+   fails, because 3000 is the port Windows took (step 1). Verified: through
+   the proxy, `/v1` answers exactly as the API on 18000 does.
 
    Sign in as the attendant (`+251911000001`).
 
@@ -797,5 +882,5 @@ Start-Service postgresql-x64-18
 ```
 
 The firewall rule only applies to Private networks, so it can stay. To remove
-it: `Remove-NetFirewallRule -DisplayName "Laqum dev: API 3000, Metro 8081"`,
+it: `Remove-NetFirewallRule -DisplayName "Laqum dev: API 18000, Metro 18081"`,
 in **PowerShell (Administrator)**.
