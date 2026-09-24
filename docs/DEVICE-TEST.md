@@ -4,11 +4,15 @@ Everything in this document needs your phone. Nothing here is covered by the
 automated suite. Where I expect something to work, I say "should"; where I
 genuinely do not know, I say so.
 
-Some things could be checked without the phone: how the build loads its code,
-where the API URL comes from, what the dev launcher shows, and the syntax of
-every command. I checked those against the installed packages on 2026-09-24,
-and they are marked **verified**. Nothing that happens on the phone itself has
-been seen.
+**The first pass is done** (2026-09-24/25, Samsung Galaxy A15 5G, Android 16):
+every numbered test passed once the bugs it found were fixed. The results,
+those bugs and their commits, and what was not device-tested are in
+[Part 6](#part-6--results-of-the-first-pass). The steps below are kept as
+they have to be run, including what the first pass taught.
+
+Things checkable without the phone (how the build loads its code, where the
+API URL comes from, what the dev launcher shows, the syntax of every command)
+were checked against the installed packages and are marked **verified**.
 
 **Your device is Android, so iOS is untested.** The iOS configuration is
 present and valid (bundle identifier, usage strings, plugins) but has never
@@ -150,9 +154,8 @@ pnpm --filter @laqum/api dev
 
 `db:migrate status` is the port check. It should list migrations, each marked
 `pending` or `applied`. If it still says `password authentication failed`,
-the native server still has the port: stop and tell me. I could not stop your
-service myself, so I have **not** seen the Docker database answer on
-`localhost:5432` on this machine.
+the native server still has the port: stop and tell me. On the first pass,
+with the service stopped, the Docker database answered on `localhost:5432`.
 
 _Should:_ window A shows the line below, then `job workers started`. It
 appears only once the port is really bound, and shows the address actually
@@ -629,10 +632,12 @@ API key, no account, no card**. That also means it is a free public service
 with **no uptime guarantee**, so a blank map is a state the app has to survive
 rather than a fault.
 
-**This is the part I could not verify at all.** MapLibre is native code. It
-draws nothing in a bundle check, and there is no Android SDK on this machine,
-so the native compile happens for the first time on EAS. Please look
-carefully.
+**Confirmed on the first pass.** MapLibre 11.4.0 compiled on EAS under the new
+architecture (build `5dc39e40`, only Kotlin deprecation warnings in Expo's own
+code) and rendered OpenFreeMap tiles with streets and Amharic place labels,
+pins with free counts, the location dot, the attribution line, and both the
+light and dark styles. Repeat it after any change to the map or its native
+dependencies: a bundle check cannot see native rendering.
 
 1. Look at the map area on the home screen.
 
@@ -789,16 +794,33 @@ This needs the dashboard open too.
    fails, because 3000 is the port Windows took (step 1). Verified: through
    the proxy, `/v1` answers exactly as the API on 18000 does.
 
-   Sign in as the attendant (`+251911000001`).
+   **The dashboard signs in through `/auth/dev-login` only**, so the API in
+   window A must run with it enabled. Ctrl+C there, then:
 
-2. On the phone, open your held booking to show the QR.
+   ```bash
+   DEV_AUTH=true pnpm --filter @laqum/api dev
+   ```
+
+   While it is on, anyone who can reach port 18000 can sign in as any seeded
+   number without a code; restart without it when you are done. (A real OTP
+   sign-in for the dashboard is a P0 open item: see CLAUDE.md.)
+
+   Open `http://localhost:5173` and sign in as the attendant
+   (`+251911000001`), who is on TEST LOT's staff. Open TEST LOT **before**
+   booking: TEST LOT holds a slot for only 3 minutes.
+
+2. On the phone, book, and keep your held booking open to show the QR.
 3. On the dashboard, tap **Scan** and point the tablet/laptop camera at the
-   phone.
+   phone. **The first pass used a laptop with no camera at all** (no imaging
+   device of any class), so it went straight to step 4. The camera scan is
+   still untested: see Part 6.
 
 _Should:_ the booking checks in, and the slot turns **occupied** on the
 dashboard within a second.
-_Should:_ the phone's screen moves to the parked state with a time-remaining
-countdown, without you touching it.
+_Should:_ the phone's screen moves to the parked state ("You are parked."
+with **Time remaining**, QR gone) without you touching it. The app POLLS
+every 20 s rather than listening to the realtime channel (a P1 open item),
+so allow up to 20 s.
 
 4. If the camera cannot read it, use **Type code** and the 6-character code
    under the QR. That is a supported path, not a failure.
@@ -815,10 +837,16 @@ _Should:_ the phone shows an amount due and a **Pay** button.
 
 3. Tap **Pay**.
 
-_Should:_ an in-app browser opens Chapa's **test** checkout.
+_Should, with the default fake provider:_ the in-app browser opens
+`https://checkout.test/pay/…`, which **cannot load**: `.test` is a reserved
+domain and the fake provider has no checkout page. Close it; the booking is
+still unpaid. Tap **Pay** again: the API verifies the pending payment first,
+the fake provider reports success, and the phone shows "Paid. Thank you for
+parking." Recording cash on the dashboard settles it the same way. This is
+what the first pass did.
 
-> The API uses `PAYMENT_PROVIDER=fake` by default, so this may not reach Chapa
-> at all. For the real sandbox, stop the API in window A (Ctrl+C) and restart
+> The API uses `PAYMENT_PROVIDER=fake` by default, so this does not reach
+> Chapa at all. For the real sandbox, stop the API in window A (Ctrl+C) and restart
 > it with the provider set. **Git Bash**, repo root, with `.env` loaded:
 >
 > ```bash
@@ -851,20 +879,8 @@ again." Not a crash, and not a silent blank screen.
 For each numbered test: pass, fail, or could-not-test. Screenshots help most
 for anything that looks wrong rather than broken.
 
-I am particularly unsure about:
-
-- **10a**: the whole map. MapLibre's native code has never been compiled or
-  run; EAS builds it for the first time. Tiles rendering at all is the single
-  biggest unknown in this pass.
-- **8a/8b**: the Metro connection. Every screen and message above is read from
-  the launcher's source; none of it has been seen on a phone.
-- **11**: the middle and third gate branches, on real GPS.
-- **15**: which fallback tier actually fires without Google Maps.
-- **16**: whether the phone's screen brightness and QR size are enough for a
-  camera to read it at arm's length. This is the one I would bet on failing
-  first, and it is a size/contrast fix if so.
-- **13**: whether Android's clock change behaves as I expect through
-  `performance.now()`.
+What a pass cannot settle without the right hardware is listed in Part 6
+under "Not device-tested"; look there before planning the next one.
 
 ## Afterwards
 
@@ -884,3 +900,62 @@ Start-Service postgresql-x64-18
 The firewall rule only applies to Private networks, so it can stay. To remove
 it: `Remove-NetFirewallRule -DisplayName "Laqum dev: API 18000, Metro 18081"`,
 in **PowerShell (Administrator)**.
+
+---
+
+## Part 6 — Results of the first pass
+
+**When and where.** 2026-09-24/25. Samsung Galaxy A15 5G (SM-A156L), Android
+16 (SDK 36), acting as the Wi-Fi hotspot with the laptop joined to it. adb
+over USB: Samsung offers wireless debugging only to a phone that is a Wi-Fi
+client, not a hotspot host. EAS development build
+`5dc39e40-7a1b-4fea-b6ed-a3e9f1ef4327`; API on 18000, Metro on 18081.
+
+| Test      | Result | Notes                                                                                                                                                                                   |
+| --------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8, 8a, 8b | Pass   | Connected through the dev launcher.                                                                                                                                                     |
+| 9         | Pass   | Signed in; still signed in after force-quit and relaunch.                                                                                                                               |
+| 10        | Pass   | Location denied: lot list with the banner, no vanishing, Book blocked with "Location needed to book"; restored through Open settings.                                                   |
+| 10a       | Pass   | Tiles with Amharic labels, pins with free counts, location dot, attribution, pinch and drag, light and dark styles.                                                                     |
+| 11        | Pass   | All three gate branches. need_better_fix arose naturally at 117 m with ±197 m accuracy.                                                                                                 |
+| 12        | Pass   | Booking, QR, short code, hold countdown, server-side expiry shown by the app, slot released (Home back to 6 of 6). No `push_tokens` row, as expected without FCM. No prompt: see below. |
+| 13        | Pass   | Countdown unchanged with the phone clock one hour forward.                                                                                                                              |
+| 14        | Pass   | Backgrounded about 60 s; the countdown was right at once on return.                                                                                                                     |
+| 15        | Pass   | Navigate opened Google Maps with driving directions. The fallbacks without Google Maps were not tried.                                                                                  |
+| 16        | Pass   | Checked in by Type code; the slot turned occupied on the dashboard; the phone showed "You are parked." with the QR gone.                                                                |
+| 17        | Pass   | Extend added 5 minutes; checked out at 15.00 ETB; paid through the fake provider.                                                                                                       |
+| 18        | Pass   | Revoking the refresh tokens returned the app to sign-in with "Your session has ended". A re-seed that deleted the session did the same.                                                 |
+
+### Bugs the pass found, all fixed
+
+| Found at         | Symptom                                                                                                                                       | Cause                                                                                                                                  | Commit               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Preparing step 6 | `eas build` would stop; a development build could not have connected to Metro                                                                 | `expo-dev-client` was not a dependency                                                                                                 | `80329ae`            |
+| Step 1           | The API logged "API listening" while nothing listened                                                                                         | Windows had reserved :3000 (`EACCES`), and Express 5's `app.listen` passes a bind error to its "listening" callback                    | `8f4cae7`, `2953d0d` |
+| Idle on Home     | The app vanished, with no crash dialog                                                                                                        | Location permission re-requested on every return to the foreground; Android 16 removed the task for `rapid-activity-launch`            | `f9043e6`            |
+| Home             | Refresh sat under the navigation bar                                                                                                          | Edge-to-edge is mandatory on Android 16, and no screen applied the bottom inset                                                        | `29ac8d9`            |
+| Home             | The first lot list took up to 17.7 s                                                                                                          | The list waited for a fresh GPS fix; the last-known fix was there in under 0.3 s                                                       | `b91e592`            |
+| Book             | Render crash: "blockMinutes must be a positive safe integer, received undefined"                                                              | The API's camelCase lot was cast into `computeBill`'s snake_case `BillableLot`                                                         | `b3f9850`            |
+| Book             | "Request validation failed", with or without a plate                                                                                          | The app sent `latitude`/`longitude` where the API wants `lat`/`lng`; Extend sent `additionalMinutes` where it wants `additionalBlocks` | `305e2f7`            |
+| Book             | The disabled button said "Checking your location…" with nothing running; Retry asked for the same Balanced fix                                | One label for every state that was not "proceed"                                                                                       | `a311da7`            |
+| Home             | Refresh gave no visible feedback                                                                                                              | A busy button hid its label; nothing showed that new data had arrived                                                                  | `7acadfb`            |
+| Booking          | An expired hold kept its countdown under "Time remaining"; raw enum status; Navigate on a finished booking; overstay stuck at "Over by 00:00" | Per-status decisions scattered through the screen; `remainingMs` clamps at zero                                                        | `0e7987b`            |
+
+The pass also exposed gaps that are **not** fixed and are tracked as open
+items in CLAUDE.md: deposits are never initiated, the dashboard can only sign
+in with dev-login, the driver app polls instead of using realtime, and it has
+no Amharic.
+
+### Not device-tested
+
+- **The camera QR scan.** The laptop has no camera, so check-in used Type
+  code. Next: a tablet or phone browser on the dashboard over the mkcert HTTPS
+  setup (README, "Camera access in development").
+- **The Chapa sandbox.** Payment went through the fake provider only.
+- **iOS.** No build has been produced.
+- **Push.** Registration needs FCM credentials; delivery is Phase 5.
+- **The notification prompt's timing.** No prompt appeared after the first
+  booking, and Settings already showed notifications allowed. Under
+  investigation: the app asks in one place only, on the booking screen, and
+  only while the permission is undetermined.
+- **Navigate's fallbacks** without Google Maps installed.

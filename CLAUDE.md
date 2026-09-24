@@ -413,15 +413,21 @@ LOCKED` slot assignment, `transition()`, all staff actions, admin endpoints,
   `computeBill`, BullMQ jobs + sweeper, error model.
 - **Phase 2 — payments.** ✅ Delivered. PaymentProvider interface,
   ChapaProvider (v1) incl. refunds, FakePaymentProvider, webhook + verify,
-  deposit and final-payment flows, operator refund queue.
+  the final-payment flow, deposit SETTLEMENT, operator refund queue.
+  **Correction from the Phase 4 device pass:** nothing INITIATES a deposit
+  payment — `POST /bookings` returns `checkoutUrl: null` — so a deposit
+  booking cannot be paid and expires. P0 open item, below.
 - **Phase 3 — realtime + dashboard.** ✅ Delivered. Socket.io with the Redis
   adapter, expiry-bound socket auth, commit-ordered event delivery, emits on
   every write path, and the attendant dashboard with QR scanning, plus a
   Playwright two-screen suite and screenshots.
-- **Phase 4 — mobile app.** ✅ Built, **device-untested**. Expo SDK 57 driver
-  app: all seven screens, secure tokens, single-flight refresh, the location
-  gate, server-time countdowns, maps deep link, push token registration.
-  Awaiting the device pass in [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md).
+- **Phase 4 — mobile app.** ✅ Delivered and **device-tested on Android**
+  (Samsung Galaxy A15 5G, Android 16, 2026-09-24/25): every step of
+  [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md) passed once the ten bugs the
+  pass found were fixed (Part 6 there lists them with commits). Expo SDK 57
+  driver app: all seven screens, secure tokens, single-flight refresh, the
+  location gate, server-time countdowns, maps deep link, push token
+  registration. Not device-tested: camera QR scan, Chapa sandbox, iOS, push.
 - **Phase 5 — hardening.** Push notifications, rate limiting, pino request IDs,
   graceful shutdown, production Dockerfile, deployment README.
 
@@ -845,11 +851,83 @@ empty, unparseable or out-of-range coordinate. An empty string was a real bug
 the tests caught: `Number('')` is 0, which would have placed the lot in the
 Atlantic and made every booking fail TOO_FAR for an unguessable reason.
 
+### What the device pass taught (do not relearn)
+
+- **On Android, requesting a permission ALWAYS launches the permission
+  activity**, even when it is already granted (expo-modules-core calls
+  `Activity.requestPermissions` with no check). That pauses and resumes the
+  app, which reads as a return to the foreground. A screen that reloads on
+  foreground and requests there loops, and **Android 16 removes the task for
+  `rapid-activity-launch`**: the app vanishes with no crash and no exit
+  record beyond REMOVE TASK. Automatic paths CHECK permission and request at
+  most once ever (`PermissionPrompt`, `src/location/fix.ts`).
+- **Request and response shapes must come from `packages/shared`, on both
+  sides.** Hand-written app types and two casts produced a render crash and a
+  booking request the API rejected, while every unit test passed. The app
+  builds every body as the shared schema's `*Input` type and parses every
+  response. `apps/api/test/mobile-contract.test.ts` drives the app's own
+  `Api` class against the real API over HTTP and fails on an undescribed
+  field; `apps/mobile/test/endpoints.test.ts` forbids `as unknown as` in app
+  code. JSON body schemas take no `z.coerce`: it reports a missing field as
+  "received NaN" and makes the input type `unknown`.
+- **`apps/mobile/src/package.json` (`{"type":"module"}`) is load-bearing.**
+  The API's NodeNext typecheck classifies the app files that contract test
+  imports by the nearest `package.json`; without it they read as CommonJS
+  (TS1295). Expo's bundler resolution and Metro ignore the field.
+- **What a booking screen shows per status lives in one table**,
+  `src/booking/view.ts`, a `Record<BookingStatus, …>`: a new status does not
+  compile without driver text. The timer comes from the status, never from
+  whichever timestamp is set; overstay counts UP (`ServerClock.elapsedMs`).
+- **The lot LIST shows the last-known fix first, then the fresh one**
+  (measured: fresh 60 ms–17 s, last-known under 0.3 s). The booking gate
+  never sees a cached fix.
+- **Edge-to-edge is mandatory on Android 16**: every screen applies
+  `useBottomInset` (`layout.test.ts` checks).
+- **A busy `Button` keeps its label beside the spinner**; it used to replace
+  it, which hid every "in progress" label.
+- **~8.5 s of every cold start in a development build is the bundle download
+  from Metro.** Release builds embed the bundle; do not optimise this.
+
 ### Phase 4 open items
 
-- [ ] **The entire device pass.** [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md),
-      18 numbered steps. Nothing touching a camera, GPS, Keystore, Chapa's
-      browser, the Maps hand-off, or push has been run.
+- [x] **The device pass.** Done 2026-09-24/25: every step passed; ten bugs
+      found and fixed. Results, bugs and commits:
+      [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md), Part 6.
+- [ ] **How notifications came to be ALLOWED before the first prompt.** No
+      prompt appeared after the first booking and Settings showed the
+      permission already granted. The app asks in one place (the booking
+      screen, only while undetermined) and nothing native asks at startup.
+      The deciding evidence is on the phone: the `POST_NOTIFICATIONS` flags
+      and Expo's `expo.modules.permissions.asked` record. Also noted, not
+      yet fixed: the booking screen passes `hasBooked: true` as a constant,
+      so the gate inside `maybeRegisterForPush` decides nothing.
+
+**Queued after the pass, in the product owner's priority order. Each needs
+an approved plan before work starts.**
+
+- [ ] **P0 — Dashboard OTP sign-in.** The dashboard signs in through
+      `/auth/dev-login` ONLY; with `DEV_AUTH` off (always in production)
+      attendants cannot sign in at all.
+- [ ] **P0 — Deposits at booking time.** Decided by the product owner: a
+      deposit booking starts in `PENDING_PAYMENT` and returns a Chapa
+      checkout; settlement moves it to `RESERVED`.
+- [ ] **P1 — Amharic in the mobile app.** Every user-facing string is English
+      today; the brief requires Amharic and English. The product owner does
+      the native-speaker review.
+- [ ] **P1 — Realtime in the driver app.** It polls every 20 s; it should
+      consume `user:{id}` booking events over Socket.io with the
+      subscribe-then-snapshot ordering, keeping polling as the fallback.
+- [ ] **P2 — Shared schemas for the dashboard's requests and responses**, as
+      the app now has.
+- [ ] **P2 — Stopping stale dev processes.** On Windows, Ctrl+C in Git Bash
+      can leave node running (EADDRINUSE on 18000, 18081, 5173). Needs a
+      documented way to stop them, and a README mention.
+- [ ] **P2 — Booking radius: a product decision.** The seeds' 150–200 m is
+      smaller than real GPS uncertainty (±197 m observed) and at odds with a
+      hold meant to cover travel time. Recommendation pending approval.
+- [ ] **P2 — App icon.** Still Expo's default Android icon.
+- [ ] **Camera QR scan on a real tablet**, over the mkcert HTTPS setup: the
+      pass's laptop had no camera.
 - [x] **Link the EXISTING Expo project `@dagisha-dev-works/laqum`** (owner
       is the organisation; `dagi-dev` is only the login). DEVICE-TEST step 5.
       Project id `e886a245-6e7e-4e4f-8032-f28b92ec202c` and `owner` are in
