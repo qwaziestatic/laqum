@@ -6,7 +6,7 @@ import { Camera, Map, Marker, UserLocation } from '@maplibre/maplibre-react-nati
 import type { NearbyLot } from '../src/api/endpoints.js';
 import { MapAttribution } from '../src/map/Attribution.js';
 import { mapStyleFor } from '../src/map/tiles.js';
-import { getFix, type LocationResult } from '../src/location/useLocation.js';
+import { getFix, type LocationResult, type PermissionPrompt } from '../src/location/useLocation.js';
 import { useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
 import { Body, Button, Card, Loading, Notice, Title } from '../src/ui.js';
@@ -33,30 +33,36 @@ export default function Home(): React.JSX.Element {
     if (ready && !session) router.replace('/login');
   }, [ready, session]);
 
-  const load = useCallback(async () => {
-    setError(null);
-    const fix = await getFix();
-    setLocation(fix);
+  // `prompt`: see PermissionPrompt. Automatic reloads must never re-ask: on
+  // Android every ask pauses and resumes the activity, which is itself a
+  // "return to the foreground" and would reload, and ask, again.
+  const load = useCallback(
+    async (prompt: PermissionPrompt) => {
+      setError(null);
+      const fix = await getFix(prompt);
+      setLocation(fix);
 
-    if (fix.kind !== 'fix') {
-      // No position: fall back to the city centre so the driver still sees
-      // lots and can browse. Distances will be wrong until they allow it,
-      // and the banner says so.
-      const result = await api.nearbyLots(9.0192, 38.7525, 10_000);
+      if (fix.kind !== 'fix') {
+        // No position: fall back to the city centre so the driver still sees
+        // lots and can browse. Distances will be wrong until they allow it,
+        // and the banner says so.
+        const result = await api.nearbyLots(9.0192, 38.7525, 10_000);
+        if (result.ok) setLots(result.data.lots);
+        else setError(result.error.message);
+        return;
+      }
+
+      const result = await api.nearbyLots(fix.fix.latitude, fix.fix.longitude);
       if (result.ok) setLots(result.data.lots);
       else setError(result.error.message);
-      return;
-    }
-
-    const result = await api.nearbyLots(fix.fix.latitude, fix.fix.longitude);
-    if (result.ok) setLots(result.data.lots);
-    else setError(result.error.message);
-  }, [api]);
+    },
+    [api],
+  );
 
   // On focus AND on return to the foreground: free counts go stale fast.
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load('first-time');
       void api.currentBooking().then((result) => {
         if (result.ok) setActiveBookingId(result.data.booking?.id ?? null);
       });
@@ -64,7 +70,7 @@ export default function Home(): React.JSX.Element {
   );
 
   useEffect(() => {
-    if (foregroundEpoch > 0) void load();
+    if (foregroundEpoch > 0) void load('first-time');
   }, [foregroundEpoch, load]);
 
   if (!ready || lots === null) return <Loading label="Finding parking near you…" />;
@@ -97,7 +103,7 @@ export default function Home(): React.JSX.Element {
                 : 'Your location could not be found, so distances are estimated.'
           }
           actionLabel="Try again"
-          onAction={() => void load()}
+          onAction={() => void load('on-tap')}
         />
       ) : null}
 
@@ -193,7 +199,7 @@ export default function Home(): React.JSX.Element {
       />
 
       <View style={styles.actions}>
-        <Button label="Refresh" tone="plain" onPress={() => void load()} testID="refresh" />
+        <Button label="Refresh" tone="plain" onPress={() => void load('on-tap')} testID="refresh" />
       </View>
     </View>
   );

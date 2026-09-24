@@ -1,53 +1,36 @@
 import * as Location from 'expo-location';
 import { useCallback, useState } from 'react';
-import type { Fix } from './gate.js';
+import {
+  resolveFix,
+  type LocationDeps,
+  type LocationResult,
+  type PermissionPrompt,
+  type PermissionState,
+} from './fix.js';
+
+export type { LocationFailure, LocationResult, PermissionPrompt } from './fix.js';
 
 /**
- * Getting a fix, and naming the three ways it fails.
- *
- * These are genuinely different problems with genuinely different fixes, and
- * collapsing them into "location unavailable" sends the driver to the wrong
- * place:
- *
- *   permission — the app may ask; recovery is Settings > Permissions
- *   services   — location is off DEVICE-WIDE; recovery is the system toggle,
- *                and no permission grant will help
- *   unavailable— permission and services are fine, no fix arrived (indoors,
- *                underground car park); recovery is to move and retry
- *
- * `hasServicesEnabledAsync` is what separates the first two, and it is the
- * check most apps skip — which is why they tell a user to grant a permission
- * they have already granted.
+ * The expo-location binding for fix.ts, which holds the decisions — above all
+ * WHEN the app may ask for permission, and why asking is never free on
+ * Android. This file only translates.
  */
 
-export type LocationFailure =
-  | { kind: 'permission_denied'; canAskAgain: boolean }
-  | { kind: 'services_off' }
-  | { kind: 'unavailable'; message: string };
-
-export type LocationResult = { kind: 'fix'; fix: Fix } | LocationFailure;
-
-export interface UseLocation {
-  request: () => Promise<LocationResult>;
-  last: LocationResult | null;
-  busy: boolean;
-}
-
-export async function getFix(): Promise<LocationResult> {
-  // Services BEFORE permission: a granted permission is useless with the
-  // device toggle off, and reporting "permission denied" there is a lie.
-  const servicesOn = await Location.hasServicesEnabledAsync();
-  if (!servicesOn) return { kind: 'services_off' };
-
-  const permission = await Location.requestForegroundPermissionsAsync();
+function toPermission(response: Location.LocationPermissionResponse): PermissionState {
   // Widened to string: expo-location types status as an enum, so comparing
   // against a literal is not a shared-type comparison.
-  const status: string = permission.status;
-  if (status !== 'granted') {
-    return { kind: 'permission_denied', canAskAgain: permission.canAskAgain };
-  }
+  const status: string = response.status;
+  return {
+    status: status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined',
+    canAskAgain: response.canAskAgain,
+  };
+}
 
-  try {
+export const expoLocationDeps: LocationDeps = {
+  servicesEnabled: () => Location.hasServicesEnabledAsync(),
+  getPermission: async () => toPermission(await Location.getForegroundPermissionsAsync()),
+  requestPermission: async () => toPermission(await Location.requestForegroundPermissionsAsync()),
+  currentPosition: async () => {
     const position = await Location.getCurrentPositionAsync({
       // Balanced, not Highest: Highest waits for GPS lock, which in a city
       // street can take 30s or never. The gate decides whether the accuracy
@@ -55,34 +38,36 @@ export async function getFix(): Promise<LocationResult> {
       // sufficient and a slow precise one often unnecessary.
       accuracy: Location.Accuracy.Balanced,
     });
+    return {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      // Some platforms report null; the gate treats that as maximally
+      // uncertain rather than perfect.
+      accuracyM: position.coords.accuracy ?? Number.POSITIVE_INFINITY,
+      timestampMs: position.timestamp,
+    };
+  },
+};
 
-    return {
-      kind: 'fix',
-      fix: {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        // Some platforms report null; the gate treats that as maximally
-        // uncertain rather than perfect.
-        accuracyM: position.coords.accuracy ?? Number.POSITIVE_INFINITY,
-        timestampMs: position.timestamp,
-      },
-    };
-  } catch (err) {
-    return {
-      kind: 'unavailable',
-      message: err instanceof Error ? err.message : 'No position could be determined',
-    };
-  }
+/** See PermissionPrompt: 'first-time' unless the driver just pressed a button. */
+export function getFix(prompt: PermissionPrompt): Promise<LocationResult> {
+  return resolveFix(prompt, expoLocationDeps);
+}
+
+export interface UseLocation {
+  request: (prompt: PermissionPrompt) => Promise<LocationResult>;
+  last: LocationResult | null;
+  busy: boolean;
 }
 
 export function useLocation(): UseLocation {
   const [last, setLast] = useState<LocationResult | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const request = useCallback(async () => {
+  const request = useCallback(async (prompt: PermissionPrompt) => {
     setBusy(true);
     try {
-      const result = await getFix();
+      const result = await getFix(prompt);
       setLast(result);
       return result;
     } finally {

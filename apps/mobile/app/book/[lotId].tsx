@@ -5,7 +5,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'rea
 import * as WebBrowser from 'expo-web-browser';
 import type { NearbyLot } from '../../src/api/endpoints.js';
 import { decide, gate, type GateDecision } from '../../src/location/gate.js';
-import { getFix } from '../../src/location/useLocation.js';
+import { getFix, type PermissionPrompt } from '../../src/location/useLocation.js';
 import { useApp } from '../../src/state/app.js';
 import { useTheme } from '../../src/theme.js';
 import { Body, Button, Card, Loading, Notice, Title } from '../../src/ui.js';
@@ -41,52 +41,60 @@ export default function Book(): React.JSX.Element {
     });
   }, [api, lotId]);
 
-  /** Get a fix and run the gate against THIS lot's radius. */
-  const checkLocation = useCallback(async (): Promise<GateDecision | null> => {
-    if (!lot) return null;
-    setLocating(true);
-    setLocationProblem(null);
-    try {
-      const fix = await getFix();
+  /**
+   * Get a fix and run the gate against THIS lot's radius.
+   *
+   * `prompt`: 'first-time' when it runs by itself, 'on-tap' from a button.
+   * See PermissionPrompt for why an automatic check must never re-ask.
+   */
+  const checkLocation = useCallback(
+    async (prompt: PermissionPrompt): Promise<GateDecision | null> => {
+      if (!lot) return null;
+      setLocating(true);
+      setLocationProblem(null);
+      try {
+        const fix = await getFix(prompt);
 
-      if (fix.kind === 'services_off') {
-        setLocationProblem('Location is switched off. Turn it on to book a slot.');
-        return null;
-      }
-      if (fix.kind === 'permission_denied') {
-        setLocationProblem(
-          fix.canAskAgain
-            ? 'Laqum needs your location to confirm you are close enough to this lot.'
-            : 'Location permission is blocked. Allow it in Settings to book.',
+        if (fix.kind === 'services_off') {
+          setLocationProblem('Location is switched off. Turn it on to book a slot.');
+          return null;
+        }
+        if (fix.kind === 'permission_denied') {
+          setLocationProblem(
+            fix.canAskAgain
+              ? 'Laqum needs your location to confirm you are close enough to this lot.'
+              : 'Location permission is blocked. Allow it in Settings to book.',
+          );
+          return null;
+        }
+        if (fix.kind === 'unavailable') {
+          setLocationProblem('Your position could not be found. Step outside and try again.');
+          return null;
+        }
+
+        // The SAME haversine the server uses, so the two cannot disagree at the
+        // boundary — a second implementation would be a second set of rounding.
+        const distanceM = haversineMeters(
+          { latitude: fix.fix.latitude, longitude: fix.fix.longitude },
+          { latitude: lot.latitude, longitude: lot.longitude },
         );
-        return null;
-      }
-      if (fix.kind === 'unavailable') {
-        setLocationProblem('Your position could not be found. Step outside and try again.');
-        return null;
-      }
 
-      // The SAME haversine the server uses, so the two cannot disagree at the
-      // boundary — a second implementation would be a second set of rounding.
-      const distanceM = haversineMeters(
-        { latitude: fix.fix.latitude, longitude: fix.fix.longitude },
-        { latitude: lot.latitude, longitude: lot.longitude },
-      );
-
-      const result = gate(
-        fix.fix,
-        { distanceM, accuracyM: fix.fix.accuracyM, limitM: lot.maxBookingDistanceM },
-        Date.now(),
-      );
-      setDecision(result);
-      return result;
-    } finally {
-      setLocating(false);
-    }
-  }, [lot]);
+        const result = gate(
+          fix.fix,
+          { distanceM, accuracyM: fix.fix.accuracyM, limitM: lot.maxBookingDistanceM },
+          Date.now(),
+        );
+        setDecision(result);
+        return result;
+      } finally {
+        setLocating(false);
+      }
+    },
+    [lot],
+  );
 
   useEffect(() => {
-    if (lot) void checkLocation();
+    if (lot) void checkLocation('first-time');
   }, [lot, checkLocation]);
 
   async function book(): Promise<void> {
@@ -94,13 +102,13 @@ export default function Book(): React.JSX.Element {
 
     // Re-check immediately before sending: the driver may have walked, and a
     // decision from two minutes ago is exactly the staleness the gate rejects.
-    const fresh = await checkLocation();
+    const fresh = await checkLocation('on-tap');
     if (fresh?.kind !== 'proceed') return;
 
     setBusy(true);
     setError(null);
 
-    const fix = await getFix();
+    const fix = await getFix('on-tap');
     if (fix.kind !== 'fix') {
       setBusy(false);
       setLocationProblem('Your position could not be confirmed. Try again.');
@@ -237,7 +245,7 @@ export default function Book(): React.JSX.Element {
           testID="gate-need-better-fix"
           message={`Your position is accurate to about ${String(Math.round(decision.accuracyM))} m, which is not precise enough this close to the limit. Step into the open and try again.`}
           actionLabel="Retry"
-          onAction={() => void checkLocation()}
+          onAction={() => void checkLocation('on-tap')}
         />
       ) : null}
 
@@ -247,7 +255,7 @@ export default function Book(): React.JSX.Element {
           testID="gate-stale"
           message="Your last position is too old to trust."
           actionLabel="Retry"
-          onAction={() => void checkLocation()}
+          onAction={() => void checkLocation('on-tap')}
         />
       ) : null}
 
