@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet } from 'react-native';
 import type { NearbyLot } from '../../src/api/endpoints.js';
 import { useApp } from '../../src/state/app.js';
-import { Body, Button, Card, Loading, Notice, Title } from '../../src/ui.js';
+import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
 
 /** Rates, live free count, and a call button — per the brief. */
 export default function LotDetail(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { api, foregroundEpoch } = useApp();
+  const bottomInset = useBottomInset(20);
   const [lot, setLot] = useState<NearbyLot | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +32,7 @@ export default function LotDetail(): React.JSX.Element {
   const full = lot.freeSlots === 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
       <Title>{lot.name}</Title>
       {lot.address ? <Body muted>{lot.address}</Body> : null}
 

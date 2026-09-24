@@ -10,8 +10,7 @@ import { maybeRegisterForPush } from '../../src/push/registration.js';
 import { pushDeps } from '../../src/push/expoDeps.js';
 import { useApp } from '../../src/state/app.js';
 import { formatRemaining } from '../../src/time/serverClock.js';
-import { useTheme } from '../../src/theme.js';
-import { Body, Button, Card, Loading, Notice, Title } from '../../src/ui.js';
+import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
 
 /**
  * The booking, in whichever state it is in.
@@ -26,8 +25,8 @@ import { Body, Button, Card, Loading, Notice, Title } from '../../src/ui.js';
  */
 export default function BookingScreen(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const theme = useTheme();
   const { api, client, foregroundEpoch } = useApp();
+  const bottomInset = useBottomInset(20);
 
   const [booking, setBooking] = useState<DriverBooking | null>(null);
   const [lot, setLot] = useState<NearbyLot | null>(null);
@@ -116,7 +115,7 @@ export default function BookingScreen(): React.JSX.Element {
   const isParked = booking.status === 'CHECKED_IN' || booking.status === 'OVERSTAY';
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
       <Title>{lot?.name ?? 'Your booking'}</Title>
       <Body muted>{booking.status.replace('_', ' ').toLowerCase()}</Body>
 
@@ -238,7 +237,6 @@ export default function BookingScreen(): React.JSX.Element {
       ) : null}
 
       {error ? <Notice tone="error" message={error} testID="booking-error" /> : null}
-      <View style={{ height: 24, backgroundColor: theme.bg }} />
     </ScrollView>
   );
 }

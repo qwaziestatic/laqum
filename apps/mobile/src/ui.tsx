@@ -1,5 +1,22 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from './theme.js';
+
+/**
+ * Bottom padding that keeps a screen's last control clear of the system
+ * navigation bar: `base`, the screen's own spacing, plus the inset.
+ *
+ * Android 16 makes edge-to-edge mandatory, so every screen draws BEHIND the
+ * navigation bar, and nothing did anything about it: the device test found
+ * Home's Refresh button under the bar. Every screen uses this
+ * (layout.test.ts checks), and the insets come from the SafeAreaProvider
+ * expo-router already mounts — which only works because the app and
+ * expo-router resolve the same copy of react-native-safe-area-context
+ * (resolution.test.ts checks).
+ */
+export function useBottomInset(base: number): number {
+  return base + useSafeAreaInsets().bottom;
+}
 
 /**
  * The handful of primitives every screen uses.

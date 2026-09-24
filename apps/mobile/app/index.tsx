@@ -9,7 +9,7 @@ import { mapStyleFor } from '../src/map/tiles.js';
 import { getFix, type LocationResult, type PermissionPrompt } from '../src/location/useLocation.js';
 import { useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
-import { Body, Button, Card, Loading, Notice, Title } from '../src/ui.js';
+import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../src/ui.js';
 
 /**
  * Map home: pins with free counts, and a list sorted by distance.
@@ -21,6 +21,9 @@ import { Body, Button, Card, Loading, Notice, Title } from '../src/ui.js';
 export default function Home(): React.JSX.Element {
   const theme = useTheme();
   const { api, session, ready, foregroundEpoch } = useApp();
+  // The Refresh bar is the last thing on screen; without this it sat under
+  // Android's navigation bar.
+  const bottomInset = useBottomInset(16);
 
   const [lots, setLots] = useState<NearbyLot[] | null>(null);
   const [location, setLocation] = useState<LocationResult | null>(null);
@@ -198,7 +201,7 @@ export default function Home(): React.JSX.Element {
         )}
       />
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, { paddingBottom: bottomInset }]}>
         <Button label="Refresh" tone="plain" onPress={() => void load('on-tap')} testID="refresh" />
       </View>
     </View>

@@ -5,7 +5,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import type { DriverBooking } from '../../src/api/endpoints.js';
 import { useApp } from '../../src/state/app.js';
-import { Body, Button, Card, Loading, Notice, Title } from '../../src/ui.js';
+import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
 
 /**
  * The itemised bill, and pay.
@@ -18,6 +18,7 @@ import { Body, Button, Card, Loading, Notice, Title } from '../../src/ui.js';
 export default function Checkout(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { api, foregroundEpoch } = useApp();
+  const bottomInset = useBottomInset(20);
 
   const [booking, setBooking] = useState<DriverBooking | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export default function Checkout(): React.JSX.Element {
 
   if (booking.status === 'PAID') {
     return (
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
         <Title>Paid</Title>
         <Body muted>Thank you. Your booking is settled.</Body>
         <Button
@@ -71,7 +72,7 @@ export default function Checkout(): React.JSX.Element {
   const due = booking.amountDueSantim ?? 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
       <Title>Amount due</Title>
 
       <Card>

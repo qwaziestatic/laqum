@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput } from 'react-native';
 import { useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
-import { Body, Button, Notice, Title } from '../src/ui.js';
+import { Body, Button, Notice, Title, useBottomInset } from '../src/ui.js';
 
 /**
  * Phone, then OTP. Two steps in one screen so the driver never loses the
@@ -13,6 +13,7 @@ import { Body, Button, Notice, Title } from '../src/ui.js';
 export default function Login(): React.JSX.Element {
   const theme = useTheme();
   const { api, setSession, signedOutReason } = useApp();
+  const bottomInset = useBottomInset(24);
 
   const [phone, setPhone] = useState('+251');
   const [code, setCode] = useState('');
@@ -51,7 +52,10 @@ export default function Login(): React.JSX.Element {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Title>ላቁም?</Title>
         <Body muted>Find and hold a parking slot in Addis Ababa.</Body>
 

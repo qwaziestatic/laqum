@@ -58,3 +58,31 @@ describe('react resolution', () => {
     expect(versionAt(rnPkgPath)).toBe('0.86.3');
   });
 });
+
+describe('safe-area resolution', () => {
+  /*
+   * useBottomInset (src/ui.tsx) reads the SafeAreaProvider that expo-router
+   * mounts at the root. A context only reaches consumers importing the SAME
+   * module instance, and pnpm gives a package one directory per resolved peer
+   * set — the store holds three expo-router instances. If the app and its
+   * expo-router ever resolve different copies, the app's hook finds no
+   * provider, and Metro bundles a second copy that registers the native
+   * RNCSafeAreaProvider view twice.
+   */
+  const appSafeArea = resolveFrom(process.cwd(), 'react-native-safe-area-context/package.json');
+  const routerPkg = resolveFrom(process.cwd(), 'expo-router/package.json');
+  const routerSafeArea = resolveFrom(
+    dirname(routerPkg),
+    'react-native-safe-area-context/package.json',
+  );
+
+  it('gives the app and its expo-router the SAME react-native-safe-area-context', () => {
+    expect(appSafeArea).toBe(routerSafeArea);
+  });
+
+  it('is an expo-router that shares the app react, so its provider renders in the app tree', () => {
+    expect(resolveFrom(dirname(routerPkg), 'react/package.json')).toBe(
+      resolveFrom(process.cwd(), 'react/package.json'),
+    );
+  });
+});

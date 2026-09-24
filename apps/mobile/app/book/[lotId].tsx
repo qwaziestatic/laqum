@@ -8,7 +8,7 @@ import { decide, gate, type GateDecision } from '../../src/location/gate.js';
 import { getFix, type PermissionPrompt } from '../../src/location/useLocation.js';
 import { useApp } from '../../src/state/app.js';
 import { useTheme } from '../../src/theme.js';
-import { Body, Button, Card, Loading, Notice, Title } from '../../src/ui.js';
+import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
 
 /**
  * Duration, plate, cost preview, and the location gate.
@@ -23,6 +23,7 @@ export default function Book(): React.JSX.Element {
   const { lotId } = useLocalSearchParams<{ lotId: string }>();
   const theme = useTheme();
   const { api } = useApp();
+  const bottomInset = useBottomInset(20);
 
   const [lot, setLot] = useState<NearbyLot | null>(null);
   const [blocks, setBlocks] = useState(2);
@@ -163,7 +164,7 @@ export default function Book(): React.JSX.Element {
   const canBook = decision?.kind === 'proceed';
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
       <Title>{lot.name}</Title>
 
       <Card>
