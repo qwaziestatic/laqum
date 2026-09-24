@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SHORT_CODE_PATTERN } from './constants.js';
-import { userRoleSchema } from './enums.js';
+import { bookingSourceSchema, bookingStatusSchema, userRoleSchema } from './enums.js';
+import { PAYMENT_NOTICES } from './payments.js';
 
 /**
  * Request and response schemas, shared by the API and both clients so a
@@ -24,6 +25,10 @@ export const otpRequestSchema = z.object({
   phone: phoneSchema,
 });
 export type OtpRequest = z.infer<typeof otpRequestSchema>;
+export type OtpRequestInput = z.input<typeof otpRequestSchema>;
+
+export const otpRequestResponseSchema = z.object({ expiresAt: z.iso.datetime() });
+export type OtpRequestResponse = z.infer<typeof otpRequestResponseSchema>;
 
 /**
  * Dev login. Phone only — there is no credential, which is precisely why the
@@ -42,11 +47,13 @@ export const otpVerifySchema = z.object({
     .regex(/^\d{6}$/u, 'must be six digits'),
 });
 export type OtpVerify = z.infer<typeof otpVerifySchema>;
+export type OtpVerifyInput = z.input<typeof otpVerifySchema>;
 
 export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 export type RefreshRequest = z.infer<typeof refreshSchema>;
+export type RefreshInput = z.input<typeof refreshSchema>;
 
 export const sessionResponseSchema = z.object({
   accessToken: z.string(),
@@ -124,19 +131,132 @@ export type NearbyLotsResponse = z.infer<typeof nearbyLotsResponseSchema>;
 
 // ─── Bookings ─────────────────────────────────────────────────────────────
 
+/*
+ * REQUEST BODIES the mobile app sends. The app builds each one as the
+ * schema's *Input type, so a field it names wrongly fails to compile. On
+ * the device test the app sent latitude/longitude where this schema wants
+ * lat/lng, and additionalMinutes where extend wants additionalBlocks: both
+ * came back as a bare "Request validation failed".
+ *
+ * NO z.coerce in a JSON body. JSON is already typed, and coerce turned the
+ * MISSING lat into Number(undefined) — reported as "expected number,
+ * received NaN" rather than as missing — and made the input type `unknown`,
+ * so a wrong field could not fail to compile. Query strings, which arrive as
+ * text, keep latitudeSchema's coerce.
+ *
+ * An optional field left blank is sent ABSENT: vehiclePlate rejects "".
+ */
+const latitudeValue = z.number().min(-90).max(90);
+const longitudeValue = z.number().min(-180).max(180);
+
 export const createBookingSchema = z.object({
   lotId: uuidSchema,
-  plannedMinutes: z.coerce.number().int().positive(),
+  plannedMinutes: z.number().int().positive(),
   vehiclePlate: z.string().trim().min(1).max(32).optional(),
-  lat: latitudeSchema,
-  lng: longitudeSchema,
+  lat: latitudeValue,
+  lng: longitudeValue,
 });
 export type CreateBookingRequest = z.infer<typeof createBookingSchema>;
+export type CreateBookingInput = z.input<typeof createBookingSchema>;
 
 export const extendBookingSchema = z.object({
-  additionalBlocks: z.coerce.number().int().positive().max(48),
+  additionalBlocks: z.number().int().positive().max(48),
 });
 export type ExtendBookingRequest = z.infer<typeof extendBookingSchema>;
+export type ExtendBookingInput = z.input<typeof extendBookingSchema>;
+
+/** Timestamps go out as ISO-8601 UTC strings (Date.toISOString). */
+const isoOrNull = z.iso.datetime().nullable();
+
+/**
+ * The OWNER's view of a booking, with the QR token and short code — both
+ * credentials, never in anyone else's response. The attendant's view omits
+ * qrToken (toStaffBookingDto).
+ */
+export const bookingSchema = z.object({
+  id: uuidSchema,
+  lotId: uuidSchema,
+  slotId: uuidSchema,
+  status: bookingStatusSchema,
+  source: bookingSourceSchema,
+  vehiclePlate: z.string().nullable(),
+  plannedMinutes: z.number().int().positive().nullable(),
+  qrToken: z.string().nullable(),
+  shortCode: z.string().nullable(),
+  holdExpiresAt: isoOrNull,
+  checkedInAt: isoOrNull,
+  plannedEndAt: isoOrNull,
+  checkedOutAt: isoOrNull,
+  amountDueSantim: santim.nullable(),
+  createdAt: z.iso.datetime(),
+  /** Clients drop events older than the snapshot they hold. */
+  updatedAt: z.iso.datetime(),
+});
+export type Booking = z.infer<typeof bookingSchema>;
+
+const paymentNoticeSchema = z.enum(PAYMENT_NOTICES).nullable();
+
+/** POST /v1/bookings */
+export const createBookingResponseSchema = z.object({
+  booking: bookingSchema,
+  paymentRequired: z.boolean(),
+  depositAmountSantim: santim,
+  /**
+   * Always null today: nothing initiates a deposit payment yet, so a deposit
+   * booking waits in PENDING_PAYMENT until its window lapses. Described as
+   * sent, not as intended.
+   */
+  checkoutUrl: z.string().nullable(),
+});
+export type CreateBookingResponse = z.infer<typeof createBookingResponseSchema>;
+
+/** GET /v1/bookings/:id */
+export const bookingResponseSchema = z.object({
+  booking: bookingSchema,
+  paymentNotice: paymentNoticeSchema,
+});
+export type BookingResponse = z.infer<typeof bookingResponseSchema>;
+
+/** GET /v1/bookings/current: 200 with null, not 404, when there is none. */
+export const currentBookingResponseSchema = z.object({
+  booking: bookingSchema.nullable(),
+  paymentNotice: paymentNoticeSchema,
+});
+export type CurrentBookingResponse = z.infer<typeof currentBookingResponseSchema>;
+
+/** POST /v1/bookings/:id/cancel */
+export const cancelBookingResponseSchema = z.object({ booking: bookingSchema });
+export type CancelBookingResponse = z.infer<typeof cancelBookingResponseSchema>;
+
+/** POST /v1/bookings/:id/extend */
+export const extendBookingResponseSchema = z.object({
+  booking: bookingSchema,
+  addedMinutes: z.number().int().positive(),
+});
+export type ExtendBookingResponse = z.infer<typeof extendBookingResponseSchema>;
+
+/** POST /v1/bookings/:id/pay */
+export const payBookingResponseSchema = z.object({
+  checkoutUrl: z.string(),
+  txRef: z.string().nullable(),
+  amountSantim: z.number().int().positive(),
+});
+export type PayBookingResponse = z.infer<typeof payBookingResponseSchema>;
+
+// ─── Push ─────────────────────────────────────────────────────────────────
+
+/** Expo's token format; anything else is not a token Expo will accept. */
+export const expoPushTokenSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/u,
+    'must be an Expo push token, for example ExponentPushToken[xxxxxxxx]',
+  );
+
+/** POST /v1/push/tokens — answered 204, no body. */
+export const registerPushTokenSchema = z.object({ expoPushToken: expoPushTokenSchema });
+export type RegisterPushTokenInput = z.input<typeof registerPushTokenSchema>;
 
 // ─── Staff ────────────────────────────────────────────────────────────────
 

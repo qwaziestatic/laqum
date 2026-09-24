@@ -12,7 +12,14 @@ const SESSION: Session = {
   refreshToken: 'refresh-1',
   accessExpiresAt: '2026-03-01T08:15:00.000Z',
   refreshExpiresAt: '2026-03-31T08:00:00.000Z',
-  user: { id: 'u1', phone: '+251911000002', role: 'driver', fullName: 'Dawit' },
+  // A real UUID: the client now parses sessions with the shared schema, and
+  // the API never sends anything else.
+  user: {
+    id: '9b2f4c1e-6a7d-4e3b-8c5f-1d2e3f4a5b6c',
+    phone: '+251911000002',
+    role: 'driver',
+    fullName: 'Dawit',
+  },
 };
 
 const REFRESHED: Session = {

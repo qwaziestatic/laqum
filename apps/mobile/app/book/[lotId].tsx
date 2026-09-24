@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser';
 import type { LotSummary } from '../../src/api/endpoints.js';
 import { decide, gate, type GateDecision } from '../../src/location/gate.js';
 import { getFix, type PermissionPrompt } from '../../src/location/useLocation.js';
+import { bookingRequest } from '../../src/booking/request.js';
 import { useApp } from '../../src/state/app.js';
 import { useTheme } from '../../src/theme.js';
 import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
@@ -116,13 +117,16 @@ export default function Book(): React.JSX.Element {
       return;
     }
 
-    const result = await api.createBooking({
-      lotId: lot.id,
-      plannedMinutes: blocks * lot.blockMinutes,
-      latitude: fix.fix.latitude,
-      longitude: fix.fix.longitude,
-      ...(plate.trim() ? { vehiclePlate: plate.trim() } : {}),
-    });
+    // Built by bookingRequest, which the API's contract test also calls.
+    const result = await api.createBooking(
+      bookingRequest({
+        lotId: lot.id,
+        blocks,
+        blockMinutes: lot.blockMinutes,
+        position: fix.fix,
+        plate,
+      }),
+    );
     setBusy(false);
 
     if (!result.ok) {

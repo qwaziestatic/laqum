@@ -1,3 +1,4 @@
+import type { Booking } from '@laqum/shared';
 import type { BookingRow } from './transition.js';
 
 /**
@@ -8,25 +9,8 @@ import type { BookingRow } from './transition.js';
  * out as ISO-8601 UTC strings; clients render them in Africa/Addis_Ababa.
  */
 
-export interface BookingDto {
-  id: string;
-  lotId: string;
-  slotId: string;
-  status: string;
-  source: string;
-  vehiclePlate: string | null;
-  plannedMinutes: number | null;
-  qrToken: string | null;
-  shortCode: string | null;
-  holdExpiresAt: string | null;
-  checkedInAt: string | null;
-  plannedEndAt: string | null;
-  checkedOutAt: string | null;
-  amountDueSantim: number | null;
-  createdAt: string;
-  /** Clients drop events older than the snapshot they hold. */
-  updatedAt: string;
-}
+/** The owner's view, as the SHARED bookingSchema describes it; the app parses with it. */
+export type BookingDto = Booking;
 
 const iso = (value: Date | null): string | null => value?.toISOString() ?? null;
 

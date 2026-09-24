@@ -1,8 +1,30 @@
 import {
+  type BookingResponse,
+  type CancelBookingResponse,
+  type CreateBookingInput,
+  type CreateBookingResponse,
+  type CurrentBookingResponse,
+  type ExtendBookingInput,
+  type ExtendBookingResponse,
   type LotSummary,
   type NearbyLotsResponse,
+  type OtpRequestInput,
+  type OtpRequestResponse,
+  type OtpVerifyInput,
+  type PayBookingResponse,
+  type PublicSnapshot,
+  type RegisterPushTokenInput,
+  bookingResponseSchema,
+  cancelBookingResponseSchema,
+  createBookingResponseSchema,
+  currentBookingResponseSchema,
+  extendBookingResponseSchema,
   lotSummarySchema,
   nearbyLotsResponseSchema,
+  otpRequestResponseSchema,
+  payBookingResponseSchema,
+  publicSnapshotSchema,
+  sessionResponseSchema,
 } from '@laqum/shared';
 import type { ApiClient, ApiResult, Session } from './client.js';
 
@@ -14,7 +36,7 @@ import type { ApiClient, ApiResult, Session } from './client.js';
  * a glance rather than scattered through screens.
  */
 
-export type { LotSummary, NearbyLot } from '@laqum/shared';
+export type { Booking as DriverBooking, LotSummary, NearbyLot } from '@laqum/shared';
 
 /** Anything with zod's safeParse. Structural, so this app need not depend on zod. */
 interface ResponseSchema<T> {
@@ -43,33 +65,14 @@ export function parsed<T>(result: ApiResult<unknown>, schema: ResponseSchema<T>)
   };
 }
 
-export interface DriverBooking {
-  id: string;
-  lotId: string;
-  slotId: string;
-  slotLabel?: string | null;
-  status: string;
-  vehiclePlate: string | null;
-  shortCode: string | null;
-  qrToken: string | null;
-  plannedMinutes: number | null;
-  holdExpiresAt: string | null;
-  plannedEndAt: string | null;
-  checkedInAt: string | null;
-  amountDueSantim: number | null;
-}
-
-export interface PublicSlot {
-  slotId: string;
-  label: string;
-  zone: string;
-  gridRow: number;
-  gridCol: number;
-  appBookable: boolean;
-  inService: boolean;
-  displayStatus: string;
-}
-
+/**
+ * Every request body is built as the SHARED schema's input type, and every
+ * response is parsed with the shared response schema. The device test found
+ * both directions broken by hand-written shapes: the Book screen crashed on a
+ * response, then "Hold this slot" sent latitude/longitude where the API wants
+ * lat/lng. apps/api/test/mobile-contract.test.ts drives THIS class against the
+ * real API, so a mismatch on either side fails in CI.
+ */
 export class Api {
   readonly #client: ApiClient;
 
@@ -77,18 +80,19 @@ export class Api {
     this.#client = client;
   }
 
-  requestOtp(phone: string): Promise<ApiResult<{ expiresAt: string }>> {
-    return this.#client.request('/auth/otp/request', {
+  #post(path: string, body?: unknown): Promise<ApiResult<unknown>> {
+    return this.#client.request<unknown>(path, {
       method: 'POST',
-      body: JSON.stringify({ phone }),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   }
 
-  verifyOtp(phone: string, code: string): Promise<ApiResult<Session>> {
-    return this.#client.request('/auth/otp/verify', {
-      method: 'POST',
-      body: JSON.stringify({ phone, code }),
-    });
+  async requestOtp(input: OtpRequestInput): Promise<ApiResult<OtpRequestResponse>> {
+    return parsed(await this.#post('/auth/otp/request', input), otpRequestResponseSchema);
+  }
+
+  async verifyOtp(input: OtpVerifyInput): Promise<ApiResult<Session>> {
+    return parsed(await this.#post('/auth/otp/verify', input), sessionResponseSchema);
   }
 
   async nearbyLots(
@@ -112,54 +116,44 @@ export class Api {
     return parsed(await this.#client.request<unknown>(`/lots/${id}`), lotSummarySchema);
   }
 
-  lotLayout(
-    id: string,
-  ): Promise<ApiResult<{ lotId: string; lotVersion: number; slots: PublicSlot[] }>> {
-    return this.#client.request(`/lots/${id}/layout`);
+  async lotLayout(id: string): Promise<ApiResult<PublicSnapshot>> {
+    return parsed(await this.#client.request<unknown>(`/lots/${id}/layout`), publicSnapshotSchema);
   }
 
-  createBooking(input: {
-    lotId: string;
-    plannedMinutes: number;
-    latitude: number;
-    longitude: number;
-    vehiclePlate?: string;
-  }): Promise<
-    ApiResult<{ booking: DriverBooking; paymentRequired: boolean; checkoutUrl?: string }>
-  > {
-    return this.#client.request('/bookings', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+  /** `vehiclePlate` must be ABSENT when blank: the schema rejects "". */
+  async createBooking(input: CreateBookingInput): Promise<ApiResult<CreateBookingResponse>> {
+    return parsed(await this.#post('/bookings', input), createBookingResponseSchema);
   }
 
-  currentBooking(): Promise<ApiResult<{ booking: DriverBooking | null }>> {
-    return this.#client.request('/bookings/current');
+  async currentBooking(): Promise<ApiResult<CurrentBookingResponse>> {
+    return parsed(
+      await this.#client.request<unknown>('/bookings/current'),
+      currentBookingResponseSchema,
+    );
   }
 
-  booking(id: string): Promise<ApiResult<{ booking: DriverBooking }>> {
-    return this.#client.request(`/bookings/${id}`);
+  async booking(id: string): Promise<ApiResult<BookingResponse>> {
+    return parsed(await this.#client.request<unknown>(`/bookings/${id}`), bookingResponseSchema);
   }
 
-  cancel(id: string): Promise<ApiResult<{ booking: DriverBooking }>> {
-    return this.#client.request(`/bookings/${id}/cancel`, { method: 'POST' });
+  async cancel(id: string): Promise<ApiResult<CancelBookingResponse>> {
+    return parsed(await this.#post(`/bookings/${id}/cancel`), cancelBookingResponseSchema);
   }
 
-  extend(id: string, additionalMinutes: number): Promise<ApiResult<{ booking: DriverBooking }>> {
-    return this.#client.request(`/bookings/${id}/extend`, {
-      method: 'POST',
-      body: JSON.stringify({ additionalMinutes }),
-    });
+  /** BLOCKS, not minutes: the API multiplies by the lot's block length. */
+  async extend(id: string, input: ExtendBookingInput): Promise<ApiResult<ExtendBookingResponse>> {
+    return parsed(await this.#post(`/bookings/${id}/extend`, input), extendBookingResponseSchema);
   }
 
-  pay(id: string): Promise<ApiResult<{ checkoutUrl: string }>> {
-    return this.#client.request(`/bookings/${id}/pay`, { method: 'POST' });
+  async pay(id: string): Promise<ApiResult<PayBookingResponse>> {
+    return parsed(await this.#post(`/bookings/${id}/pay`), payBookingResponseSchema);
   }
 
-  registerPushToken(expoPushToken: string): Promise<ApiResult<void>> {
+  /** Answered 204 with no body. */
+  registerPushToken(input: RegisterPushTokenInput): Promise<ApiResult<void>> {
     return this.#client.request('/push/tokens', {
       method: 'POST',
-      body: JSON.stringify({ expoPushToken }),
+      body: JSON.stringify(input),
     });
   }
 }

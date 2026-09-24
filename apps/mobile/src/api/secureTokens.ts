@@ -1,5 +1,6 @@
+import { sessionResponseSchema } from '@laqum/shared';
 import * as SecureStore from 'expo-secure-store';
-import type { Session, TokenStore } from './client.js';
+import type { TokenStore } from './client.js';
 
 /**
  * Tokens in the platform keystore — Keychain on iOS, Keystore-backed
@@ -22,7 +23,10 @@ export const secureTokenStore: TokenStore = {
     try {
       const raw = await SecureStore.getItemAsync(KEY);
       if (!raw) return null;
-      return JSON.parse(raw) as Session;
+      // Parsed, not cast: a blob stored by an older app version in an older
+      // shape reads as "no session" below, instead of a Session it is not.
+      const parsed = sessionResponseSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
     } catch {
       /*
        * A read failure is treated as "no session", not as a crash.

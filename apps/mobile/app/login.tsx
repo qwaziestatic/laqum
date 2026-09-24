@@ -26,7 +26,7 @@ export default function Login(): React.JSX.Element {
   async function sendCode(): Promise<void> {
     setBusy(true);
     setError(null);
-    const result = await api.requestOtp(phone.trim());
+    const result = await api.requestOtp({ phone: phone.trim() });
     setBusy(false);
     if (result.ok) setStage('code');
     // The server never says whether the number is registered, so neither do
@@ -37,7 +37,7 @@ export default function Login(): React.JSX.Element {
   async function verify(): Promise<void> {
     setBusy(true);
     setError(null);
-    const result = await api.verifyOtp(phone.trim(), code.trim());
+    const result = await api.verifyOtp({ phone: phone.trim(), code: code.trim() });
     setBusy(false);
     if (!result.ok) {
       setError(result.error.message);

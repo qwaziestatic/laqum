@@ -1,4 +1,17 @@
-import { AppError, createBookingSchema, extendBookingSchema, uuidSchema } from '@laqum/shared';
+import {
+  AppError,
+  type BookingResponse,
+  type CancelBookingResponse,
+  type CreateBookingRequest,
+  type CreateBookingResponse,
+  type CurrentBookingResponse,
+  type ExtendBookingRequest,
+  type ExtendBookingResponse,
+  type PayBookingResponse,
+  createBookingSchema,
+  extendBookingSchema,
+  uuidSchema,
+} from '@laqum/shared';
 import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { currentUser, requireAuth, requireRole } from '../middleware/auth.js';
@@ -18,13 +31,8 @@ export function bookingsRouter(ctx: AppContext): Router {
     validateBody(createBookingSchema),
     handle(async (req, res) => {
       const user = currentUser(res);
-      const body = req.body as {
-        lotId: string;
-        plannedMinutes: number;
-        vehiclePlate?: string;
-        lat: number;
-        lng: number;
-      };
+      // Validated by createBookingSchema above.
+      const body = req.body as CreateBookingRequest;
 
       const result = await createBooking(
         { db: ctx.db, clock: ctx.clock, logger: ctx.logger, scheduler: ctx.scheduler },
@@ -42,10 +50,10 @@ export function bookingsRouter(ctx: AppContext): Router {
         booking: toBookingDto(result.booking),
         paymentRequired: result.paymentRequired,
         depositAmountSantim: result.lot.deposit_amount_santim,
-        // Filled in by Phase 2, when a payment provider exists. Until then a
-        // deposit booking sits in PENDING_PAYMENT until its window lapses.
+        // Nothing initiates a deposit payment yet, so a deposit booking sits
+        // in PENDING_PAYMENT until its window lapses. See createBookingResponseSchema.
         checkoutUrl: null,
-      });
+      } satisfies CreateBookingResponse);
     }),
   );
 
@@ -59,7 +67,7 @@ export function bookingsRouter(ctx: AppContext): Router {
       res.json({
         booking: booking ? toBookingDto(booking) : null,
         paymentNotice: booking ? await paymentNoticeFor(ctx, booking.id) : null,
-      });
+      } satisfies CurrentBookingResponse);
     }),
   );
 
@@ -72,7 +80,7 @@ export function bookingsRouter(ctx: AppContext): Router {
       res.json({
         booking: toBookingDto(booking),
         paymentNotice: await paymentNoticeFor(ctx, booking.id),
-      });
+      } satisfies BookingResponse);
     }),
   );
 
@@ -81,7 +89,9 @@ export function bookingsRouter(ctx: AppContext): Router {
     handle(async (req, res) => {
       const user = currentUser(res);
       const id = uuidSchema.parse(req.params['id']);
-      res.json({ booking: toBookingDto(await cancelBooking(ctx, user.userId, id)) });
+      res.json({
+        booking: toBookingDto(await cancelBooking(ctx, user.userId, id)),
+      } satisfies CancelBookingResponse);
     }),
   );
 
@@ -91,13 +101,13 @@ export function bookingsRouter(ctx: AppContext): Router {
     handle(async (req, res) => {
       const user = currentUser(res);
       const id = uuidSchema.parse(req.params['id']);
-      const { additionalBlocks } = req.body as { additionalBlocks: number };
+      const { additionalBlocks } = req.body as ExtendBookingRequest;
 
       const result = await extendBooking(ctx, user.userId, id, additionalBlocks);
       res.json({
         booking: toBookingDto(result.booking),
         addedMinutes: result.addedMinutes,
-      });
+      } satisfies ExtendBookingResponse);
     }),
   );
 
@@ -155,7 +165,7 @@ export function bookingsRouter(ctx: AppContext): Router {
         checkoutUrl: initiated.checkoutUrl,
         txRef: initiated.payment.tx_ref,
         amountSantim,
-      });
+      } satisfies PayBookingResponse);
     }),
   );
 

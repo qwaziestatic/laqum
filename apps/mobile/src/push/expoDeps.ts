@@ -47,7 +47,7 @@ export function pushDeps(api: Api, hasBooked: boolean): PushDeps {
     },
 
     upload: async (token) => {
-      await api.registerPushToken(token);
+      await api.registerPushToken({ expoPushToken: token });
     },
 
     hasBooked: () => Promise.resolve(hasBooked),

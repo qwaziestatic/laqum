@@ -1,3 +1,5 @@
+import { type RefreshInput, type SessionResponse, sessionResponseSchema } from '@laqum/shared';
+import { forDriver } from './messages.js';
 import { ServerClock, parseDateHeader } from '../time/serverClock.js';
 
 /**
@@ -27,13 +29,8 @@ export interface ApiError {
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError };
 
-export interface Session {
-  accessToken: string;
-  refreshToken: string;
-  accessExpiresAt: string;
-  refreshExpiresAt: string;
-  user: { id: string; phone: string; role: string; fullName: string | null };
-}
+/** The session as the API sends it: the SHARED sessionResponseSchema. */
+export type Session = SessionResponse;
 
 /** Where the tokens live. expo-secure-store in the app; a map in tests. */
 export interface TokenStore {
@@ -148,7 +145,10 @@ export class ApiClient {
       status: response.status,
       result: {
         ok: false,
-        error: error ?? { code: 'UNKNOWN', message: `HTTP ${String(response.status)}` },
+        // Rewritten for the driver where the API's wording is for developers.
+        error: error
+          ? forDriver(error)
+          : { code: 'UNKNOWN', message: `HTTP ${String(response.status)}` },
       },
     };
   }
@@ -189,7 +189,7 @@ export class ApiClient {
       response = await this.#deps.fetch(`${this.#deps.baseUrl}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: current.refreshToken }),
+        body: JSON.stringify({ refreshToken: current.refreshToken } satisfies RefreshInput),
       });
     } catch (err) {
       // A NETWORK failure is not a revoked session. Keep the tokens: the
@@ -206,9 +206,20 @@ export class ApiClient {
     this.#sampleClock(response);
 
     if (response.ok) {
-      const session = (await response.json()) as Session;
-      await this.setSession(session);
-      return { ok: true, data: session };
+      const parsed = sessionResponseSchema.safeParse(await response.json().catch(() => null));
+      if (!parsed.success) {
+        // Not a sign-out: the server may be fine and this app out of date.
+        return {
+          ok: false,
+          error: {
+            code: 'BAD_RESPONSE',
+            message: 'The server sent a response this version of the app does not understand.',
+            details: parsed.error,
+          },
+        };
+      }
+      await this.setSession(parsed.data);
+      return { ok: true, data: parsed.data };
     }
 
     /*

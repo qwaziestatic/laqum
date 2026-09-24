@@ -197,7 +197,9 @@ export default function BookingScreen(): React.JSX.Element {
           busy={busy}
           onPress={() => {
             setBusy(true);
-            void api.extend(booking.id, lot?.blockMinutes ?? 30).then(async (result) => {
+            // One block, as the label says. The API counts BLOCKS; the app once
+            // sent the block length in minutes under a field it does not know.
+            void api.extend(booking.id, { additionalBlocks: 1 }).then(async (result) => {
               setBusy(false);
               if (!result.ok) setError(result.error.message);
               else await load();

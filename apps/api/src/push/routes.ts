@@ -1,5 +1,5 @@
+import { registerPushTokenSchema } from '@laqum/shared';
 import { Router } from 'express';
-import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { currentUser, requireAuth } from '../middleware/auth.js';
 import { handle, validateBody } from '../middleware/validate.js';
@@ -13,22 +13,12 @@ import { handle, validateBody } from '../middleware/validate.js';
  * push_tokens table rather than an empty one and a migration of behaviour.
  */
 
-/**
- * Expo's token format. Validated rather than accepted as free text: this
- * column is unique and will later be fed to Expo's push service, so a
- * malformed value is worth rejecting at the door.
+/*
+ * The token format is validated rather than accepted as free text: this
+ * column is unique and will later be fed to Expo's push service. The schema
+ * is SHARED (registerPushTokenSchema) so the app builds its request from the
+ * same definition that validates it here.
  */
-const expoPushTokenSchema = z
-  .string()
-  .trim()
-  .regex(
-    /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/u,
-    'must be an Expo push token, for example ExponentPushToken[xxxxxxxx]',
-  );
-
-export const registerPushTokenSchema = z.object({
-  expoPushToken: expoPushTokenSchema,
-});
 
 export function pushRouter(ctx: AppContext): Router {
   const router = Router();
