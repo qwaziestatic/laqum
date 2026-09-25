@@ -1,5 +1,6 @@
 import { type Booking, isLiveStatus } from '@laqum/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ApiError } from '../api/client.js';
 import { verifiesDeposit } from '../booking/deposit.js';
 import { useApp } from '../state/app.js';
 import { BookingFeed } from './bookingFeed.js';
@@ -10,7 +11,7 @@ export const FALLBACK_POLL_MS = 20_000;
 export interface LiveBooking {
   booking: Booking | null;
   /** Why the last refetch failed; cleared by the next one that succeeds. */
-  error: string | null;
+  error: ApiError | null;
   /** Refetch now. `verify` also asks the payment service about a pending deposit. */
   reload: (options?: { verify?: boolean }) => Promise<void>;
 }
@@ -31,7 +32,7 @@ export function useLiveBooking(id: string | undefined): LiveBooking {
   const { api, realtime, realtimeState, foregroundEpoch } = useApp();
   const feed = useMemo(() => (id ? new BookingFeed(id) : null), [id]);
   const [booking, setBooking] = useState<Booking | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const [awaitingSnapshot, setAwaitingSnapshot] = useState(false);
 
   const reload = useCallback(
@@ -39,7 +40,7 @@ export function useLiveBooking(id: string | undefined): LiveBooking {
       if (!id || !feed) return;
       let result = await api.booking(id);
       if (!result.ok) {
-        setError(result.error.message);
+        setError(result.error);
         return;
       }
       if (options.verify && verifiesDeposit(result.data.booking.status)) {

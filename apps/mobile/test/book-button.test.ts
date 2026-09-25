@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { bookButton, type BookButtonState } from '../src/booking/button.js';
+import { phrase, translator } from '../src/i18n/core.js';
 import type { GateDecision } from '../src/location/gate.js';
+
+const english = translator('en');
+
+/** The button as the driver reads it, in English: the label is a key. */
+function shown(state: BookButtonState): { label: string; enabled: boolean } {
+  const result = bookButton(state);
+  return { label: english(phrase(result.label)), enabled: result.enabled };
+}
 
 /**
  * The Book screen's button. On the device test the fix was too imprecise,
@@ -24,7 +33,7 @@ const decision = {
 
 describe('bookButton', () => {
   it('says the fix is not precise enough — not "checking" — when nothing is running', () => {
-    const button = bookButton({ ...IDLE, decision: decision.needBetterFix });
+    const button = shown({ ...IDLE, decision: decision.needBetterFix });
 
     expect(button).toEqual({ label: 'Location not precise enough', enabled: false });
     expect(button.label).not.toMatch(/checking/iu);
@@ -40,25 +49,21 @@ describe('bookButton', () => {
       { ...IDLE, locationProblem: 'unavailable' },
     ];
     for (const state of idleStates) {
-      expect(bookButton(state).label, JSON.stringify(state)).not.toMatch(/checking|getting/iu);
+      expect(shown(state).label, JSON.stringify(state)).not.toMatch(/checking|getting/iu);
     }
 
-    expect(bookButton({ ...IDLE, locating: 'balanced' }).label).toBe('Checking your location…');
-    expect(bookButton({ ...IDLE, locating: 'highest', decision: decision.needBetterFix })).toEqual({
+    expect(shown({ ...IDLE, locating: 'balanced' }).label).toBe('Checking your location…');
+    expect(shown({ ...IDLE, locating: 'highest', decision: decision.needBetterFix })).toEqual({
       label: 'Getting a more precise location…',
       enabled: false,
     });
   });
 
   it('states each reason it cannot book', () => {
-    expect(bookButton({ ...IDLE, decision: decision.tooFar }).label).toBe('Too far from this lot');
-    expect(bookButton({ ...IDLE, decision: decision.stale }).label).toBe('Location too old to use');
-    expect(bookButton({ ...IDLE, locationProblem: 'blocked' }).label).toBe(
-      'Location needed to book',
-    );
-    expect(bookButton({ ...IDLE, locationProblem: 'unavailable' }).label).toBe(
-      'Location unavailable',
-    );
+    expect(shown({ ...IDLE, decision: decision.tooFar }).label).toBe('Too far from this lot');
+    expect(shown({ ...IDLE, decision: decision.stale }).label).toBe('Location too old to use');
+    expect(shown({ ...IDLE, locationProblem: 'blocked' }).label).toBe('Location needed to book');
+    expect(shown({ ...IDLE, locationProblem: 'unavailable' }).label).toBe('Location unavailable');
   });
 
   it('enables the button on "proceed" alone', () => {
@@ -70,14 +75,14 @@ describe('bookButton', () => {
       { ...IDLE, decision: decision.stale },
       { ...IDLE, decision: decision.proceed, locating: 'balanced' as const },
       { ...IDLE, decision: decision.proceed, booking: true },
-    ].filter((state) => bookButton(state).enabled);
+    ].filter((state) => shown(state).enabled);
 
     expect(enabled).toEqual([{ ...IDLE, decision: decision.proceed }]);
-    expect(bookButton({ ...IDLE, decision: decision.proceed }).label).toBe('Hold this slot');
+    expect(shown({ ...IDLE, decision: decision.proceed }).label).toBe('Hold this slot');
   });
 
   it('shows the booking in flight over everything else', () => {
-    expect(bookButton({ ...IDLE, decision: decision.proceed, booking: true })).toEqual({
+    expect(shown({ ...IDLE, decision: decision.proceed, booking: true })).toEqual({
       label: 'Holding your slot…',
       enabled: false,
     });
@@ -85,6 +90,6 @@ describe('bookButton', () => {
 
   it('says it is checking before the first check has reported', () => {
     // The first check starts on mount; nothing to state yet.
-    expect(bookButton(IDLE)).toEqual({ label: 'Checking your location…', enabled: false });
+    expect(shown(IDLE)).toEqual({ label: 'Checking your location…', enabled: false });
   });
 });

@@ -1,5 +1,4 @@
 import { type RefreshInput, type SessionResponse, sessionResponseSchema } from '@laqum/shared';
-import { forDriver } from './messages.js';
 import { ServerClock, parseDateHeader } from '../time/serverClock.js';
 
 /**
@@ -154,10 +153,9 @@ export class ApiClient {
       status: response.status,
       result: {
         ok: false,
-        // Rewritten for the driver where the API's wording is for developers.
-        error: error
-          ? forDriver(error)
-          : { code: 'UNKNOWN', message: `HTTP ${String(response.status)}` },
+        // As sent. The message is developer English and never shown: screens
+        // render errorPhrase(error), which reads the CODE (api/messages.ts).
+        error: error ?? { code: 'UNKNOWN', message: `HTTP ${String(response.status)}` },
       },
     };
   }

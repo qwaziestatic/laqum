@@ -1,9 +1,12 @@
-import { billableLotFromSummary, computeBill, formatBirr, haversineMeters } from '@laqum/shared';
+import { billableLotFromSummary, computeBill, haversineMeters } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import type { LotSummary } from '../../src/api/endpoints.js';
+import { errorPhrase } from '../../src/api/messages.js';
+import { type MessageKey, type Phrase, phrase, verbatim } from '../../src/i18n/core.js';
+import { useT } from '../../src/i18n/react.js';
 import { decide, gate, type GateDecision } from '../../src/location/gate.js';
 import { getFix, type FixAccuracy, type PermissionPrompt } from '../../src/location/useLocation.js';
 import { bookButton } from '../../src/booking/button.js';
@@ -24,12 +27,13 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  */
 /** A location failure on screen, with the recovery that actually helps. */
 type LocationProblem =
-  | { kind: 'blocked'; message: string }
-  | { kind: 'unavailable'; message: string; retryAccuracy: FixAccuracy };
+  | { kind: 'blocked'; message: MessageKey }
+  | { kind: 'unavailable'; message: MessageKey; retryAccuracy: FixAccuracy };
 
 export default function Book(): React.JSX.Element {
   const { lotId } = useLocalSearchParams<{ lotId: string }>();
   const theme = useTheme();
+  const t = useT();
   const { api } = useApp();
   const bottomInset = useBottomInset(20);
 
@@ -40,14 +44,14 @@ export default function Book(): React.JSX.Element {
   // The accuracy of the check in flight; false when none is running.
   const [locating, setLocating] = useState<false | FixAccuracy>(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Phrase | null>(null);
   const [locationProblem, setLocationProblem] = useState<LocationProblem | null>(null);
 
   useEffect(() => {
     if (!lotId) return;
     void api.lot(lotId).then((result) => {
       if (result.ok) setLot(result.data);
-      else setError(result.error.message);
+      else setError(errorPhrase(result.error));
     });
   }, [api, lotId]);
 
@@ -75,16 +79,14 @@ export default function Book(): React.JSX.Element {
         if (fix.kind === 'services_off') {
           setLocationProblem({
             kind: 'blocked',
-            message: 'Location is switched off. Turn it on to book a slot.',
+            message: 'book.locationServicesOff',
           });
           return null;
         }
         if (fix.kind === 'permission_denied') {
           setLocationProblem({
             kind: 'blocked',
-            message: fix.canAskAgain
-              ? 'Laqum needs your location to confirm you are close enough to this lot.'
-              : 'Location permission is blocked. Allow it in Settings to book.',
+            message: fix.canAskAgain ? 'book.locationDenied' : 'book.locationBlocked',
           });
           return null;
         }
@@ -92,9 +94,7 @@ export default function Book(): React.JSX.Element {
           setLocationProblem({
             kind: 'unavailable',
             message:
-              accuracy === 'highest'
-                ? 'A precise position did not arrive in time. Step into the open, away from buildings, and try again.'
-                : 'Your position could not be found. Step outside and try again.',
+              accuracy === 'highest' ? 'book.locationPreciseTimeout' : 'book.locationNotFound',
             retryAccuracy: accuracy,
           });
           return null;
@@ -141,7 +141,7 @@ export default function Book(): React.JSX.Element {
       setBusy(false);
       setLocationProblem({
         kind: 'unavailable',
-        message: 'Your position could not be confirmed. Try again.',
+        message: 'book.locationNotConfirmed',
         retryAccuracy: 'balanced',
       });
       return;
@@ -165,8 +165,11 @@ export default function Book(): React.JSX.Element {
         { distanceM?: number; maxDistanceM?: number } | undefined;
       setError(
         result.error.code === 'TOO_FAR' && details?.distanceM !== undefined
-          ? `You are ${String(Math.round(details.distanceM))} m away. This lot only holds slots within ${String(details.maxDistanceM ?? lot.maxBookingDistanceM)} m.`
-          : result.error.message,
+          ? phrase('book.tooFarServer', {
+              distance: Math.round(details.distanceM),
+              limit: details.maxDistanceM ?? lot.maxBookingDistanceM,
+            })
+          : errorPhrase(result.error),
       );
       return;
     }
@@ -179,8 +182,8 @@ export default function Book(): React.JSX.Element {
     router.replace({ pathname: '/booking/[id]', params: next.params });
   }
 
-  if (error && !lot) return <Notice tone="error" message={error} />;
-  if (!lot) return <Loading label="Loading lot…" />;
+  if (error && !lot) return <Notice tone="error" message={t.phrase(error)} />;
+  if (!lot) return <Loading label={t('lot.loading')} />;
 
   const minutes = blocks * lot.blockMinutes;
   const preview = computeBill(
@@ -206,10 +209,10 @@ export default function Book(): React.JSX.Element {
 
   return (
     <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
-      <Title>{lot.name}</Title>
+      <Title>{verbatim(lot.name)}</Title>
 
       <Card>
-        <Body>How long?</Body>
+        <Body>{t('book.howLong')}</Body>
         <View style={styles.blocks}>
           {[1, 2, 4, 8].map((count) => (
             <Pressable
@@ -228,14 +231,14 @@ export default function Book(): React.JSX.Element {
                 },
               ]}
             >
-              <Body>{`${String(count * lot.blockMinutes)} min`}</Body>
+              <Body>{t('book.minutes', { count: count * lot.blockMinutes })}</Body>
             </Pressable>
           ))}
         </View>
       </Card>
 
       <Card>
-        <Body>Plate (optional)</Body>
+        <Body>{t('book.plate')}</Body>
         <TextInput
           testID="plate-input"
           value={plate}
@@ -245,20 +248,18 @@ export default function Book(): React.JSX.Element {
           autoCapitalize="characters"
           placeholder="AA-12345"
           placeholderTextColor={theme.muted}
-          accessibilityLabel="Vehicle plate"
+          accessibilityLabel={t('book.plateLabel')}
           style={[styles.input, { color: theme.text, borderColor: theme.line }]}
         />
       </Card>
 
       <Card>
-        <Title>{formatBirr(preview.amountDueSantim)}</Title>
-        <Body muted>{`${String(minutes)} minutes`}</Body>
+        <Title>{t.money(preview.amountDueSantim)}</Title>
+        <Body muted>{t('book.totalMinutes', { count: minutes })}</Body>
         {lot.depositAmountSantim > 0 ? (
-          <Body
-            muted
-          >{`${formatBirr(lot.depositAmountSantim)} deposit now, the rest on exit`}</Body>
+          <Body muted>{t('book.depositNow', { amount: t.money(lot.depositAmountSantim) })}</Body>
         ) : (
-          <Body muted>Pay on exit. No deposit.</Body>
+          <Body muted>{t('book.payOnExit')}</Body>
         )}
       </Card>
 
@@ -267,10 +268,12 @@ export default function Book(): React.JSX.Element {
         <Notice
           tone="warn"
           testID="location-problem"
-          message={locationProblem.message}
+          message={t(locationProblem.message)}
           // Settings fixes a switch or a permission; only retrying fixes a
           // position that did not arrive.
-          actionLabel={locationProblem.kind === 'blocked' ? 'Open settings' : 'Retry'}
+          actionLabel={
+            locationProblem.kind === 'blocked' ? t('common.openSettings') : t('common.retry')
+          }
           onAction={() => {
             if (locationProblem.kind === 'blocked') void Linking.openSettings();
             else void checkLocation('on-tap', locationProblem.retryAccuracy);
@@ -282,7 +285,10 @@ export default function Book(): React.JSX.Element {
         <Notice
           tone="error"
           testID="gate-too-far"
-          message={`You are about ${String(Math.round(decision.distanceM))} m away. This lot only holds slots within ${String(decision.limitM)} m.`}
+          message={t('book.tooFar', {
+            distance: Math.round(decision.distanceM),
+            limit: decision.limitM,
+          })}
         />
       ) : null}
 
@@ -290,8 +296,8 @@ export default function Book(): React.JSX.Element {
         <Notice
           tone="warn"
           testID="gate-need-better-fix"
-          message={`Your position is accurate to about ${String(Math.round(decision.accuracyM))} m, which is not precise enough this close to the limit. Step into the open and try again.`}
-          actionLabel="Retry precisely"
+          message={t('book.needBetterFix', { accuracy: Math.round(decision.accuracyM) })}
+          actionLabel={t('book.retryPrecisely')}
           // Balanced just said it was not precise enough; asking Balanced again
           // gets the same answer. The platform's highest accuracy, bounded.
           onAction={() => void checkLocation('on-tap', 'highest')}
@@ -302,17 +308,17 @@ export default function Book(): React.JSX.Element {
         <Notice
           tone="warn"
           testID="gate-stale"
-          message="Your last position is too old to trust."
-          actionLabel="Retry"
+          message={t('book.stale')}
+          actionLabel={t('common.retry')}
           onAction={() => void checkLocation('on-tap')}
         />
       ) : null}
 
-      {error ? <Notice tone="error" message={error} testID="book-error" /> : null}
+      {error ? <Notice tone="error" message={t.phrase(error)} testID="book-error" /> : null}
 
       <Button
         testID="confirm-booking"
-        label={button.label}
+        label={t(button.label)}
         busy={busy || locating !== false}
         disabled={!button.enabled}
         onPress={() => void book()}

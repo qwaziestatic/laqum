@@ -1,5 +1,5 @@
 import type { NearbyLotsResponse } from '@laqum/shared';
-import type { ApiResult } from '../api/client.js';
+import type { ApiError, ApiResult } from '../api/client.js';
 import type { LocationResult, PermissionPrompt } from '../location/fix.js';
 import { latestOnly } from '../latest.js';
 
@@ -22,7 +22,8 @@ export interface LotsLoaderDeps {
   fetchLots: (result: LocationResult) => Promise<ApiResult<NearbyLotsResponse>>;
   onLocation: (result: LocationResult) => void;
   onLots: (lots: NearbyLotsResponse['lots']) => void;
-  onError: (message: string) => void;
+  /** The failure itself: the screen words it in the driver's language. */
+  onError: (error: ApiError) => void;
 }
 
 export interface LotsLoader {
@@ -42,7 +43,7 @@ export function createLotsLoader(deps: LotsLoaderDeps): LotsLoader {
             // A newer report (or a newer load) has started: its answer wins.
             if (!latest.isCurrent(ticket)) return;
             if (response.ok) deps.onLots(response.data.lots);
-            else deps.onError(response.error.message);
+            else deps.onError(response.error);
           }),
         );
       });

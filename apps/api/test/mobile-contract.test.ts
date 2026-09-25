@@ -4,7 +4,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ApiClient, type ApiResult, type Session } from '../../mobile/src/api/client.js';
 import { Api } from '../../mobile/src/api/endpoints.js';
-import { VALIDATION_FALLBACK } from '../../mobile/src/api/messages.js';
+import { errorPhrase } from '../../mobile/src/api/messages.js';
 import {
   DEPOSIT_UNAVAILABLE,
   afterBooking,
@@ -12,6 +12,7 @@ import {
 } from '../../mobile/src/booking/deposit.js';
 import { bookingRequest } from '../../mobile/src/booking/request.js';
 import { bookingView } from '../../mobile/src/booking/view.js';
+import { translator } from '../../mobile/src/i18n/core.js';
 import { makeActor, staffLot } from './helpers/auth.js';
 import { createTestContext, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
@@ -65,6 +66,10 @@ beforeEach(async () => {
 /** TEST LOT's values from the device test. */
 const TEST_LOT = { blockMinutes: 5, ratePerBlockSantim: 500, depositSantim: 0 };
 const AT = { latitude: 9.040093, longitude: 38.762541 };
+
+/** What the driver reads, as the app words it (the API's message is never shown). */
+const english = translator('en');
+const amharic = translator('am');
 
 interface RawResponse {
   method: string;
@@ -295,7 +300,7 @@ describe('the deposit, as the app drives it', () => {
 });
 
 describe('what the device test hit, through the same client', () => {
-  it('the pre-fix booking body fails on lat/lng and reads as a driver message', async () => {
+  it('the pre-fix booking body fails on lat/lng and reads as a driver message, in both languages', async () => {
     const app = appClient();
     await signIn(app, '+251911000778');
     const lot = await createLot(t.db.db, { slots: 1, ...TEST_LOT, ...AT });
@@ -319,7 +324,10 @@ describe('what the device test hit, through the same client', () => {
       ],
     });
     // Not "Request validation failed", and nothing the driver could fix.
-    expect(result.error.message).toBe(VALIDATION_FALLBACK);
+    const shown = errorPhrase(result.error);
+    expect(shown).toEqual({ key: 'errors.VALIDATION_ERROR' });
+    expect(english(shown)).toMatch(/update the app/u);
+    expect(amharic(shown)).toMatch(/^[\u1200-\u137F]/u);
   });
 
   it('the pre-fix extend body fails on additionalBlocks', async () => {
@@ -353,6 +361,6 @@ describe('what the device test hit, through the same client', () => {
     );
 
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.message).toMatch(/plate number/u);
+    if (!result.ok) expect(english(errorPhrase(result.error))).toMatch(/plate number/u);
   });
 });

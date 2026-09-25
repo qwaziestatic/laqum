@@ -78,10 +78,10 @@ describe('a tap on Pay deposit', () => {
     ).toEqual({ kind: 'error', message: DEPOSIT_UNAVAILABLE });
   });
 
-  it('shows anything else as the client already worded it', () => {
+  it('words anything else by its error code, never the client or API message', () => {
     expect(
       depositAttempt({ ok: false, error: { code: 'NETWORK', message: 'No connection' } }),
-    ).toEqual({ kind: 'error', message: 'No connection' });
+    ).toEqual({ kind: 'error', message: { key: 'errors.NETWORK' } });
   });
 });
 

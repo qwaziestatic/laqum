@@ -1,5 +1,7 @@
 import type { BookingStatus, CreateBookingResponse, PayDepositResponse } from '@laqum/shared';
 import type { ApiResult } from '../api/client.js';
+import { errorPhrase } from '../api/messages.js';
+import { type Phrase, phrase } from '../i18n/core.js';
 
 /**
  * What the screens do with a deposit, decided here so it can be tested
@@ -11,12 +13,10 @@ import type { ApiResult } from '../api/client.js';
  */
 
 /** Booked, but the deposit did not start. Shown on arrival at the booking screen. */
-export const DEPOSIT_NOT_STARTED =
-  'Your slot is held while you pay, but the payment service could not be reached. Tap Pay deposit before the timer runs out.';
+export const DEPOSIT_NOT_STARTED: Phrase = phrase('deposit.notStarted');
 
 /** "Pay deposit" failed to reach the payment service. */
-export const DEPOSIT_UNAVAILABLE =
-  'The payment service could not be reached. Your slot is held until the timer runs out. Try again in a moment.';
+export const DEPOSIT_UNAVAILABLE: Phrase = phrase('deposit.unavailable');
 
 /** The query flag the Book screen sets when the deposit did not start. */
 export const DEPOSIT_NOT_STARTED_PARAM = 'unavailable' as const;
@@ -49,7 +49,7 @@ export type DepositAttempt =
   | { kind: 'open'; checkoutUrl: string }
   /** The booking moved on (paid meanwhile, or expired): refetch, no error. */
   | { kind: 'refresh' }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: Phrase };
 
 /** What a tap on "Pay deposit" leads to. */
 export function depositAttempt(result: ApiResult<PayDepositResponse>): DepositAttempt {
@@ -64,7 +64,7 @@ export function depositAttempt(result: ApiResult<PayDepositResponse>): DepositAt
     case 'PROVIDER_UNAVAILABLE':
       return { kind: 'error', message: DEPOSIT_UNAVAILABLE };
     default:
-      return { kind: 'error', message: result.error.message };
+      return { kind: 'error', message: errorPhrase(result.error) };
   }
 }
 

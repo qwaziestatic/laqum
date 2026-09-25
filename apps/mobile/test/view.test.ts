@@ -6,6 +6,12 @@ import {
 } from '@laqum/shared';
 import { describe, expect, it } from 'vitest';
 import { STATUS_TEXT, bookingView } from '../src/booking/view.js';
+import { type MessageKey, phrase, translator } from '../src/i18n/core.js';
+
+const english = translator('en');
+const amharic = translator('am');
+const inEnglish = (key: MessageKey | undefined): string | undefined =>
+  key === undefined ? undefined : english(phrase(key));
 
 /**
  * The booking screen's per-status decisions. On the device test an expired
@@ -24,25 +30,35 @@ function booking(status: BookingStatus) {
 }
 
 describe('driver text for every status', () => {
-  it('covers every BookingStatus, so a new status cannot ship without one', () => {
+  it('covers every BookingStatus, in BOTH languages, so a new status cannot ship without one', () => {
     for (const status of BOOKING_STATUSES) {
-      const sentence = STATUS_TEXT[status].sentence;
-      expect(sentence, status).toMatch(/^[A-Z].*\.$/u);
+      const key = STATUS_TEXT[status].sentence;
+      const en = english(phrase(key));
+      const am = amharic(phrase(key));
+      expect(en, status).toMatch(/^[A-Z].*\.$/u);
+      // Amharic: Ethiopic script, ending with the Ethiopic full stop.
+      expect(am, status).toMatch(/^[\u1200-\u137F].*\u1362$/u);
       // Never the enum in disguise: "expired", "checked out", "CHECKED_IN".
-      expect(sentence.toLowerCase(), status).not.toBe(status.toLowerCase().replace(/_/gu, ' '));
-      expect(sentence, status).not.toContain('_');
+      expect(en.toLowerCase(), status).not.toBe(status.toLowerCase().replace(/_/gu, ' '));
+      for (const text of [en, am]) expect(text, status).not.toContain('_');
     }
     expect(Object.keys(STATUS_TEXT).sort()).toEqual([...BOOKING_STATUSES].sort());
   });
 
-  it('says something different for each status', () => {
-    const sentences = BOOKING_STATUSES.map((status) => STATUS_TEXT[status].sentence);
-    expect(new Set(sentences).size).toBe(BOOKING_STATUSES.length);
+  it('says something different for each status, in each language', () => {
+    for (const translate of [english, amharic]) {
+      const sentences = BOOKING_STATUSES.map((status) =>
+        translate(phrase(STATUS_TEXT[status].sentence)),
+      );
+      expect(new Set(sentences).size).toBe(BOOKING_STATUSES.length);
+    }
   });
 
   it('uses the sentences asked for', () => {
-    expect(bookingView(booking('RESERVED')).sentence).toBe('Your slot is held. Drive to the lot.');
-    expect(bookingView(booking('EXPIRED')).sentence).toBe(
+    expect(inEnglish(bookingView(booking('RESERVED')).sentence)).toBe(
+      'Your slot is held. Drive to the lot.',
+    );
+    expect(inEnglish(bookingView(booking('EXPIRED')).sentence)).toBe(
       'This hold expired and the slot was released.',
     );
   });
@@ -62,10 +78,10 @@ describe('the timer card', () => {
 
   it('has its own label for each live status', () => {
     const timers = Object.fromEntries(
-      BOOKING_STATUSES.filter(isLiveStatus).map((status) => [
-        status,
-        bookingView(booking(status)).timer,
-      ]),
+      BOOKING_STATUSES.filter(isLiveStatus).map((status) => {
+        const timer = bookingView(booking(status)).timer;
+        return [status, timer && { ...timer, label: inEnglish(timer.label) }];
+      }),
     );
 
     expect(timers).toEqual({
@@ -78,7 +94,9 @@ describe('the timer card', () => {
 
   it('keeps "Time remaining" to the parked state', () => {
     for (const status of BOOKING_STATUSES.filter((s) => s !== 'CHECKED_IN')) {
-      expect(bookingView(booking(status)).timer?.label, status).not.toBe('Time remaining');
+      expect(inEnglish(bookingView(booking(status)).timer?.label), status).not.toBe(
+        'Time remaining',
+      );
     }
   });
 

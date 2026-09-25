@@ -1,8 +1,10 @@
-import { formatBirr } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { errorPhrase } from '../../src/api/messages.js';
+import type { Phrase } from '../../src/i18n/core.js';
+import { clockTime, useT } from '../../src/i18n/react.js';
 import { useLiveBooking } from '../../src/realtime/useLiveBooking.js';
 import { useApp } from '../../src/state/app.js';
 import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
@@ -17,6 +19,7 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  */
 export default function Checkout(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const t = useT();
   const { api } = useApp();
   const bottomInset = useBottomInset(20);
 
@@ -28,23 +31,30 @@ export default function Checkout(): React.JSX.Element {
    * tap, rather than leaving a "Pay" button on a settled booking.
    */
   const { booking, error: loadError, reload: load } = useLiveBooking(id);
-  const [actionError, setError] = useState<string | null>(null);
-  const error = actionError ?? loadError;
+  const [actionError, setError] = useState<Phrase | null>(null);
+  const error = actionError ?? (loadError ? errorPhrase(loadError) : null);
   const [busy, setBusy] = useState(false);
 
   if (error && !booking) {
-    return <Notice tone="error" message={error} actionLabel="Retry" onAction={() => void load()} />;
+    return (
+      <Notice
+        tone="error"
+        message={t.phrase(error)}
+        actionLabel={t('common.retry')}
+        onAction={() => void load()}
+      />
+    );
   }
-  if (!booking) return <Loading label="Loading your bill…" />;
+  if (!booking) return <Loading label={t('checkout.loading')} />;
 
   if (booking.status === 'PAID') {
     return (
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
-        <Title>Paid</Title>
-        <Body muted>Thank you. Your booking is settled.</Body>
+        <Title>{t('checkout.paidTitle')}</Title>
+        <Body muted>{t('checkout.paidBody')}</Body>
         <Button
           testID="done"
-          label="Done"
+          label={t('checkout.done')}
           onPress={() => {
             router.replace('/');
           }}
@@ -57,28 +67,29 @@ export default function Checkout(): React.JSX.Element {
 
   return (
     <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
-      <Title>Amount due</Title>
+      <Title>{t('checkout.amountDue')}</Title>
 
       <Card>
-        <Title testID="amount-due">{formatBirr(due)}</Title>
+        <Title testID="amount-due">{t.money(due)}</Title>
         {booking.checkedInAt ? (
-          <Body muted>{`Parked from ${new Date(booking.checkedInAt).toLocaleTimeString()}`}</Body>
+          <Body muted>
+            {t('checkout.parkedFrom', { time: clockTime(new Date(booking.checkedInAt)) })}
+          </Body>
         ) : null}
         {booking.plannedEndAt ? (
-          <Body muted>{`Booked until ${new Date(booking.plannedEndAt).toLocaleTimeString()}`}</Body>
+          <Body muted>
+            {t('checkout.bookedUntil', { time: clockTime(new Date(booking.plannedEndAt)) })}
+          </Body>
         ) : null}
       </Card>
 
-      <Notice
-        tone="info"
-        message="You can also pay the attendant in cash. Ask them to record it."
-      />
+      <Notice tone="info" message={t('checkout.cashHint')} />
 
-      {error ? <Notice tone="error" message={error} testID="checkout-error" /> : null}
+      {error ? <Notice tone="error" message={t.phrase(error)} testID="checkout-error" /> : null}
 
       <Button
         testID="pay"
-        label={`Pay ${formatBirr(due)}`}
+        label={t('checkout.pay', { amount: t.money(due) })}
         busy={busy}
         onPress={() => {
           setBusy(true);
@@ -91,7 +102,7 @@ export default function Checkout(): React.JSX.Element {
                 await load();
                 return;
               }
-              setError(result.error.message);
+              setError(errorPhrase(result.error));
               return;
             }
             await WebBrowser.openBrowserAsync(result.data.checkoutUrl);

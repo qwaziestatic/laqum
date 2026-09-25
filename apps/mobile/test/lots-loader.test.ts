@@ -56,6 +56,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 function harness(overrides: Partial<LotsLoaderDeps> = {}) {
   const shown: NearbyLot[][] = [];
   const errors: string[] = [];
+  // The error CODE: the screen translates it (api/messages.ts).
   const deps: LotsLoaderDeps = {
     locate: (_prompt, report) => {
       report(FRESH);
@@ -64,7 +65,7 @@ function harness(overrides: Partial<LotsLoaderDeps> = {}) {
     fetchLots: () => Promise.resolve(ok([])),
     onLocation: () => undefined,
     onLots: (lots) => shown.push(lots),
-    onError: (message) => errors.push(message),
+    onError: (error) => errors.push(error.code),
     ...overrides,
   };
   return { loader: createLotsLoader(deps), shown, errors };
@@ -171,6 +172,6 @@ describe('createLotsLoader', () => {
 
     await loader.load('on-tap');
 
-    expect(errors).toEqual(['Offline']);
+    expect(errors).toEqual(['NETWORK']);
   });
 });

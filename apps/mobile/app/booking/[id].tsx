@@ -1,4 +1,3 @@
-import { formatBirr } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
@@ -6,12 +5,15 @@ import QRCode from 'react-native-qrcode-svg';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import type { LotSummary } from '../../src/api/endpoints.js';
+import { errorPhrase } from '../../src/api/messages.js';
 import {
   DEPOSIT_NOT_STARTED,
   DEPOSIT_NOT_STARTED_PARAM,
   depositAttempt,
 } from '../../src/booking/deposit.js';
 import { bookingView } from '../../src/booking/view.js';
+import { type Phrase, verbatim } from '../../src/i18n/core.js';
+import { useT } from '../../src/i18n/react.js';
 import { navigateTo } from '../../src/nav/mapsLink.js';
 import { bookingEarnsPushAsk, maybeRegisterForPush } from '../../src/push/registration.js';
 import { pushDeps } from '../../src/push/expoDeps.js';
@@ -38,6 +40,7 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  */
 export default function BookingScreen(): React.JSX.Element {
   const { id, deposit } = useLocalSearchParams<{ id: string; deposit?: string }>();
+  const t = useT();
   const { api, client } = useApp();
   const bottomInset = useBottomInset(20);
 
@@ -49,12 +52,12 @@ export default function BookingScreen(): React.JSX.Element {
    */
   const { booking, error: loadError, reload: load } = useLiveBooking(id);
   const [lot, setLot] = useState<LotSummary | null>(null);
-  const [actionError, setError] = useState<string | null>(null);
-  const error = actionError ?? loadError;
+  const [actionError, setError] = useState<Phrase | null>(null);
+  const error = actionError ?? (loadError ? errorPhrase(loadError) : null);
   const [busy, setBusy] = useState(false);
   const [coordinates, setCoordinates] = useState<string | null>(null);
   // Set by the Book screen when the deposit could not start.
-  const [depositNotice, setDepositNotice] = useState<string | null>(
+  const [depositNotice, setDepositNotice] = useState<Phrase | null>(
     deposit === DEPOSIT_NOT_STARTED_PARAM ? DEPOSIT_NOT_STARTED : null,
   );
   const [tick, setTick] = useState(0);
@@ -96,9 +99,16 @@ export default function BookingScreen(): React.JSX.Element {
   }, [status, api]);
 
   if (error && !booking) {
-    return <Notice tone="error" message={error} actionLabel="Retry" onAction={() => void load()} />;
+    return (
+      <Notice
+        tone="error"
+        message={t.phrase(error)}
+        actionLabel={t('common.retry')}
+        onAction={() => void load()}
+      />
+    );
   }
-  if (!booking) return <Loading label="Loading your booking…" />;
+  if (!booking) return <Loading label={t('booking.loading')} />;
 
   // Everything this screen shows for the status: src/booking/view.ts.
   const view = bookingView(booking);
@@ -114,46 +124,42 @@ export default function BookingScreen(): React.JSX.Element {
 
   return (
     <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}>
-      <Title>{lot?.name ?? 'Your booking'}</Title>
-      <Body muted>{view.sentence}</Body>
+      <Title>{lot ? verbatim(lot.name) : t('booking.titleFallback')}</Title>
+      <Body muted>{t(view.sentence)}</Body>
 
       {!client.clock.synced ? (
-        <Notice
-          tone="info"
-          testID="clock-unsynced"
-          message="Times are approximate until the app reaches the server."
-        />
+        <Notice tone="info" testID="clock-unsynced" message={t('booking.clockUnsynced')} />
       ) : null}
 
       {view.timer && timerMs !== null ? (
         <Card>
-          <Body muted>{view.timer.label}</Body>
-          <Title>{formatRemaining(timerMs)}</Title>
+          <Body muted>{t(view.timer.label)}</Body>
+          <Title>{verbatim(formatRemaining(timerMs))}</Title>
           {/* A countdown at zero on a LIVE status: the server has yet to move it
               on (expire, overstay). A finished booking has no card at all. */}
           {view.timer.counts === 'down' && timerMs === 0 ? (
-            <Body muted>Checking with the server…</Body>
+            <Body muted>{t('booking.checking')}</Body>
           ) : null}
         </Card>
       ) : null}
 
       {booking.status === 'OVERSTAY' ? (
-        <Notice
-          tone="error"
-          testID="overstay-notice"
-          message="You are over your booked time. Overstay is charged at a higher rate."
-        />
+        <Notice tone="error" testID="overstay-notice" message={t('booking.overstay')} />
       ) : null}
 
       {view.actions.payDeposit && depositNotice ? (
-        <Notice tone="error" testID="deposit-not-started" message={depositNotice} />
+        <Notice tone="error" testID="deposit-not-started" message={t.phrase(depositNotice)} />
       ) : null}
 
       {view.actions.payDeposit ? (
         <Button
           testID="pay-deposit"
           // The amount is the lot's; unknown until the lot loads.
-          label={lot ? `Pay deposit ${formatBirr(lot.depositAmountSantim)}` : 'Pay deposit'}
+          label={
+            lot
+              ? t('booking.payDeposit', { amount: t.money(lot.depositAmountSantim) })
+              : t('booking.payDepositNoAmount')
+          }
           busy={busy}
           onPress={() => {
             setBusy(true);
@@ -179,19 +185,21 @@ export default function BookingScreen(): React.JSX.Element {
 
       {view.actions.showQr && booking.qrToken ? (
         <Card>
-          <Body muted>Show this at the gate</Body>
+          <Body muted>{t('booking.showAtGate')}</Body>
           <View style={styles.qr}>
             <QRCode value={booking.qrToken} size={200} backgroundColor="white" />
           </View>
-          {booking.shortCode ? <Title testID="short-code">{booking.shortCode}</Title> : null}
-          <Body muted>Or read the code above to the attendant.</Body>
+          {booking.shortCode ? (
+            <Title testID="short-code">{verbatim(booking.shortCode)}</Title>
+          ) : null}
+          <Body muted>{t('booking.readCode')}</Body>
         </Card>
       ) : null}
 
       {view.actions.findAnotherSlot ? (
         <Button
           testID="find-another-slot"
-          label="Find another slot"
+          label={t('booking.findAnother')}
           onPress={() => {
             router.replace('/');
           }}
@@ -201,7 +209,7 @@ export default function BookingScreen(): React.JSX.Element {
       {lot && view.actions.navigate ? (
         <Button
           testID="navigate"
-          label="Navigate"
+          label={t('booking.navigate')}
           tone="plain"
           onPress={() => {
             void navigateTo(
@@ -224,7 +232,7 @@ export default function BookingScreen(): React.JSX.Element {
         <Notice
           tone="info"
           testID="no-maps-app"
-          message={`No maps app could be opened. The lot is at ${coordinates}.`}
+          message={t('booking.noMapsApp', { coordinates })}
         />
       ) : null}
 
@@ -232,7 +240,9 @@ export default function BookingScreen(): React.JSX.Element {
         <Button
           testID="extend"
           // One block: its length is the lot's, and unknown until the lot loads.
-          label={lot ? `Extend by ${String(lot.blockMinutes)} minutes` : 'Extend by one block'}
+          label={
+            lot ? t('booking.extend', { minutes: lot.blockMinutes }) : t('booking.extendBlock')
+          }
           busy={busy}
           onPress={() => {
             setBusy(true);
@@ -240,7 +250,7 @@ export default function BookingScreen(): React.JSX.Element {
             // sent the block length in minutes under a field it does not know.
             void api.extend(booking.id, { additionalBlocks: 1 }).then(async (result) => {
               setBusy(false);
-              if (!result.ok) setError(result.error.message);
+              if (!result.ok) setError(errorPhrase(result.error));
               else await load();
             });
           }}
@@ -250,7 +260,7 @@ export default function BookingScreen(): React.JSX.Element {
       {view.actions.pay ? (
         <Button
           testID="go-to-checkout"
-          label={`Pay ${formatBirr(booking.amountDueSantim ?? 0)}`}
+          label={t('booking.pay', { amount: t.money(booking.amountDueSantim ?? 0) })}
           onPress={() => {
             router.push(`/checkout/${booking.id}`);
           }}
@@ -260,14 +270,14 @@ export default function BookingScreen(): React.JSX.Element {
       {view.actions.cancel ? (
         <Button
           testID="cancel-booking"
-          label="Cancel booking"
+          label={t('booking.cancel')}
           tone="danger"
           busy={busy}
           onPress={() => {
             setBusy(true);
             void api.cancel(booking.id).then(async (result) => {
               setBusy(false);
-              if (!result.ok) setError(result.error.message);
+              if (!result.ok) setError(errorPhrase(result.error));
               else {
                 await load();
                 router.replace('/');
@@ -277,7 +287,7 @@ export default function BookingScreen(): React.JSX.Element {
         />
       ) : null}
 
-      {error ? <Notice tone="error" message={error} testID="booking-error" /> : null}
+      {error ? <Notice tone="error" message={t.phrase(error)} testID="booking-error" /> : null}
     </ScrollView>
   );
 }

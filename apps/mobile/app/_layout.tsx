@@ -1,5 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { LanguageSwitch } from '../src/i18n/LanguageSwitch.js';
+import { useT } from '../src/i18n/react.js';
 import { AppProvider, useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
 
@@ -17,6 +19,7 @@ export default function RootLayout(): React.JSX.Element {
 
 function Shell(): React.JSX.Element {
   const theme = useTheme();
+  const t = useT();
   const { ready } = useApp();
 
   return (
@@ -30,14 +33,17 @@ function Shell(): React.JSX.Element {
           // Nothing renders until the persisted session is known, or the app
           // would flash the login screen at an already-signed-in driver.
           animation: ready ? 'default' : 'none',
+          // On every screen, sign-in included: a driver who cannot read the
+          // current language must be able to leave it from anywhere.
+          headerRight: () => <LanguageSwitch />,
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'ላቁም?' }} />
-        <Stack.Screen name="login" options={{ title: 'Sign in', headerBackVisible: false }} />
-        <Stack.Screen name="lot/[id]" options={{ title: 'Parking lot' }} />
-        <Stack.Screen name="book/[lotId]" options={{ title: 'Book a slot' }} />
-        <Stack.Screen name="booking/[id]" options={{ title: 'Your booking' }} />
-        <Stack.Screen name="checkout/[id]" options={{ title: 'Pay' }} />
+        <Stack.Screen name="index" options={{ title: t('app.name') }} />
+        <Stack.Screen name="login" options={{ title: t('nav.signIn'), headerBackVisible: false }} />
+        <Stack.Screen name="lot/[id]" options={{ title: t('nav.lot') }} />
+        <Stack.Screen name="book/[lotId]" options={{ title: t('nav.book') }} />
+        <Stack.Screen name="booking/[id]" options={{ title: t('nav.booking') }} />
+        <Stack.Screen name="checkout/[id]" options={{ title: t('nav.checkout') }} />
       </Stack>
     </>
   );

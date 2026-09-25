@@ -2,6 +2,9 @@ import { phoneSchema } from '@laqum/shared';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput } from 'react-native';
+import type { ApiError } from '../src/api/client.js';
+import { errorPhrase } from '../src/api/messages.js';
+import { useT } from '../src/i18n/react.js';
 import { useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
 import { Body, Button, Notice, Title, useBottomInset } from '../src/ui.js';
@@ -12,13 +15,14 @@ import { Body, Button, Notice, Title, useBottomInset } from '../src/ui.js';
  */
 export default function Login(): React.JSX.Element {
   const theme = useTheme();
-  const { api, setSession, signedOutReason } = useApp();
+  const t = useT();
+  const { api, setSession, signedOut } = useApp();
   const bottomInset = useBottomInset(24);
 
   const [phone, setPhone] = useState('+251');
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'phone' | 'code'>('phone');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
 
   const phoneValid = phoneSchema.safeParse(phone).success;
@@ -31,7 +35,7 @@ export default function Login(): React.JSX.Element {
     if (result.ok) setStage('code');
     // The server never says whether the number is registered, so neither do
     // we — the message is about delivery, not about the account.
-    else setError(result.error.message);
+    else setError(result.error);
   }
 
   async function verify(): Promise<void> {
@@ -40,7 +44,7 @@ export default function Login(): React.JSX.Element {
     const result = await api.verifyOtp({ phone: phone.trim(), code: code.trim() });
     setBusy(false);
     if (!result.ok) {
-      setError(result.error.message);
+      setError(result.error);
       return;
     }
     await setSession(result.data);
@@ -56,13 +60,15 @@ export default function Login(): React.JSX.Element {
         contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
         keyboardShouldPersistTaps="handled"
       >
-        <Title>ላቁም?</Title>
-        <Body muted>Find and hold a parking slot in Addis Ababa.</Body>
+        <Title>{t('app.name')}</Title>
+        <Body muted>{t('app.tagline')}</Body>
 
-        {signedOutReason ? (
-          <Notice tone="warn" message={signedOutReason} testID="signed-out-notice" />
+        {signedOut ? (
+          <Notice tone="warn" message={t('session.ended')} testID="signed-out-notice" />
         ) : null}
-        {error ? <Notice tone="error" message={error} testID="login-error" /> : null}
+        {error ? (
+          <Notice tone="error" message={t.phrase(errorPhrase(error))} testID="login-error" />
+        ) : null}
 
         {stage === 'phone' ? (
           <>
@@ -72,14 +78,14 @@ export default function Login(): React.JSX.Element {
               onChangeText={setPhone}
               keyboardType="phone-pad"
               autoComplete="tel"
-              accessibilityLabel="Phone number"
+              accessibilityLabel={t('login.phoneLabel')}
               placeholder="+251911000002"
               placeholderTextColor={theme.muted}
               style={[styles.input, { color: theme.text, borderColor: theme.line }]}
             />
             <Button
               testID="send-code"
-              label="Send code"
+              label={t('login.sendCode')}
               busy={busy}
               disabled={!phoneValid}
               onPress={() => void sendCode()}
@@ -87,7 +93,7 @@ export default function Login(): React.JSX.Element {
           </>
         ) : (
           <>
-            <Body muted>{`We sent a 6-digit code to ${phone}.`}</Body>
+            <Body muted>{t('login.codeSent', { phone })}</Body>
             <TextInput
               testID="code-input"
               value={code}
@@ -95,20 +101,20 @@ export default function Login(): React.JSX.Element {
               keyboardType="number-pad"
               maxLength={6}
               autoComplete="sms-otp"
-              accessibilityLabel="Verification code"
+              accessibilityLabel={t('login.codeLabel')}
               placeholder="000000"
               placeholderTextColor={theme.muted}
               style={[styles.input, styles.code, { color: theme.text, borderColor: theme.line }]}
             />
             <Button
               testID="verify-code"
-              label="Sign in"
+              label={t('login.signIn')}
               busy={busy}
               disabled={code.trim().length !== 6}
               onPress={() => void verify()}
             />
             <Button
-              label="Use a different number"
+              label={t('login.changeNumber')}
               tone="plain"
               onPress={() => {
                 setStage('phone');

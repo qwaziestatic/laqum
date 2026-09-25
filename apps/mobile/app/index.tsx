@@ -1,9 +1,12 @@
-import { formatBirr } from '@laqum/shared';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, Map, Marker, UserLocation } from '@maplibre/maplibre-react-native';
+import type { ApiError } from '../src/api/client.js';
 import type { NearbyLot } from '../src/api/endpoints.js';
+import { errorPhrase } from '../src/api/messages.js';
+import { verbatim } from '../src/i18n/core.js';
+import { clockTime, useT } from '../src/i18n/react.js';
 import { MapAttribution } from '../src/map/Attribution.js';
 import { mapStyleFor } from '../src/map/tiles.js';
 import {
@@ -25,6 +28,7 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../s
  */
 export default function Home(): React.JSX.Element {
   const theme = useTheme();
+  const t = useT();
   const { api, session, ready, foregroundEpoch } = useApp();
   // The Refresh bar is the last thing on screen; without this it sat under
   // Android's navigation bar.
@@ -32,7 +36,7 @@ export default function Home(): React.JSX.Element {
 
   const [lots, setLots] = useState<NearbyLot[] | null>(null);
   const [location, setLocation] = useState<LocationResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -119,7 +123,7 @@ export default function Home(): React.JSX.Element {
     if (signedIn && foregroundEpoch > 0) void load('first-time');
   }, [signedIn, foregroundEpoch, load]);
 
-  if (!ready || lots === null) return <Loading label="Finding parking near you…" />;
+  if (!ready || lots === null) return <Loading label={t('home.finding')} />;
 
   const fix = location?.kind === 'fix' ? location.fix : null;
 
@@ -128,8 +132,8 @@ export default function Home(): React.JSX.Element {
       {activeBookingId ? (
         <Notice
           tone="info"
-          message="You have an active booking."
-          actionLabel="Open it"
+          message={t('home.activeBooking')}
+          actionLabel={t('home.openBooking')}
           onAction={() => {
             router.push(`/booking/${activeBookingId}`);
           }}
@@ -143,17 +147,19 @@ export default function Home(): React.JSX.Element {
           testID="location-warning"
           message={
             location.kind === 'services_off'
-              ? 'Location is switched off, so distances are estimated. Turn it on to book.'
+              ? t('home.locationServicesOff')
               : location.kind === 'permission_denied'
-                ? 'Laqum needs your location to confirm you are close enough to a lot.'
-                : 'Your location could not be found, so distances are estimated.'
+                ? t('home.locationDenied')
+                : t('home.locationUnavailable')
           }
-          actionLabel="Try again"
+          actionLabel={t('common.tryAgain')}
           onAction={() => void refresh()}
         />
       ) : null}
 
-      {error ? <Notice tone="error" message={error} testID="home-error" /> : null}
+      {error ? (
+        <Notice tone="error" message={t.phrase(errorPhrase(error))} testID="home-error" />
+      ) : null}
 
       {/*
        * MapLibre over OpenFreeMap — no API key, no account, no card.
@@ -218,9 +224,9 @@ export default function Home(): React.JSX.Element {
         style={[styles.sheet, { backgroundColor: theme.card, borderColor: theme.line }]}
         data={lots}
         keyExtractor={(lot) => lot.id}
-        ListHeaderComponent={<Title>Nearby lots</Title>}
+        ListHeaderComponent={<Title>{t('home.nearby')}</Title>}
         contentContainerStyle={styles.sheetContent}
-        ListEmptyComponent={<Body muted>No lots within range.</Body>}
+        ListEmptyComponent={<Body muted>{t('home.empty')}</Body>}
         renderItem={({ item }) => (
           <Pressable
             testID={`lot-${item.id}`}
@@ -230,14 +236,19 @@ export default function Home(): React.JSX.Element {
             }}
           >
             <Card>
-              <Title>{item.name}</Title>
+              <Title>{verbatim(item.name)}</Title>
               <Body muted>
-                {`${String(item.freeSlots)} of ${String(item.totalAppBookableSlots)} free · ${formatBirr(item.ratePerBlockSantim)} per ${String(item.blockMinutes)} min`}
+                {t('home.lotLine', {
+                  free: item.freeSlots,
+                  total: item.totalAppBookableSlots,
+                  rate: t.money(item.ratePerBlockSantim),
+                  minutes: item.blockMinutes,
+                })}
               </Body>
               <Body muted>
                 {fix
-                  ? `${String(Math.round(item.distanceM))} m away`
-                  : 'Distance needs your location'}
+                  ? t('home.distance', { meters: Math.round(item.distanceM) })
+                  : t('home.distanceUnknown')}
               </Body>
             </Card>
           </Pressable>
@@ -248,12 +259,10 @@ export default function Home(): React.JSX.Element {
         {updatedAt ? (
           // With seconds: a refresh inside the same minute must still visibly
           // change something, or the driver cannot tell it ran.
-          <Body
-            muted
-          >{`Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}</Body>
+          <Body muted>{t('home.updated', { time: clockTime(updatedAt, true) })}</Body>
         ) : null}
         <Button
-          label={refreshing ? 'Refreshing…' : 'Refresh'}
+          label={refreshing ? t('home.refreshing') : t('home.refresh')}
           tone="plain"
           busy={refreshing}
           onPress={() => void refresh()}

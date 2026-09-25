@@ -1,4 +1,5 @@
 import { type Booking, type BookingStatus, isLegalTransition, isLiveStatus } from '@laqum/shared';
+import type { MessageKey } from '../i18n/core.js';
 
 /**
  * What the booking screen shows, decided per status in ONE table.
@@ -15,49 +16,49 @@ import { type Booking, type BookingStatus, isLegalTransition, isLiveStatus } fro
 
 /** The timer each status runs, if any. */
 interface TimerSpec {
-  label: string;
+  label: MessageKey;
   field: 'holdExpiresAt' | 'plannedEndAt';
   /** 'up' counts time PAST the deadline: overstay. */
   counts: 'down' | 'up';
 }
 
 interface StatusText {
-  /** A plain sentence for the driver. Never the enum value. */
-  sentence: string;
+  /** A plain sentence for the driver (a translation key). Never the enum value. */
+  sentence: MessageKey;
   timer: TimerSpec | null;
 }
 
 export const STATUS_TEXT: Record<BookingStatus, StatusText> = {
   PENDING_PAYMENT: {
-    sentence: 'Pay the deposit to hold your slot.',
-    timer: { label: 'Time left to pay', field: 'holdExpiresAt', counts: 'down' },
+    sentence: 'status.PENDING_PAYMENT',
+    timer: { label: 'timer.timeLeftToPay', field: 'holdExpiresAt', counts: 'down' },
   },
   RESERVED: {
-    sentence: 'Your slot is held. Drive to the lot.',
-    timer: { label: 'Slot held for', field: 'holdExpiresAt', counts: 'down' },
+    sentence: 'status.RESERVED',
+    timer: { label: 'timer.slotHeldFor', field: 'holdExpiresAt', counts: 'down' },
   },
   CHECKED_IN: {
-    sentence: 'You are parked.',
-    timer: { label: 'Time remaining', field: 'plannedEndAt', counts: 'down' },
+    sentence: 'status.CHECKED_IN',
+    timer: { label: 'timer.timeRemaining', field: 'plannedEndAt', counts: 'down' },
   },
   OVERSTAY: {
-    sentence: 'Your booked time is up.',
-    timer: { label: 'Over by', field: 'plannedEndAt', counts: 'up' },
+    sentence: 'status.OVERSTAY',
+    timer: { label: 'timer.overBy', field: 'plannedEndAt', counts: 'up' },
   },
   CHECKED_OUT: {
-    sentence: 'You have left the lot. Pay to finish.',
+    sentence: 'status.CHECKED_OUT',
     timer: null,
   },
   PAID: {
-    sentence: 'Paid. Thank you for parking.',
+    sentence: 'status.PAID',
     timer: null,
   },
   EXPIRED: {
-    sentence: 'This hold expired and the slot was released.',
+    sentence: 'status.EXPIRED',
     timer: null,
   },
   CANCELLED: {
-    sentence: 'You cancelled this booking and the slot was released.',
+    sentence: 'status.CANCELLED',
     timer: null,
   },
 };
@@ -74,8 +75,8 @@ const FINISHED: ReadonlySet<BookingStatus> = new Set<BookingStatus>([
 ]);
 
 export interface BookingView {
-  sentence: string;
-  timer: { label: string; deadline: string; counts: 'down' | 'up' } | null;
+  sentence: MessageKey;
+  timer: { label: MessageKey; deadline: string; counts: 'down' | 'up' } | null;
   actions: {
     /** Directions to the lot: only while there is a reason to go there. */
     navigate: boolean;

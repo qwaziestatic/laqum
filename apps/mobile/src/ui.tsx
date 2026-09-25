@@ -1,5 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Shown } from './i18n/core.js';
 import { useTheme } from './theme.js';
 
 /**
@@ -23,6 +24,10 @@ export function useBottomInset(base: number): number {
  *
  * Touch targets are at least 48dp and primary actions considerably larger:
  * this is used one-handed, outdoors, often in a hurry, sometimes in the rain.
+ *
+ * TEXT IS `Shown`, never a bare string: translated by useT(), or data passed
+ * through verbatim(). An English literal written into a screen does not
+ * compile, which is what keeps English off an Amharic screen (i18n/core.ts).
  */
 
 export function Button({
@@ -33,7 +38,7 @@ export function Button({
   disabled = false,
   testID,
 }: {
-  label: string;
+  label: Shown;
   onPress: () => void;
   tone?: 'accent' | 'plain' | 'danger';
   busy?: boolean;
@@ -93,7 +98,7 @@ export function Title({
   children,
   testID,
 }: {
-  children: React.ReactNode;
+  children: Shown;
   testID?: string;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -108,7 +113,7 @@ export function Body({
   children,
   muted = false,
 }: {
-  children: React.ReactNode;
+  children: Shown;
   muted?: boolean;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -130,8 +135,8 @@ export function Notice({
   testID,
 }: {
   tone: 'error' | 'warn' | 'info';
-  message: string;
-  actionLabel?: string;
+  message: Shown;
+  actionLabel?: Shown;
   onAction?: () => void;
   testID?: string;
 }): React.JSX.Element {
@@ -154,7 +159,7 @@ export function Notice({
   );
 }
 
-export function Loading({ label }: { label: string }): React.JSX.Element {
+export function Loading({ label }: { label: Shown }): React.JSX.Element {
   const theme = useTheme();
   return (
     <View style={styles.loading}>

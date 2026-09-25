@@ -1,5 +1,6 @@
 import type { FixAccuracy } from '../location/fix.js';
 import type { GateDecision } from '../location/gate.js';
+import type { MessageKey } from '../i18n/core.js';
 
 /**
  * The Book screen's main button: what it says, and whether it can be pressed.
@@ -25,32 +26,33 @@ export interface BookButtonState {
 }
 
 export interface BookButton {
-  label: string;
+  /** A translation key. */
+  label: MessageKey;
   enabled: boolean;
 }
 
 export function bookButton(state: BookButtonState): BookButton {
-  if (state.booking) return { label: 'Holding your slot…', enabled: false };
+  if (state.booking) return { label: 'book.button.holding', enabled: false };
   if (state.locating === 'highest') {
-    return { label: 'Getting a more precise location…', enabled: false };
+    return { label: 'book.button.precise', enabled: false };
   }
-  if (state.locating === 'balanced') return { label: 'Checking your location…', enabled: false };
+  if (state.locating === 'balanced') return { label: 'book.button.checking', enabled: false };
   if (state.locationProblem === 'blocked')
-    return { label: 'Location needed to book', enabled: false };
+    return { label: 'book.button.locationNeeded', enabled: false };
   if (state.locationProblem === 'unavailable')
-    return { label: 'Location unavailable', enabled: false };
+    return { label: 'book.button.locationUnavailable', enabled: false };
 
   switch (state.decision?.kind) {
     case 'proceed':
-      return { label: 'Hold this slot', enabled: true };
+      return { label: 'book.button.hold', enabled: true };
     case 'need_better_fix':
-      return { label: 'Location not precise enough', enabled: false };
+      return { label: 'book.button.notPrecise', enabled: false };
     case 'too_far':
-      return { label: 'Too far from this lot', enabled: false };
+      return { label: 'book.button.tooFar', enabled: false };
     case 'stale':
-      return { label: 'Location too old to use', enabled: false };
+      return { label: 'book.button.tooOld', enabled: false };
     case undefined:
       // Before the first check has started: it starts on mount.
-      return { label: 'Checking your location…', enabled: false };
+      return { label: 'book.button.checking', enabled: false };
   }
 }
