@@ -389,6 +389,17 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
     Android** (`{ type: 'opened' }`), and when it closes on iOS. Code after
     the `await` is not "on return" on Android; the foreground refetch is.
     Stated in expo-web-browser 57.0.3's own typings.
+24. **fetch refuses the Fetch standard's "bad ports"** (6665-6669, 6679,
+    6697, 10080 and more) before connecting: "fetch failed", cause "bad
+    port". The dev machine's dynamic range starts at 1024, so `listen(0)`
+    can hand one out, and a test that fetches from it fails about once in
+    five runs. Bind such servers with `listenForFetch`
+    (`test/helpers/listen.ts`), which probes with the real fetch and
+    retries.
+25. **Metro bundles socket.io-client's BROWSER build** (`build/esm`, the
+    phone's own WebSocket; no `ws`, no Node transports), verified from the
+    source map of an Android export. The app forces
+    `transports: ['websocket']`.
 
 ---
 
@@ -551,6 +562,17 @@ the LOT, so it exists whether or not a slot has a booking.
 
 Verified: `apps/dashboard/src/realtime/store.test.ts` **fails 6 of 11** against
 a simulated `updated_at` rule, including the named free-slot test.
+
+**The driver app applies the same rule to its own booking**
+(`apps/mobile/src/realtime/bookingFeed.ts`). `GET /bookings/:id`,
+`/bookings/current` and the deposit verify carry the `lotVersion` the booking
+was read at, and it is read in ONE statement with the row (a join on `lots`),
+so the two cannot disagree at all. That works because every write to a
+booking bumps its lot's version in the same transaction. There is no
+subscribe step: the server joins the socket to `user:{id}` as it connects, so
+the room is joined before the client can request its snapshot. A snapshot
+older than an event already applied is ignored, rather than rolling the
+booking back.
 
 ### Socket authorization must not outlive its basis
 
@@ -912,9 +934,10 @@ Atlantic and made every booking fail TOO_FAR for an unguessable reason.
       permission already granted. The app asks in one place (the booking
       screen, only while undetermined) and nothing native asks at startup.
       The deciding evidence is on the phone: the `POST_NOTIFICATIONS` flags
-      and Expo's `expo.modules.permissions.asked` record. Also noted, not
-      yet fixed: the booking screen passes `hasBooked: true` as a constant,
-      so the gate inside `maybeRegisterForPush` decides nothing.
+      and Expo's `expo.modules.permissions.asked` record. (The constant
+      `hasBooked: true` noted here was fixed with realtime, below. It cannot
+      explain this: it made the app ask on ANY booking screen, but always
+      with a prompt.)
 
 **Queued after the pass, in the product owner's priority order. Each needs
 an approved plan before work starts.**
@@ -967,9 +990,20 @@ an approved plan before work starts.**
 - [ ] **P1 — Amharic in the mobile app.** Every user-facing string is English
       today; the brief requires Amharic and English. The product owner does
       the native-speaker review.
-- [ ] **P1 — Realtime in the driver app.** It polls every 20 s; it should
-      consume `user:{id}` booking events over Socket.io with the
-      subscribe-then-snapshot ordering, keeping polling as the fallback.
+- [x] **P1 — Realtime in the driver app.** Done. The app holds one socket
+      per signed-in user (`src/realtime/connection.ts`); the API joins it to
+      `user:{id}` at connection and pushes `booking.updated` there. The
+      booking and checkout screens (`useLiveBooking`) take a REST snapshot
+      that now carries `lotVersion`, apply only newer events
+      (`bookingFeed.ts`), hold events and refetch on every reconnect, and
+      poll only while the socket is not live. On token expiry the socket
+      refreshes through the ApiClient's single-flight refresh and
+      reconnects. `driver-realtime.test.ts` drives the app's own client,
+      socket and feed against the real API and Socket.io server. With it,
+      **the push gate is real**: the prompt waits for a held slot
+      (`bookingEarnsPushAsk`: `RESERVED`, `CHECKED_IN`, `OVERSTAY`), never
+      while paying the deposit, and no longer for an expired or cancelled
+      booking. Device check: DEVICE-TEST step 20.
 - [ ] **P2 — Shared schemas for the dashboard's requests and responses**, as
       the app now has.
 - [ ] **P2 — Stopping stale dev processes.** On Windows, Ctrl+C in Git Bash

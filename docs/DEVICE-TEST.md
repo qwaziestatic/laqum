@@ -712,6 +712,14 @@ _Should:_ you land on the booking screen with a countdown and a QR code.
 _Should:_ **only now** does Android ask about notifications, not at launch.
 That timing is deliberate.
 
+> Changed after the first pass: the ask waits for a slot that is actually
+> held. On a lot with a deposit (step 19) it comes once the deposit is
+> confirmed, never while the payment page is open; opening an expired or
+> cancelled booking never asks. On this phone notifications are already
+> allowed, so the prompt cannot appear until the permission is reset (see
+> CLAUDE.md's open item on how it came to be allowed; read its evidence
+> BEFORE resetting).
+
 3. Allow notifications.
 
 _Should:_ nothing visible happens. Then look at the dev database. **Git
@@ -961,6 +969,51 @@ deposit if you want TEST LOT as it was:
 docker exec laqum-postgres-1 psql -U laqum -d laqum \
   -c "update lots set deposit_amount_santim = 0 where name like 'TEST LOT%';"
 ```
+
+### 20. Realtime: changes arrive without a refresh
+
+Added after the first pass. JavaScript only: reload the app, no new build.
+The API runs normally, without step 19's extra variables. Use TEST LOT
+without a deposit (step 19's "Afterwards" removes it).
+
+The first pass saw dashboard changes on the phone only through a 20-second
+poll. Now the API pushes each change to the driver's phone over the same
+Socket.io server the dashboard uses, and the phone polls only while that
+connection is down. So the test here is **timing**: a change should appear
+within about a second, without touching the phone.
+
+1. Book TEST LOT and stay on the booking screen. Do not touch the phone
+   from here on.
+2. On the dashboard, check the car in with **Type code**.
+
+   _Should:_ within about a second the phone says "You are parked." with
+   **Time remaining**. Not after up to 20 seconds.
+
+3. On the dashboard, check the car out.
+
+   _Should:_ within about a second, "You have left the lot. Pay to finish."
+   and a **Pay** button with the amount.
+
+4. Tap **Pay** to open the bill. Then record the cash on the dashboard.
+
+   _Should:_ within about a second the bill screen says **Paid**, without
+   a tap.
+
+**a. After the API restarts.** Book again. Stop the API in window A
+(Ctrl+C), wait 30 seconds, start it again, and wait for its "API
+listening" line. Then check the car in on the dashboard.
+
+_Should:_ the phone updates within about 10 seconds of the check-in, the
+longest the app waits between reconnect attempts. It reconnected by itself
+and refetched the booking.
+
+**b. After the sign-in token expires (optional, 15 minutes).** Book, and
+leave the booking screen open for 16 minutes, screen on. Then check the car
+in on the dashboard.
+
+_Should:_ the phone updates within about a second. The server closed the
+socket when the 15-minute access token expired, and the app refreshed its
+sign-in and reconnected. You stay signed in.
 
 ---
 
