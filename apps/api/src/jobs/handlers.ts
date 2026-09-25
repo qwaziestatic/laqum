@@ -44,7 +44,12 @@ export interface JobResult {
     | 'NOT_DUE'
     | 'NOT_IMPLEMENTED'
     /** The provider confirmed the deposit; the booking was reserved instead. */
-    | 'PAYMENT_CONFIRMED';
+    | 'PAYMENT_CONFIRMED'
+    /**
+     * The provider could not be asked about an initialized deposit. Reported by
+     * the sweeper only: the handler itself throws ExpiryDeferredError.
+     */
+    | 'DEFERRED';
 }
 
 /**

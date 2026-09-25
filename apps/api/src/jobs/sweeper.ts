@@ -1,5 +1,11 @@
 import { LIVE_STATUSES } from '@laqum/shared';
-import { expireHold, markOverstay, type JobDeps, type JobResult } from './handlers.js';
+import {
+  ExpiryDeferredError,
+  expireHold,
+  markOverstay,
+  type JobDeps,
+  type JobResult,
+} from './handlers.js';
 
 /**
  * The safety net.
@@ -51,7 +57,7 @@ export async function sweep(deps: JobDeps): Promise<SweepReport> {
 
   const expired: JobResult[] = [];
   for (const row of overdueHolds) {
-    expired.push(await expireHold(deps, row.id));
+    expired.push(await expireOrDefer(deps, row.id));
   }
 
   const overstayed: JobResult[] = [];
@@ -68,6 +74,24 @@ export async function sweep(deps: JobDeps): Promise<SweepReport> {
   }
 
   return { expired, overstayed, examined: overdueHolds.length + overdueEnds.length };
+}
+
+/**
+ * One deferred expiry must not end the sweep.
+ *
+ * expireHold THROWS while the provider cannot be asked about an initialized
+ * deposit, so that BullMQ retries the job. Here that throw used to abandon
+ * the loop, skipping every later hold and every overstay: one provider outage
+ * switched the safety net off for the whole system. The booking is reported
+ * and the next sweep asks again.
+ */
+async function expireOrDefer(deps: JobDeps, bookingId: string): Promise<JobResult> {
+  try {
+    return await expireHold(deps, bookingId);
+  } catch (err) {
+    if (!(err instanceof ExpiryDeferredError)) throw err;
+    return { queue: 'expire-hold', bookingId, applied: false, reason: 'DEFERRED' };
+  }
 }
 
 /** Exported so a test can assert the sweeper and the view agree on "live". */

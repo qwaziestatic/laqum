@@ -2,6 +2,7 @@ import { addMinutes } from '@laqum/shared';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { expireHold, type JobDeps } from '../src/jobs/handlers.js';
+import { sweep } from '../src/jobs/sweeper.js';
 import { initiatePayment } from '../src/payments/initiate.js';
 import { confirmPayment, refundQueue } from '../src/payments/service.js';
 import { signPayload } from '../src/payments/signature.js';
@@ -302,6 +303,43 @@ describe('lost webhook: expiry asks the provider first', () => {
 
     const queue = await refundQueue(t.ctx);
     expect(queue.map((q) => q.reason)).toEqual(['late_deposit']);
+  });
+
+  it('a deferred expiry does not stop the sweeper handling everything else', async () => {
+    // The first overdue hold in the sweep is a deposit the provider cannot be
+    // asked about. The sweeper is the safety net for jobs that were lost; one
+    // outage must not switch it off for every other booking.
+    const { bookingId: deferred } = await bookingAwaitingDeposit();
+    const other = await makeActor(t, 'driver');
+    const parked = await makeActor(t, 'driver');
+    const lapsed = await seedBooking(t.db.db, {
+      lotId: lot.lotId,
+      slotId: lot.slotIds[1]!,
+      userId: other.userId,
+      status: 'RESERVED',
+      holdExpiresAt: addMinutes(t.clock.now(), 4),
+    });
+    const overstaying = await seedBooking(t.db.db, {
+      lotId: lot.lotId,
+      slotId: lot.slotIds[2]!,
+      userId: parked.userId,
+      status: 'CHECKED_IN',
+      plannedMinutes: 30,
+      checkedInAt: t.clock.now(),
+      plannedEndAt: addMinutes(t.clock.now(), 5),
+    });
+
+    t.provider.unavailable = true;
+    t.clock.advanceMinutes(6);
+    const report = await sweep(jobDeps);
+
+    expect(await statusOf(deferred)).toBe('PENDING_PAYMENT');
+    expect(await statusOf(lapsed)).toBe('EXPIRED');
+    expect(await statusOf(overstaying)).toBe('OVERSTAY');
+    expect(report.expired.find((r) => r.bookingId === deferred)).toMatchObject({
+      applied: false,
+      reason: 'DEFERRED',
+    });
   });
 });
 
