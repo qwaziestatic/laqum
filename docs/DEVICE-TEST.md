@@ -4,6 +4,9 @@ Everything in this document needs your phone. Nothing here is covered by the
 automated suite. Where I expect something to work, I say "should"; where I
 genuinely do not know, I say so.
 
+**Next: Session 2** (deposits, realtime, Amharic). It starts in the section
+right below.
+
 **The first pass is done** (2026-09-24/25, Samsung Galaxy A15 5G, Android 16):
 every numbered test passed once the bugs it found were fixed. The results,
 those bugs and their commits, and what was not device-tested are in
@@ -17,6 +20,112 @@ were checked against the installed packages and are marked **verified**.
 **Your device is Android, so iOS is untested.** The iOS configuration is
 present and valid (bundle identifier, usage strings, plugins) but has never
 been built or run. Do not treat it as working.
+
+---
+
+## Session 2 — deposits, realtime and Amharic: start here
+
+One phone session for the three checks added after the first pass: **step
+19** (deposits), **step 20** (realtime) and **step 21** (Amharic), plus the
+notification-permission evidence. All three are JavaScript changes: **no new
+build**, the APK from the first pass is the one to use. Everything else in
+this document stays as the first pass left it.
+
+Windows are the same as the first pass: A (API), B (Metro), C (dashboard),
+plus a fourth Git Bash at the repo root for one-off commands.
+
+### Session setup
+
+Run these in order. Each says where, and what success looks like.
+
+| #   | Where                      | Command                                                                              | Success looks like                                                                                 |
+| --- | -------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| 1   | PowerShell                 | The port check in step 1                                                             | `not reserved, free` for 18000, 18081, 5173 (after a reboot)                                       |
+| 2   | PowerShell (Administrator) | `Stop-Service postgresql-x64-18`                                                     | No output; step 1's 5432 check lists only `com.docker.backend`                                     |
+| 3   | Fourth window, repo root   | `pnpm dev:stop`                                                                      | Every port `free`, or `node.exe (pid …): stopped`                                                  |
+| 4   | Fourth window, repo root   | `pnpm install`                                                                       | Ends `Done`. The app gained i18next and react-i18next                                              |
+| 5   | Window A, repo root        | `set -a; . ./.env; set +a` then `pnpm infra:up`                                      | Both containers `Started` or `Running`                                                             |
+| 6   | Window A                   | `pnpm db:migrate up`                                                                 | `004_payment_checkout_url: applied` and `005_booking_radius_default: applied` (or nothing pending) |
+| 7   | Window A                   | `SEED_TEST_LOT_LAT=<lat> SEED_TEST_LOT_LNG=<lng> pnpm db:seed` (your step 1a values) | `TEST LOT at <lat>, <lng> — 150 m radius, …`. A clean slate: every old booking is gone             |
+| 8   | Fourth window              | The deposit `update lots …` in step 19                                               | `UPDATE 1`: TEST LOT now asks a 20 ETB deposit                                                     |
+| 9   | Window A                   | `FAKE_PAYMENT_DELAY_SECONDS=120 pnpm --filter @laqum/api dev`                        | `ላቁም? API listening … port: 18000`, then `job workers started`                                     |
+| 10  | Window B, `apps/mobile`    | `pnpm exec expo start` (step 8a)                                                     | `Using development build`, and `%3A18081` in the `Metro:` line. Restarted, because of step 4       |
+| 11  | Window C, repo root        | `VITE_API_TARGET=http://localhost:18000 pnpm --filter @laqum/dashboard dev`          | Vite's `Local: http://localhost:5173/`                                                             |
+| 12  | Phone, then Git Bash       | USB cable to the laptop, USB debugging allowed                                       | `"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe" devices` lists it as `device`                  |
+
+Steps 6 and 7 also make the seeded Addis lots 5 km (migration 005): they
+had been using the old 10 km default.
+
+### The notification permission: read the evidence BEFORE any reset
+
+The first pass found notifications already **allowed** before the app ever
+asked. Two records say how. **Resetting erases both**, so read them first.
+**Git Bash**, any folder:
+
+```bash
+ADB="$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe"
+"$ADB" shell dumpsys package et.laqum.driver | grep -i "POST_NOTIFICATIONS"
+"$ADB" shell run-as et.laqum.driver cat shared_prefs/expo.modules.permissions.asked.xml
+```
+
+Send me both outputs verbatim. How to read them:
+
+| In the first output (Android's record)        | Means                                                        |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| `granted=true` with `USER_SET` in `flags=[…]` | A person allowed it: in a prompt, or in Settings             |
+| `GRANTED_BY_DEFAULT`                          | The system granted it by default, with no one asked          |
+| `SYSTEM_FIXED` or `POLICY_FIXED`              | The system or a device policy fixed it                       |
+| `granted=true` and none of these              | Granted with no decision recorded: tell me, it is unexpected |
+
+| In the second output (Expo's own record)                                | Means                                                                  |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `<boolean name="android.permission.POST_NOTIFICATIONS" value="true" />` | The app requested it at some point, so a prompt was shown (or skipped) |
+| No `POST_NOTIFICATIONS` line                                            | The app never requested it: the grant came from somewhere else         |
+
+The second file also lists the location permissions the app asked for, so it
+exists even if notifications are absent. `run-as: package not debuggable`
+would mean this is not the development build.
+
+### Then reset, to re-test the prompt's timing
+
+Reset BOTH the permission and Expo's record. If only the permission is
+reset, Expo still remembers asking, reports "denied", and the app never
+prompts. **Git Bash**, any folder, `ADB` as above:
+
+```bash
+"$ADB" shell pm clear et.laqum.driver
+"$ADB" shell pm revoke et.laqum.driver android.permission.POST_NOTIFICATIONS
+"$ADB" shell pm clear-permission-flags et.laqum.driver android.permission.POST_NOTIFICATIONS user-set user-fixed
+"$ADB" shell dumpsys package et.laqum.driver | grep -i "POST_NOTIFICATIONS"
+```
+
+_Should:_ the last line shows `granted=false`, with no `USER_SET`.
+
+Clearing the data signs you out, forgets the Metro server and the language
+choice, and may bring the location prompt back. Open the app, connect to
+Metro by URL (step 8b), and stop at the sign-in screen: it is where step
+21a starts.
+
+### The order, so the API restarts only twice
+
+1. **Step 21a**, at the sign-in screen: the phone's language decides.
+   Then **21b**: switch to Amharic, restart the app, still Amharic. Sign in.
+2. **Step 19a** (the API is already in step 19a's mode, from setup 9).
+   Book TEST LOT. This is also **the prompt-timing re-test**: no
+   notification prompt while you pay; it appears only once the booking says
+   the slot is held. Allow it. Check the deposit screens' Amharic here.
+3. **Restart 1**: window A into step 19b's outage mode. Run **19b**.
+4. **Step 19c**, the return page (any mode).
+5. **Restart 2**: window A back to normal (`pnpm --filter @laqum/api dev`).
+   Remove TEST LOT's deposit (the command at the end of step 19).
+6. **Step 20**, realtime.
+7. **Step 21c–21f**: every screen in Amharic, the dashboard, and back to
+   English.
+8. **Afterwards**, at the end of this document: `pnpm dev:stop`, then the
+   rest.
+
+Report back with the step number and pass, fail or could-not-test, the two
+evidence outputs, and screenshots of anything in Amharic that looks wrong.
 
 ---
 
@@ -549,9 +658,9 @@ _Should:_ `"apiUrl":"http://<LAN-IP>:18000/v1"`, and after step 5 a non-empty
 Then check from **Chrome on the phone**: `http://<LAN-IP>:18081/status` should
 show `packager-status:running`.
 
-The first time it starts, Expo CLI creates `apps/mobile/expo-env.d.ts` and
-`apps/mobile/.gitignore`. They are its typed-routes bookkeeping and harmless.
-Leave them out of any commit during the pass.
+The first time it starts, Expo CLI creates `apps/mobile/expo-env.d.ts`, its
+typed-routes bookkeeping, and harmless. It is ignored by git (the
+`apps/mobile/.gitignore` Expo also wrote is committed) and by the format check.
 
 ### 8b. Connect the app to Metro
 
@@ -880,6 +989,10 @@ again." Not a crash, and not a silent blank screen.
 
 ### 19. Deposit at booking time
 
+**In Session 2, setup rows 6, 8 and 9 already ran the migration, set the
+deposit and started the API for 19a: skip to "a. Paying" below, and check
+the screens in Amharic if you switched.**
+
 Added after the first pass. The app change is JavaScript only: reload the
 app, no new build. The API needs migration 004 in the dev database first. In
 the fourth window. **Git Bash**, repo root:
@@ -1014,6 +1127,79 @@ in on the dashboard.
 _Should:_ the phone updates within about a second. The server closed the
 socket when the 15-minute access token expired, and the app refreshed its
 sign-in and reconnected. You stay signed in.
+
+### 21. Amharic
+
+Added after the first pass. JavaScript only: no new build.
+
+The app's language follows the phone: Amharic on an Amharic phone, English
+on an English one, Amharic on anything else. Every screen's header has a
+switch naming the OTHER language (**English** on an Amharic screen,
+**አማርኛ** on an English one), and the app remembers the choice over the
+phone's language. All Amharic uses the **polite** form (ይክፈሉ, ይሞክሩ,
+ያስገቡ), never the informal (ክፈል, ሞክር, አስገባ), in the app and on the
+dashboard.
+
+**a. The phone's language decides the first language.** After the reset in
+the session setup the app has no stored choice.
+
+_Should:_ with the phone in English, the sign-in screen is in English and
+the header switch says **አማርኛ**. With the phone in Amharic (if yours
+offers it), the screen is in Amharic. Changing the phone's language is
+optional: say which you tried.
+
+**b. The switch, and that it is remembered.**
+
+1. Tap **አማርኛ** in the header.
+
+   _Should:_ every word on the screen changes at once, the title included.
+   The switch now says **English**.
+
+2. Swipe the app away from the recent apps and open it again.
+
+   _Should:_ still Amharic. The choice outlived the restart.
+
+**c. Every screen in Amharic.** Walk through each one and read everything.
+
+| Screen    | What to check, at least                                                                                            |
+| --------- | ------------------------------------------------------------------------------------------------------------------ |
+| Sign-in   | Tagline, **ኮድ ይላኩልኝ**, the "sent to" line, and a wrong code (type 000000): the error is Amharic                    |
+| Home      | "ከ… ውስጥ … ነፃ" lines, prices in **ብር**, "… ሜትር ይርቃል", "የተዘመነው" with the time, **ያድሱ**                               |
+| Lot       | Free count, rates, overstay rate, deposit line, **ቦታ ያስይዙ**, the call button                                       |
+| Book      | Durations in **ደቂቃ**, the plate label, the total, the button's states while locating, a gate notice if you get one |
+| Booking   | The sentence and timer label for each status you reach: paying, held, parked, left, paid, expired or cancelled     |
+| Bill      | **የሚከፈለው መጠን**, the times, the cash hint, the pay button                                                           |
+| Any error | Turn Wi-Fi off and tap **ያድሱ** on Home: the error is Amharic, not "Network request failed"                         |
+
+Step 19 runs before this in the session, so the deposit screens (**ቅድመ
+ክፍያ ይክፈሉ**, "ለመክፈል የቀረው ጊዜ") are best checked there, with the app
+already in Amharic.
+
+_Should:_ no English word anywhere except these, which are expected:
+
+- the language switch, which says **English**;
+- the map credit, "OpenFreeMap © OpenMapTiles Data from OpenStreetMap": the
+  licensors' required wording;
+- data: lot names and addresses as seeded ("TEST LOT (device testing)"),
+  plates, the short code.
+
+Times are 24-hour digits (14:05) in both languages. Whether Amharic should
+show Ethiopian time is a product question, listed in AMHARIC-REVIEW.md.
+
+**d. The polite form, throughout.** While reading, note anything that
+addresses you informally, reads unnaturally, or means something else. For
+each, say the screen and the words; docs/AMHARIC-REVIEW.md lists every key
+with its English, grouped by screen.
+
+**e. The dashboard.** In window C's browser, tap **አማ** in the header.
+
+_Should:_ the buttons read **ይቃኙ**, **ያስገቡ**, **ያስወጡ**, **ጥሬ ገንዘብ ይመዝግቡ**,
+**ከአገልግሎት ያውጡ**, **ይዝጉ**: the polite form. These 35 strings changed from
+the informal form; AMHARIC-REVIEW.md lists each with its old text.
+
+**f. Back to English.** Tap **English** in the app's header.
+
+_Should:_ every screen is English again, and stays English after a restart.
 
 ---
 

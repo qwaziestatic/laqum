@@ -964,7 +964,8 @@ Atlantic and made every booking fail TOO_FAR for an unguessable reason.
       permission already granted. The app asks in one place (the booking
       screen, only while undetermined) and nothing native asks at startup.
       The deciding evidence is on the phone: the `POST_NOTIFICATIONS` flags
-      and Expo's `expo.modules.permissions.asked` record. (The constant
+      and Expo's `expo.modules.permissions.asked` record. The commands, and
+      how to read them, are in DEVICE-TEST.md's Session 2, before the reset. (The constant
       `hasBooked: true` noted here was fixed with realtime, below. It cannot
       explain this: it made the app ask on ANY booking screen, but always
       with a prompt.)
@@ -1007,8 +1008,13 @@ an approved plan before work starts.**
       every overstay; it now records `DEFERRED` and carries on. And **the app
       offered Cancel and the gate QR while `PENDING_PAYMENT`**, where the
       state machine permits neither; both now come from `isLegalTransition`.
-- [ ] **Device check of deposits.** DEVICE-TEST step 19: paying, reopening,
-      and the outage path, including the expiry at the payment window.
+- [ ] **Session 2 on the phone: deposits, realtime and Amharic.** One
+      session, prepared in DEVICE-TEST.md's "Session 2" (at the top): a
+      setup checklist, the notification evidence read BEFORE the reset,
+      then steps 19 (deposits: paying, reopening, the outage and its expiry
+      at the payment window, the return page), 20 (realtime timing) and 21
+      (Amharic on every screen, polite throughout), ordered so the API
+      restarts twice. JavaScript only: no new build.
 - [x] **Chapa's return page.** Done, as decided by the product owner.
       `return_url` had no route, so a driver who had just paid landed on the
       API's JSON 404. `GET /payment-complete` (`payments/returnPage.ts`) now
