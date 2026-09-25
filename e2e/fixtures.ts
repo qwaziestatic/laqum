@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { type Page, expect } from '@playwright/test';
+import { type Locator, type Page, type Response, expect, test } from '@playwright/test';
 
 /**
  * Shared e2e helpers.
@@ -15,6 +15,57 @@ import { type Page, expect } from '@playwright/test';
  *   defect and a flaky e2e test gets ignored, which is worse than a slow one.
  */
 export const REALTIME_BUDGET_MS = process.env['CI'] ? 5_000 : 1_000;
+
+/**
+ * How long screen B took to show a change, measured from the moment the
+ * SERVER CONFIRMED screen A's action (A's request came back) to the moment B
+ * shows it. That is the realtime path and nothing else.
+ *
+ * The budget used to start before screen A's clicks, so clicking, typing and
+ * a slow machine counted against it, and "taking a slot out of service"
+ * failed once while realtime was fine. The waits themselves are generous;
+ * only the measured latency is held to REALTIME_BUDGET_MS. B can show the
+ * change before A's response reaches the test (the event overtook it): that
+ * counts as zero.
+ */
+export async function realtimeLatency(options: {
+  screenA: Page;
+  /** Which of screen A's responses confirms the action. */
+  confirms: (response: Response) => boolean;
+  act: () => Promise<void>;
+  screenBShows: Locator;
+}): Promise<number> {
+  const WAIT_MS = 30_000;
+  const confirmed = options.screenA
+    .waitForResponse(options.confirms, { timeout: WAIT_MS })
+    .then((response) => {
+      expect(response.ok(), `the action itself failed: HTTP ${String(response.status())}`).toBe(
+        true,
+      );
+      return Date.now();
+    });
+  const shown = options.screenBShows
+    .waitFor({ state: 'visible', timeout: WAIT_MS })
+    .then(() => Date.now());
+
+  await options.act();
+  const [confirmedAt, shownAt] = await Promise.all([confirmed, shown]);
+  const latency = Math.max(0, shownAt - confirmedAt);
+
+  // Reported whether or not it passes, so a creeping regression shows in the
+  // log before it breaches the budget.
+  test.info().annotations.push({
+    type: 'realtime-latency',
+    description: `${String(latency)}ms (budget ${String(REALTIME_BUDGET_MS)}ms)`,
+  });
+  console.log(`realtime latency: ${String(latency)}ms (budget ${String(REALTIME_BUDGET_MS)}ms)`);
+  return latency;
+}
+
+/** A response to a request whose method and path match. */
+export function responseTo(method: string, pathPart: string): (response: Response) => boolean {
+  return (response) => response.request().method() === method && response.url().includes(pathPart);
+}
 
 /** How long a first paint may take, which is dominated by the dev-server build. */
 export const FIRST_PAINT_BUDGET_MS = process.env['CI'] ? 30_000 : 15_000;

@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { REALTIME_BUDGET_MS, reseed, signIn, slot, statusOf } from './fixtures.js';
+import {
+  REALTIME_BUDGET_MS,
+  realtimeLatency,
+  reseed,
+  responseTo,
+  signIn,
+  slot,
+  statusOf,
+} from './fixtures.js';
 
 /**
  * THE TWO-SCREEN TEST.
@@ -10,7 +18,10 @@ import { REALTIME_BUDGET_MS, reseed, signIn, slot, statusOf } from './fixtures.j
  * after-commit emit, Socket.io, and the client's version ordering — in a real
  * browser.
  *
- * TIMING. The budget is REALTIME_BUDGET_MS from fixtures.ts:
+ * TIMING is measured from the moment the server confirms screen A's action
+ * to the moment screen B shows it (realtimeLatency in fixtures.ts): clicks,
+ * typing and machine speed on screen A are not realtime, and once counted.
+ * The budget is REALTIME_BUDGET_MS from fixtures.ts:
  *   local: 1000ms — strict, because the whole path is sub-100ms on one
  *          machine and a regression should show up as a failure;
  *   CI:    5000ms — loose, because a shared runner's scheduler jitter is not
@@ -48,31 +59,19 @@ test.describe('two screens, one lot', () => {
 
       const freeBefore = await screenB.getByTestId('count-free').getAttribute('data-count');
 
-      // Screen B is watching. It never interacts.
-      const changed = screenB
-        .locator(`[data-testid="slot-${label}"][data-status="occupied"]`)
-        .waitFor({ state: 'visible', timeout: REALTIME_BUDGET_MS });
-
-      const startedAt = Date.now();
-
-      // Screen A parks a car. TWO TAPS: the tile, then the action.
-      await slot(screenA, label).click();
-      await screenA.getByTestId('walk-in-plate').fill('AA-33333');
-      await screenA.getByTestId('action-park').click();
-
-      await changed;
-      const elapsed = Date.now() - startedAt;
-
-      // Reported whether or not it passed, so a creeping regression is
-      // visible in the log before it breaches the budget.
-      test.info().annotations.push({
-        type: 'realtime-latency',
-        description: `${String(elapsed)}ms (budget ${String(REALTIME_BUDGET_MS)}ms)`,
+      // Screen B is watching. It never interacts. Screen A parks a car: TWO
+      // TAPS, the tile then the action, and a plate typed in between.
+      const latency = await realtimeLatency({
+        screenA,
+        confirms: responseTo('POST', '/walk-ins'),
+        act: async () => {
+          await slot(screenA, label).click();
+          await screenA.getByTestId('walk-in-plate').fill('AA-33333');
+          await screenA.getByTestId('action-park').click();
+        },
+        screenBShows: screenB.locator(`[data-testid="slot-${label}"][data-status="occupied"]`),
       });
-      console.log(
-        `two-screen realtime latency: ${String(elapsed)}ms (budget ${String(REALTIME_BUDGET_MS)}ms)`,
-      );
-      expect(elapsed).toBeLessThan(REALTIME_BUDGET_MS);
+      expect(latency).toBeLessThan(REALTIME_BUDGET_MS);
 
       // The plate reached the STAFF screen, which is what the staff room is
       // for — and the header count followed the grid.
@@ -113,24 +112,20 @@ test.describe('two screens, one lot', () => {
       await screenA.getByTestId('drawer-close').click();
       await expect(screenA.getByTestId('slot-drawer')).toBeHidden();
 
-      // B sees it occupied.
-      await expect(screenB.getByTestId(`slot-${label}`)).toHaveAttribute(
-        'data-status',
-        'occupied',
-        {
-          timeout: REALTIME_BUDGET_MS,
-        },
-      );
+      // B sees it occupied. Setup, not what this test measures.
+      await expect(screenB.getByTestId(`slot-${label}`)).toHaveAttribute('data-status', 'occupied');
 
       // A checks it out. Two taps: the tile, then the action.
-      const freed = screenB
-        .locator(`[data-testid="slot-${label}"][data-status="free"]`)
-        .waitFor({ state: 'visible', timeout: REALTIME_BUDGET_MS });
-
-      await slot(screenA, label).click();
-      await screenA.getByTestId('action-check-out').click();
-
-      await freed;
+      const latency = await realtimeLatency({
+        screenA,
+        confirms: responseTo('POST', '/check-out'),
+        act: async () => {
+          await slot(screenA, label).click();
+          await screenA.getByTestId('action-check-out').click();
+        },
+        screenBShows: screenB.locator(`[data-testid="slot-${label}"][data-status="free"]`),
+      });
+      expect(latency).toBeLessThan(REALTIME_BUDGET_MS);
       await expect(screenB.getByTestId(`slot-${label}`)).not.toContainText('AA-');
     } finally {
       await contextA.close();
@@ -152,14 +147,18 @@ test.describe('two screens, one lot', () => {
       await signIn(screenB);
 
       const label = 'G-3';
-      const changed = screenB
-        .locator(`[data-testid="slot-${label}"][data-status="out_of_service"]`)
-        .waitFor({ state: 'visible', timeout: REALTIME_BUDGET_MS });
-
-      await slot(screenA, label).click();
-      await screenA.getByTestId('action-out-of-service').click();
-
-      await changed;
+      const latency = await realtimeLatency({
+        screenA,
+        confirms: responseTo('PATCH', '/staff/slots/'),
+        act: async () => {
+          await slot(screenA, label).click();
+          await screenA.getByTestId('action-out-of-service').click();
+        },
+        screenBShows: screenB.locator(
+          `[data-testid="slot-${label}"][data-status="out_of_service"]`,
+        ),
+      });
+      expect(latency).toBeLessThan(REALTIME_BUDGET_MS);
       await expect(screenB.getByTestId('count-out_of_service')).not.toHaveAttribute(
         'data-count',
         '0',
