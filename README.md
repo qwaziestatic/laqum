@@ -10,8 +10,9 @@ at entry and exit, and record cash.
 
 ## Status
 
-**Phases 0–3 complete.** Foundation, API core, payments, and realtime plus the
-attendant dashboard. The mobile app (Phase 4) and hardening (Phase 5) follow.
+**Phases 0–4 complete.** Foundation, API core, payments, realtime plus the
+attendant dashboard, and the driver app, device-tested on Android. Hardening
+(Phase 5) follows. CLAUDE.md tracks what is open.
 
 ## Getting started
 
@@ -41,6 +42,22 @@ docker compose up -d --build
 curl localhost:3000/health   # liveness
 curl localhost:3000/ready    # readiness: checks postgres and redis
 ```
+
+### Stopping the dev stack
+
+On Windows, Ctrl+C in Git Bash can leave node running, and the next start
+fails with `EADDRINUSE`. Stop whatever holds the dev ports:
+
+```bash
+pnpm dev:stop               # 18000 (API), 18081 (Metro), 5173 and 5174 (dashboard)
+pnpm dev:stop -- --dry-run  # only say what holds them
+pnpm dev:stop -- 3000       # other ports instead
+```
+
+It names each process before stopping it, and works on Windows (`netstat`,
+`taskkill`) and Linux (`ss`). The ports are the device test's (see
+`docs/DEVICE-TEST.md`): Windows can reserve ports below 15000, so the pass
+runs the API on 18000 and Metro on 18081.
 
 ## Tests
 

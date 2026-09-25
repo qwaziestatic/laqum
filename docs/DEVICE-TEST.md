@@ -1027,12 +1027,19 @@ under "Not device-tested"; look there before planning the next one.
 
 ## Afterwards
 
-Stop windows A, B and C with Ctrl+C. Then stop the dev database and Redis;
-the data volume is kept. **Git Bash**, repo root:
+Stop windows A, B and C with Ctrl+C. Ctrl+C in Git Bash does not always
+stop every node process, so make sure nothing still holds the ports, then
+stop the dev database and Redis (the data volume is kept). **Git Bash**, repo
+root:
 
 ```bash
+pnpm dev:stop
 pnpm infra:down
 ```
+
+_Should:_ `pnpm dev:stop` lists 18000, 18081, 5173 and 5174, each `free` or
+`<name> (pid …): stopped`. Use it too whenever a start fails with
+`EADDRINUSE`.
 
 Give port 5432 back to your own PostgreSQL. **PowerShell (Administrator)**:
 

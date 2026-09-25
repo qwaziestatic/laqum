@@ -88,6 +88,7 @@ layout still follows the brief (`db/migrations/`, `db/seed/`).
 pnpm install                    # install the workspace
 
 pnpm infra:up                   # dev postgres + redis (5432 / 6379)
+pnpm dev:stop                   # stop whatever holds 18000/18081/5173/5174
 pnpm test:infra:up              # test postgres + redis (55432 / 56379)
 docker compose up -d --build    # full stack incl. the api container
 
@@ -1027,9 +1028,13 @@ an approved plan before work starts.**
       booking. Device check: DEVICE-TEST step 20.
 - [ ] **P2 — Shared schemas for the dashboard's requests and responses**, as
       the app now has.
-- [ ] **P2 — Stopping stale dev processes.** On Windows, Ctrl+C in Git Bash
-      can leave node running (EADDRINUSE on 18000, 18081, 5173). Needs a
-      documented way to stop them, and a README mention.
+- [x] **P2 — Stopping stale dev processes.** Done: `pnpm dev:stop`
+      (`scripts/dev-stop.mjs`) stops whatever holds 18000, 18081, 5173 and
+      5174, naming each process first; `-- --dry-run` only names them.
+      Windows: `netstat -ano` and `taskkill /T /F` (the tree, since tsx watch
+      keeps a child). Linux: `ss -ltnpH`, SIGTERM, then SIGKILL. Never PID 0
+      or 4, nor itself. `dev-stop.test.ts` parses both outputs and stops a
+      real listener. In the README and DEVICE-TEST.md.
 - [ ] **P2 — Booking radius: a product decision.** The seeds' 150–200 m is
       smaller than real GPS uncertainty (±197 m observed) and at odds with a
       hold meant to cover travel time. Recommendation pending approval.
