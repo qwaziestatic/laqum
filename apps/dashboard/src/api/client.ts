@@ -1,4 +1,4 @@
-import type { StaffSnapshot } from '@laqum/shared';
+import type { OtpRequestInput, OtpVerifyInput, StaffSnapshot } from '@laqum/shared';
 
 /**
  * The REST client.
@@ -22,8 +22,6 @@ export interface Session {
   accessExpiresAt: string;
   user: { id: string; phone: string; role: string; fullName: string | null };
 }
-
-const BASE = '/v1';
 
 /** A failure that never reached the server, shaped like one that did. */
 function networkError(err: unknown): ApiError {
@@ -54,6 +52,16 @@ async function parse<T>(res: Response): Promise<ApiResult<T>> {
 
 export class ApiClient {
   #session: Session | null = null;
+  readonly #base: string;
+
+  /**
+   * `baseUrl` is '/v1' in the browser, where the dev proxy (or the serving
+   * origin) forwards it. Tests pass an absolute URL: the API's contract test
+   * drives THIS client against the real API.
+   */
+  constructor(options: { baseUrl?: string } = {}) {
+    this.#base = options.baseUrl ?? '/v1';
+  }
 
   get session(): Session | null {
     return this.#session;
@@ -74,7 +82,7 @@ export class ApiClient {
 
     let res: Response;
     try {
-      res = await fetch(`${BASE}${path}`, { ...init, headers });
+      res = await fetch(`${this.#base}${path}`, { ...init, headers });
     } catch (err) {
       return { ok: false, error: networkError(err) };
     }
@@ -93,7 +101,7 @@ export class ApiClient {
 
       headers.set('Authorization', `Bearer ${refreshed.data.accessToken}`);
       try {
-        res = await fetch(`${BASE}${path}`, { ...init, headers });
+        res = await fetch(`${this.#base}${path}`, { ...init, headers });
       } catch (err) {
         return { ok: false, error: networkError(err) };
       }
@@ -108,7 +116,7 @@ export class ApiClient {
 
     let res: Response;
     try {
-      res = await fetch(`${BASE}/auth/refresh`, {
+      res = await fetch(`${this.#base}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken: current.refreshToken }),
@@ -124,6 +132,37 @@ export class ApiClient {
   }
 
   // ── Endpoints ───────────────────────────────────────────────────────────
+
+  /**
+   * Staff sign-in, step 1. The STAFF audience: a number that is not staff
+   * gets no SMS and the same answer, so the screen must not claim a code was
+   * sent — only that one is on its way IF the number is a staff account.
+   */
+  requestOtp(phone: string): Promise<ApiResult<{ expiresAt: string }>> {
+    const body: OtpRequestInput = { phone, audience: 'staff' };
+    return this.request('/auth/otp/request', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  /** Staff sign-in, step 2. Every failure is one answer in staff mode. */
+  verifyOtp(phone: string, code: string): Promise<ApiResult<Session>> {
+    const body: OtpVerifyInput = { phone, code, audience: 'staff' };
+    return this.request<Session>('/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Whether this API offers dev sign-in. The route exists only with DEV_AUTH,
+   * so anything but 204 — a 404, a network error — means no.
+   */
+  async devLoginAvailable(): Promise<boolean> {
+    try {
+      return (await fetch(`${this.#base}/auth/dev-login`)).status === 204;
+    } catch {
+      return false;
+    }
+  }
 
   devLogin(phone: string): Promise<ApiResult<Session>> {
     return this.request<Session>('/auth/dev-login', {

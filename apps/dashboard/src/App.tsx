@@ -1,5 +1,6 @@
 import { LOCALES, type Locale } from '@laqum/shared';
 import { useEffect, useState } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { ApiClient, type StaffedLot } from './api/client.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
@@ -273,69 +274,214 @@ function LanguageToggle({
 }
 
 /**
- * Dev sign-in.
+ * Staff sign-in: a code by SMS, through the OTP "staff" audience — and, only
+ * when the API offers it, the dev sign-in below it.
  *
- * The endpoint only exists when the API was started with DEV_AUTH=true and a
- * non-production NODE_ENV, so in a real deployment this form simply 404s. The
- * production sign-in is the OTP flow, which is Phase 4's screen — the console
- * is opened by an operator admin, not self-served.
+ * The staff audience never reveals whether a number is staff: every number
+ * gets the same answer to "send a code" and every failure the same answer to
+ * "verify". So this screen says a code is on its way IF the number belongs to
+ * a staff account, never "code sent", and has one message for a rejected code.
+ *
+ * The dev form appears only when GET /v1/auth/dev-login answers 204, which it
+ * does only with DEV_AUTH on (the e2e suite, local testing). In production the
+ * route does not exist, so the form is never offered.
  */
 function SignIn({ onSignedIn }: { onSignedIn: () => void }): React.JSX.Element {
+  const { t } = useTranslation();
+  const [stage, setStage] = useState<'phone' | 'code'>('phone');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [devAvailable, setDevAvailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void api.devLoginAvailable().then((available) => {
+      if (active) setDevAvailable(available);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-surface p-6 text-ink">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <form
+          data-testid="otp-sign-in"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setBusy(true);
+            setError(null);
+            if (stage === 'phone') {
+              void api.requestOtp(phone.trim()).then((result) => {
+                setBusy(false);
+                if (result.ok) setStage('code');
+                else setError(signInError(t, result.error.code, stage));
+              });
+              return;
+            }
+            void api.verifyOtp(phone.trim(), code.trim()).then((result) => {
+              setBusy(false);
+              if (result.ok) {
+                api.setSession(result.data);
+                onSignedIn();
+              } else {
+                setError(signInError(t, result.error.code, stage));
+              }
+            });
+          }}
+          className="flex flex-col gap-4 rounded-2xl border-2 border-line bg-surface-raised p-6"
+        >
+          <h1 className="text-2xl font-extrabold">{t('app.name')}</h1>
+
+          {stage === 'phone' ? (
+            <>
+              <p className="text-sm font-semibold text-ink-muted">{t('signIn.otpIntro')}</p>
+              <input
+                data-testid="otp-phone"
+                value={phone}
+                onChange={(event) => {
+                  setPhone(event.target.value);
+                }}
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+2519…"
+                aria-label={t('signIn.phone')}
+                className="rounded-xl border-2 border-line bg-surface px-4 py-3 text-lg font-bold tabular-nums"
+              />
+            </>
+          ) : (
+            <>
+              <p data-testid="otp-on-its-way" className="text-sm font-semibold text-ink-muted">
+                {t('signIn.codeOnItsWay', { phone: phone.trim() })}
+              </p>
+              <input
+                data-testid="otp-code"
+                value={code}
+                onChange={(event) => {
+                  setCode(event.target.value);
+                }}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                aria-label={t('signIn.code')}
+                className="rounded-xl border-2 border-line bg-surface px-4 py-3 text-center text-2xl font-extrabold tracking-[0.4em] tabular-nums"
+              />
+            </>
+          )}
+
+          {error ? (
+            <p role="alert" data-testid="otp-error" className="text-sm font-bold text-danger">
+              {error}
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            data-testid={stage === 'phone' ? 'otp-send' : 'otp-verify'}
+            disabled={busy}
+            className="min-h-14 rounded-xl bg-accent px-4 py-3 text-lg font-extrabold text-accent-ink disabled:opacity-50"
+          >
+            {busy ? '…' : stage === 'phone' ? t('signIn.sendCode') : t('signIn.verify')}
+          </button>
+
+          {stage === 'code' ? (
+            <button
+              type="button"
+              data-testid="otp-change-number"
+              onClick={() => {
+                setStage('phone');
+                setCode('');
+                setError(null);
+              }}
+              className="text-sm font-bold text-accent underline"
+            >
+              {t('signIn.changeNumber')}
+            </button>
+          ) : null}
+        </form>
+
+        {devAvailable ? <DevSignIn onSignedIn={onSignedIn} /> : null}
+      </div>
+    </main>
+  );
+}
+
+/** What a failed sign-in step tells the attendant, by error code. */
+function signInError(t: TFunction, code: string, stage: 'phone' | 'code'): string {
+  switch (code) {
+    case 'OTP_INVALID':
+      return t('signIn.error.codeRejected');
+    case 'RATE_LIMITED':
+      return t('signIn.error.rateLimited');
+    case 'VALIDATION_ERROR':
+      return stage === 'phone' ? t('signIn.error.badPhone') : t('signIn.error.badCode');
+    case 'NETWORK':
+      return t('signIn.error.network');
+    default:
+      return t('signIn.error.failed');
+  }
+}
+
+/**
+ * Dev sign-in: any seeded number, no code. Shown only when the API offers it
+ * (see SignIn). Its test ids are the e2e suite's sign-in path.
+ */
+function DevSignIn({ onSignedIn }: { onSignedIn: () => void }): React.JSX.Element {
   const { t } = useTranslation();
   const [phone, setPhone] = useState('+251911000001');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-surface p-6 text-ink">
-      <form
-        data-testid="sign-in"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setBusy(true);
-          setError(null);
-          void api.devLogin(phone.trim()).then((result) => {
-            setBusy(false);
-            if (result.ok) {
-              api.setSession(result.data);
-              onSignedIn();
-            } else {
-              setError(result.error.message);
-            }
-          });
+    <form
+      data-testid="sign-in"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setBusy(true);
+        setError(null);
+        void api.devLogin(phone.trim()).then((result) => {
+          setBusy(false);
+          if (result.ok) {
+            api.setSession(result.data);
+            onSignedIn();
+          } else {
+            setError(result.error.message);
+          }
+        });
+      }}
+      className="flex flex-col gap-4 rounded-2xl border-2 border-dashed border-line bg-surface-raised p-6"
+    >
+      <p className="text-sm font-semibold text-ink-muted">{t('signIn.devOnly')}</p>
+
+      <input
+        data-testid="sign-in-phone"
+        value={phone}
+        onChange={(event) => {
+          setPhone(event.target.value);
         }}
-        className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border-2 border-line bg-surface-raised p-6"
+        inputMode="tel"
+        aria-label={t('signIn.phone')}
+        className="rounded-xl border-2 border-line bg-surface px-4 py-3 text-lg font-bold tabular-nums"
+      />
+
+      {error ? (
+        <p role="alert" data-testid="sign-in-error" className="text-sm font-bold text-danger">
+          {error}
+        </p>
+      ) : null}
+
+      <button
+        type="submit"
+        data-testid="sign-in-submit"
+        disabled={busy}
+        className="min-h-14 rounded-xl border-2 border-line px-4 py-3 text-lg font-extrabold disabled:opacity-50"
       >
-        <h1 className="text-2xl font-extrabold">{t('app.name')}</h1>
-        <p className="text-sm font-semibold text-ink-muted">{t('signIn.devOnly')}</p>
-
-        <input
-          data-testid="sign-in-phone"
-          value={phone}
-          onChange={(event) => {
-            setPhone(event.target.value);
-          }}
-          inputMode="tel"
-          aria-label={t('signIn.phone')}
-          className="rounded-xl border-2 border-line bg-surface px-4 py-3 text-lg font-bold tabular-nums"
-        />
-
-        {error ? (
-          <p role="alert" data-testid="sign-in-error" className="text-sm font-bold text-danger">
-            {error}
-          </p>
-        ) : null}
-
-        <button
-          type="submit"
-          data-testid="sign-in-submit"
-          disabled={busy}
-          className="min-h-14 rounded-xl bg-accent px-4 py-3 text-lg font-extrabold text-accent-ink disabled:opacity-50"
-        >
-          {busy ? '…' : t('signIn.submit')}
-        </button>
-      </form>
-    </main>
+        {busy ? '…' : t('signIn.submit')}
+      </button>
+    </form>
   );
 }
 

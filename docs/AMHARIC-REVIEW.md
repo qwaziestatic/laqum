@@ -1,8 +1,8 @@
 # Amharic strings for native-speaker review
 
-Every string added or changed in Phase 3 (the attendant dashboard). These were
-written by a non-native speaker and need a review pass before the dashboard is
-put in front of an attendant.
+Every string added or changed in the attendant dashboard: Phase 3, and the
+staff sign-in added after Phase 4. These were written by a non-native speaker
+and need a review pass before the dashboard is put in front of an attendant.
 
 Interpolations in `{{braces}}` are substituted at runtime and must survive
 translation. In `conflict.explained`, `{{action}}` and `{{status}}` are
@@ -80,6 +80,26 @@ Amharic is idiomatic, which is what this list is for.
 | --------------- | -------- | ------------- | ------------- |
 | `slot.occupied` | Occupied | ተይዞ ነው        | መኪና አለ        |
 
+## Staff sign-in by code (12)
+
+Added after Phase 4, when the dashboard gained its real sign-in. Same author,
+same caveat.
+
+| Key                         | English                                                                       | Amharic                                             |
+| --------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| `signIn.otpIntro`           | Enter your staff phone number. A sign-in code will be sent by SMS.            | የሠራተኛ ስልክ ቁጥር አስገባ። የመግቢያ ኮድ በኤስኤምኤስ ይላካል።          |
+| `signIn.sendCode`           | Send code                                                                     | ኮድ ላክ                                               |
+| `signIn.codeOnItsWay`       | If {{phone}} belongs to a staff account, a 6-digit code is on its way by SMS. | {{phone}} የሠራተኛ መለያ ከሆነ፣ ባለ 6 አሃዝ ኮድ በኤስኤምኤስ ይደርሳል። |
+| `signIn.code`               | 6-digit code                                                                  | ባለ 6 አሃዝ ኮድ                                         |
+| `signIn.verify`             | Sign in                                                                       | ግባ                                                  |
+| `signIn.changeNumber`       | Use a different number                                                        | ሌላ ቁጥር ተጠቀም                                         |
+| `signIn.error.codeRejected` | That code is not correct or has expired. Request a new one.                   | ኮዱ ትክክል አይደለም ወይም ጊዜው አልፏል። አዲስ ኮድ ጠይቅ።             |
+| `signIn.error.rateLimited`  | Too many attempts. Wait a few minutes and try again.                          | በጣም ብዙ ሙከራዎች። ጥቂት ደቂቃዎች ቆይተህ እንደገና ሞክር።             |
+| `signIn.error.badPhone`     | Enter the number with its country code, for example +251911234567.            | ቁጥሩን ከአገር ኮዱ ጋር አስገባ፣ ለምሳሌ +251911234567።           |
+| `signIn.error.badCode`      | Enter the 6 digits from the SMS.                                              | በኤስኤምኤስ የመጡትን 6 አሃዞች አስገባ።                          |
+| `signIn.error.network`      | Cannot reach the server. Check the connection and try again.                  | ከሰርቨሩ ጋር መገናኘት አልተቻለም። ግንኙነቱን አረጋግጠህ እንደገና ሞክር።     |
+| `signIn.error.failed`       | Sign-in failed. Try again.                                                    | መግባት አልተሳካም። እንደገና ሞክር።                             |
+
 ## Specific doubts
 
 - **`slot.occupied`** — changed from **ተይዞ ነው** to **መኪና አለ** ("there is a
@@ -95,6 +115,10 @@ Amharic is idiomatic, which is what this list is for.
   succeeded. That is the entire purpose of the string.
 - **`drawer.plateOptional`** — "(አማራጭ)" for "(optional)"; check this is the
   usual way to mark an optional field.
+- **`signIn.codeOnItsWay`** — must stay CONDITIONAL: "if this number is a
+  staff account, a code is on its way". The screen deliberately does not
+  reveal whether a number is staff, so a translation that reads as "a code
+  has been sent" would be wrong for every number that is not.
 - Technical terms deliberately left in English: **QR**, **HTTPS**,
   **localhost**. Confirm that is right rather than transliterating.
 - Verb forms are informal/imperative singular (አስገባ, አስወጣ, ቃኝ) on the

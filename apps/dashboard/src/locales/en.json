@@ -68,7 +68,21 @@
   "signIn": {
     "devOnly": "Development sign-in. Enter a seeded phone number.",
     "phone": "Phone number",
-    "submit": "Sign in"
+    "submit": "Sign in",
+    "otpIntro": "Enter your staff phone number. A sign-in code will be sent by SMS.",
+    "sendCode": "Send code",
+    "codeOnItsWay": "If {{phone}} belongs to a staff account, a 6-digit code is on its way by SMS.",
+    "code": "6-digit code",
+    "verify": "Sign in",
+    "changeNumber": "Use a different number",
+    "error": {
+      "codeRejected": "That code is not correct or has expired. Request a new one.",
+      "rateLimited": "Too many attempts. Wait a few minutes and try again.",
+      "badPhone": "Enter the number with its country code, for example +251911234567.",
+      "badCode": "Enter the 6 digits from the SMS.",
+      "network": "Cannot reach the server. Check the connection and try again.",
+      "failed": "Sign-in failed. Try again."
+    }
   },
   "theme": {
     "toggle": "Change theme",
