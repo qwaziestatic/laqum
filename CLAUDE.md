@@ -956,11 +956,14 @@ an approved plan before work starts.**
       state machine permits neither; both now come from `isLegalTransition`.
 - [ ] **Device check of deposits.** DEVICE-TEST step 19: paying, reopening,
       and the outage path, including the expiry at the payment window.
-- [ ] **Chapa's return page.** `return_url` is
-      `${PUBLIC_BASE_URL}/payment-complete`, which no route serves: after
-      paying, the driver lands on the API's JSON 404 in the in-app browser.
-      Payment still settles (the app checks on return), but it reads like a
-      failure. Needs a decision: a small page, or another return target.
+- [x] **Chapa's return page.** Done, as decided by the product owner.
+      `return_url` had no route, so a driver who had just paid landed on the
+      API's JSON 404. `GET /payment-complete` (`payments/returnPage.ts`) now
+      tells the driver, in Amharic and English, to close the page and return
+      to the app. **It claims nothing about the payment:** it reads no query
+      parameter and echoes nothing, because reaching it proves nothing. The
+      app verifies with the provider. `return_url` is built from the same
+      `PAYMENT_RETURN_PATH` constant the route uses.
 - [ ] **P1 — Amharic in the mobile app.** Every user-facing string is English
       today; the brief requires Amharic and English. The product owner does
       the native-speaker review.
@@ -1009,7 +1012,7 @@ an approved plan before work starts.**
 ### Phase 3 open items
 
 - [ ] **Native-speaker Amharic review.** Every string in
-      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (68 keys) was written by
+      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (70 keys) was written by
       a non-native speaker. **BLOCKS RELEASE. Does not block Phase 4.**
       `i18n.test.ts` guarantees key parity and non-emptiness; it cannot
       guarantee the Amharic is idiomatic, which is the point of the review.
@@ -1022,10 +1025,12 @@ an approved plan before work starts.**
       `amount` vs `charge` result above. Also note which signature headers the
       real service actually sends — our `x-chapa-signature`-only policy is
       stricter than Chapa's documented guidance and has not been exercised
-      against the live service. Also check that Chapa accepts the final
-      payment's `customization.description`, "ላቁም? parking": Chapa's public
-      docs state no rule for its characters, and a rejected initialize is a
-      payment nobody can make. The deposit's is plain ASCII for that reason.
+      against the live service. **Also check whether Chapa accepts Amharic in
+      `customization.description`.** Its public docs state no rule for the
+      characters, and a rejected initialize is a payment nobody can make, so
+      BOTH descriptions are plain ASCII by the product owner's decision
+      ("Laqum parking deposit" / "Laqum parking", `PAYMENT_DESCRIPTIONS` in
+      `payments/initiate.ts`) until the sandbox proves Amharic works.
 
 ### Phase 1 open items
 

@@ -944,6 +944,16 @@ PAYMENT_PROVIDER=chapa CHAPA_SECRET_KEY=outage-test CHAPA_BASE_URL=http://127.0.
    the slot was released." **Not 15 minutes later**: a payment that never
    started does not hold the slot while the provider is down.
 
+**c. The return page.** Where Chapa sends the driver after its checkout. The
+fake provider never gets there, so open it directly: in the phone's browser,
+go to `http://<your LAN address>:18000/payment-complete`.
+
+_Should:_ Amharic first, then English, telling you to close the page and go
+back to the app. Ethiopic letters render as letters, not empty boxes. It
+does **not** say the payment succeeded: only the app, by asking the payment
+service, can say that. Adding `?status=success` to the address changes
+nothing on the page.
+
 Afterwards, restart the API without the extra variables, and remove the
 deposit if you want TEST LOT as it was:
 

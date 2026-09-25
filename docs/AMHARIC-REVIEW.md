@@ -1,8 +1,9 @@
 # Amharic strings for native-speaker review
 
-Every string added or changed in the attendant dashboard: Phase 3, and the
-staff sign-in added after Phase 4. These were written by a non-native speaker
-and need a review pass before the dashboard is put in front of an attendant.
+Every string added or changed in the attendant dashboard (Phase 3, and the
+staff sign-in added after Phase 4), and on the driver's payment return page.
+These were written by a non-native speaker and need a review pass before
+they are put in front of anyone.
 
 Interpolations in `{{braces}}` are substituted at runtime and must survive
 translation. In `conflict.explained`, `{{action}}` and `{{status}}` are
@@ -100,6 +101,17 @@ same caveat.
 | `signIn.error.network`      | Cannot reach the server. Check the connection and try again.                  | ከሰርቨሩ ጋር መገናኘት አልተቻለም። ግንኙነቱን አረጋግጠህ እንደገና ሞክር።     |
 | `signIn.error.failed`       | Sign-in failed. Try again.                                                    | መግባት አልተሳካም። እንደገና ሞክር።                             |
 
+## Payment return page (2)
+
+The page Chapa sends a driver to after its checkout, served by the API from
+`apps/api/src/payments/returnPage.ts` (not a locale file: the API has no
+i18n bundles). Both languages are always shown, Amharic first.
+
+| Key     | English                                                                                                          | Amharic                                                                             |
+| ------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `title` | Return to the ላቁም? app                                                                                           | ወደ ላቁም? መተግበሪያው ይመለሱ                                                                |
+| `body`  | You can close this page. The app checks your payment with the payment service and shows whether it went through. | ይህን ገጽ መዝጋት ይችላሉ። መተግበሪያው ክፍያዎን ከክፍያ አገልግሎቱ ጋር አረጋግጦ ክፍያው መፈጸሙን ወይም አለመፈጸሙን ያሳይዎታል። |
+
 ## Specific doubts
 
 - **`slot.occupied`** — changed from **ተይዞ ነው** to **መኪና አለ** ("there is a
@@ -119,6 +131,13 @@ same caveat.
   staff account, a code is on its way". The screen deliberately does not
   reveal whether a number is staff, so a translation that reads as "a code
   has been sent" would be wrong for every number that is not.
+- **The return page must not say the payment succeeded.** Anyone can open
+  it, so it only sends the driver back to the app, which checks. A
+  translation reading "your payment was received" would be wrong.
+- **The return page uses the POLITE form** (ይመለሱ, ይችላሉ, ያሳይዎታል), unlike
+  the dashboard's informal imperative: it speaks to a customer, not an
+  operator. The driver app's Amharic (next) will follow whichever you
+  confirm here.
 - Technical terms deliberately left in English: **QR**, **HTTPS**,
   **localhost**. Confirm that is right rather than transliterating.
 - Verb forms are informal/imperative singular (አስገባ, አስወጣ, ቃኝ) on the
