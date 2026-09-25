@@ -17,7 +17,24 @@
  * has something to send to.
  */
 
+import { type BookingStatus, isLiveStatus } from '@laqum/shared';
+
 export type PermissionStatus = 'granted' | 'denied' | 'undetermined';
+
+/**
+ * Whether the booking on screen makes NOW the moment to ask: the driver holds
+ * a slot on a timer (RESERVED, CHECKED_IN, OVERSTAY).
+ *
+ * The booking screen used to pass a constant `true`, so the gate below never
+ * decided anything, and opening an old expired or cancelled booking counted as
+ * "has booked". Not while PENDING_PAYMENT either: the slot is not held yet,
+ * and the Chapa checkout is open over the app. On Android a permission
+ * request always launches the permission activity (CLAUDE.md), which would
+ * land in the middle of paying.
+ */
+export function bookingEarnsPushAsk(status: BookingStatus): boolean {
+  return isLiveStatus(status) && status !== 'PENDING_PAYMENT';
+}
 
 export interface PushDeps {
   getPermissions: () => Promise<PermissionStatus>;
@@ -25,7 +42,7 @@ export interface PushDeps {
   getToken: () => Promise<string | null>;
   /** POSTs the token to the API, which stores it in push_tokens. */
   upload: (token: string) => Promise<void>;
-  /** Whether the driver has completed a booking before. */
+  /** Whether the driver holds a booked slot now: see bookingEarnsPushAsk. */
   hasBooked: () => Promise<boolean>;
 }
 

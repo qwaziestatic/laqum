@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { maybeRegisterForPush, type PushDeps } from '../src/push/registration.js';
+import { BOOKING_STATUSES } from '@laqum/shared';
+import {
+  bookingEarnsPushAsk,
+  maybeRegisterForPush,
+  type PushDeps,
+} from '../src/push/registration.js';
 
 /**
  * The timing of the ask is the whole design, so it is what gets tested.
@@ -90,5 +95,25 @@ describe('failure is normal, not an error', () => {
     const d = deps({ getToken: () => Promise.resolve(null) });
     expect(await maybeRegisterForPush(d)).toEqual({ kind: 'unavailable' });
     expect(d.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe('which booking earns the ask', () => {
+  it('asks only while the driver holds a slot on a timer', () => {
+    expect(BOOKING_STATUSES.filter(bookingEarnsPushAsk)).toEqual([
+      'RESERVED',
+      'CHECKED_IN',
+      'OVERSTAY',
+    ]);
+  });
+
+  it('never while paying the deposit: the checkout is open over the app', () => {
+    expect(bookingEarnsPushAsk('PENDING_PAYMENT')).toBe(false);
+  });
+
+  it('never for a booking that is over, as the constant true used to', () => {
+    for (const status of ['EXPIRED', 'CANCELLED', 'CHECKED_OUT', 'PAID'] as const) {
+      expect(bookingEarnsPushAsk(status), status).toBe(false);
+    }
   });
 });
