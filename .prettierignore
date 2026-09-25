@@ -16,3 +16,8 @@ db/src/generated.ts
 # The project brief, stored verbatim as the authoritative spec. Prettier would
 # rewrite its tables, lists and indentation, which would stop it being verbatim.
 docs/BRIEF.md
+
+# Written by Expo (Metro) on every start, in its own formatting, and ignored
+# by apps/mobile/.gitignore. Prettier reads only the ROOT .gitignore, so it
+# is listed here too, or format:check fails on any machine that ran Metro.
+apps/mobile/expo-env.d.ts
