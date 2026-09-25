@@ -8,8 +8,10 @@ import {
   type ExtendBookingRequest,
   type ExtendBookingResponse,
   type PayBookingResponse,
+  type PayDepositResponse,
   createBookingSchema,
   extendBookingSchema,
+  isAppError,
   uuidSchema,
 } from '@laqum/shared';
 import { Router } from 'express';
@@ -19,6 +21,7 @@ import { handle, validateBody } from '../middleware/validate.js';
 import { createBooking } from './create.js';
 import { toBookingDto } from './dto.js';
 import { cancelBooking, currentBooking, extendBooking, ownedBooking } from './service.js';
+import { checkDeposits, openDeposit, startDeposit } from '../payments/deposit.js';
 import { initiatePayment } from '../payments/initiate.js';
 import { confirmPayment, paymentNoticeFor } from '../payments/service.js';
 
@@ -46,13 +49,36 @@ export function bookingsRouter(ctx: AppContext): Router {
         },
       );
 
+      /*
+       * The deposit starts AFTER the booking commits (invariant 5: a provider
+       * call is a side effect). If the provider cannot be reached, the booking
+       * still stands in PENDING_PAYMENT with no checkout: the driver retries
+       * with POST /:id/deposit, and with no initialized payment the booking
+       * expires exactly at its payment window (see checkDeposits).
+       */
+      let checkoutUrl: string | null = null;
+      if (result.paymentRequired) {
+        try {
+          const started = await startDeposit(
+            ctx,
+            result.booking.id,
+            result.lot.deposit_amount_santim,
+          );
+          checkoutUrl = started.checkoutUrl;
+        } catch (err) {
+          if (!isAppError(err) || err.code !== 'PROVIDER_UNAVAILABLE') throw err;
+          ctx.logger.warn(
+            { bookingId: result.booking.id },
+            'deposit not started: the payment provider is unreachable; the driver can retry',
+          );
+        }
+      }
+
       res.status(201).json({
         booking: toBookingDto(result.booking),
         paymentRequired: result.paymentRequired,
         depositAmountSantim: result.lot.deposit_amount_santim,
-        // Nothing initiates a deposit payment yet, so a deposit booking sits
-        // in PENDING_PAYMENT until its window lapses. See createBookingResponseSchema.
-        checkoutUrl: null,
+        checkoutUrl,
       } satisfies CreateBookingResponse);
     }),
   );
@@ -108,6 +134,49 @@ export function bookingsRouter(ctx: AppContext): Router {
         booking: toBookingDto(result.booking),
         addedMinutes: result.addedMinutes,
       } satisfies ExtendBookingResponse);
+    }),
+  );
+
+  /**
+   * Pay the deposit: reopen the payable checkout, or start one. Also the
+   * retry after the provider was unreachable at booking time.
+   */
+  router.post(
+    '/:id/deposit',
+    handle(async (req, res) => {
+      const user = currentUser(res);
+      const id = uuidSchema.parse(req.params['id']);
+      const opened = await openDeposit(ctx, await ownedBooking(ctx, user.userId, id));
+
+      res.status(opened.reused ? 200 : 201).json({
+        checkoutUrl: opened.checkoutUrl,
+        txRef: opened.txRef,
+        amountSantim: opened.amountSantim,
+      } satisfies PayDepositResponse);
+    }),
+  );
+
+  /**
+   * Ask the provider now, rather than waiting for the webhook.
+   *
+   * The app calls this when the driver returns from the checkout, which is
+   * usually seconds before the webhook lands. Never starts a payment.
+   * PROVIDER_UNAVAILABLE (503) when the provider cannot be asked.
+   */
+  router.post(
+    '/:id/deposit/verify',
+    handle(async (req, res) => {
+      const user = currentUser(res);
+      const id = uuidSchema.parse(req.params['id']);
+      const booking = await ownedBooking(ctx, user.userId, id);
+      if (booking.status === 'PENDING_PAYMENT') await checkDeposits(ctx, id);
+
+      // Re-read: a confirmed deposit has just moved it to RESERVED.
+      const current = await ownedBooking(ctx, user.userId, id);
+      res.json({
+        booking: toBookingDto(current),
+        paymentNotice: await paymentNoticeFor(ctx, id),
+      } satisfies BookingResponse);
     }),
   );
 

@@ -5,7 +5,8 @@ import type { Logger } from 'pino';
 import { inTransaction } from '../afterCommit.js';
 import { transition } from '../bookings/transition.js';
 import { isAppError } from '@laqum/shared';
-import { confirmPayment, type PaymentsContext } from '../payments/service.js';
+import { checkDeposits } from '../payments/deposit.js';
+import type { PaymentsContext } from '../payments/service.js';
 import type { JobQueue } from './scheduler.js';
 
 /**
@@ -78,8 +79,8 @@ export async function expireHold(deps: JobDeps, bookingId: string): Promise<JobR
    * Never expire a booking whose payment might have succeeded.
    *
    * A webhook can be delayed or lost. Before letting the hold lapse, ask the
-   * provider directly about any pending deposit for this booking. A success
-   * reserves the booking instead of expiring it.
+   * provider directly about any INITIALIZED pending deposit for this booking.
+   * A success reserves the booking instead of expiring it.
    */
   const confirmed = await checkPendingDeposit(deps, bookingId, now);
   if (confirmed) {
@@ -155,6 +156,10 @@ export const JOB_HANDLERS = {
  * Returns true when a pending deposit turned out to be paid, in which case the
  * booking has been reserved and must not expire.
  *
+ * Asks only about INITIALIZED deposits (see checkDeposits): a payment the
+ * provider never gave the driver a checkout for cannot have been paid, so a
+ * booking with none expires exactly at its payment window, outage or not.
+ *
  * Throws ExpiryDeferredError while the provider is unreachable, up to
  * PAYMENT_VERIFY_DEFERRAL_MINUTES past the deadline. Past that bound it gives
  * up and lets the expiry proceed: one outage must not hold a slot forever, and
@@ -174,27 +179,15 @@ async function checkPendingDeposit(deps: JobDeps, bookingId: string, now: Date):
   // RESERVED booking's deposit already succeeded, or there was never one.
   if (booking?.status !== 'PENDING_PAYMENT') return false;
 
-  const pending = await deps.db
-    .selectFrom('payments')
-    .select(['tx_ref'])
-    .where('booking_id', '=', bookingId)
-    .where('kind', '=', 'deposit')
-    .where('status', '=', 'pending')
-    .where('tx_ref', 'is not', null)
-    .executeTakeFirst();
-
-  if (!pending?.tx_ref) return false;
-
   try {
-    const outcome = await confirmPayment(payments, pending.tx_ref);
-    if (outcome.kind === 'confirmed') {
+    const { paid } = await checkDeposits(payments, bookingId);
+    if (paid) {
       deps.logger.info(
-        { bookingId, txRef: pending.tx_ref },
+        { bookingId, txRef: paid.tx_ref },
         'expiry cancelled: the provider confirmed the deposit after all',
       );
       return true;
     }
-    if (outcome.kind === 'already_settled') return true;
     return false;
   } catch (err) {
     if (!isAppError(err) || err.code !== 'PROVIDER_UNAVAILABLE') throw err;
@@ -205,14 +198,14 @@ async function checkPendingDeposit(deps: JobDeps, bookingId: string, now: Date):
 
     if (pastDeadlineMs <= deferralMs) {
       deps.logger.warn(
-        { bookingId, txRef: pending.tx_ref, pastDeadlineMs },
+        { bookingId, pastDeadlineMs },
         'deferring expiry: the payment provider is unreachable',
       );
       throw new ExpiryDeferredError(bookingId);
     }
 
     deps.logger.error(
-      { bookingId, txRef: pending.tx_ref, pastDeadlineMs, deferralMs },
+      { bookingId, pastDeadlineMs, deferralMs },
       'EXPIRING an unverified booking: the provider has been unreachable past the deferral bound. ' +
         'If the payment later succeeds it will appear in the operator refund queue.',
     );

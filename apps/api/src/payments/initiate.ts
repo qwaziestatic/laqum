@@ -63,17 +63,25 @@ export async function initiatePayment(
       description: input.description,
     });
 
-    await ctx.db
+    // checkout_url marks the payment INITIALIZED: from here on the driver can
+    // have paid, which is what the deposit expiry pre-check asks (migration 004).
+    const initialized = await ctx.db
       .updateTable('payments')
-      .set({ provider_payload: JSON.stringify(result.raw), updated_at: now })
+      .set({
+        provider_payload: JSON.stringify(result.raw),
+        checkout_url: result.checkoutUrl,
+        updated_at: now,
+      })
       .where('id', '=', payment.id)
-      .execute();
+      .returningAll()
+      .executeTakeFirstOrThrow();
 
-    return { payment, checkoutUrl: result.checkoutUrl };
+    return { payment: initialized, checkoutUrl: result.checkoutUrl };
   } catch (err) {
     // The row stays pending rather than being deleted: if the provider
     // actually did create the transaction before failing to answer us, the
-    // reference must still resolve when a webhook arrives.
+    // reference must still resolve when a webhook arrives. It gets no
+    // checkout_url: the driver was never given a way to pay.
     await ctx.db
       .updateTable('payments')
       .set({

@@ -75,7 +75,7 @@ describe('POST /v1/bookings', () => {
     expect(body.checkoutUrl).toBeNull();
   });
 
-  it('reports a deposit as pending payment with no checkout url yet', async () => {
+  it('holds a deposit booking in pending payment and returns its checkout', async () => {
     const paid = await createLot(t.db.db, { slots: 1, depositSantim: 2000 });
     const res = await request(t.app)
       .post('/v1/bookings')
@@ -87,8 +87,8 @@ describe('POST /v1/bookings', () => {
     expect(body.booking.status).toBe('PENDING_PAYMENT');
     expect(body.paymentRequired).toBe(true);
     expect(body.depositAmountSantim).toBe(2000);
-    // Phase 2 fills this in.
-    expect(body.checkoutUrl).toBeNull();
+    // The deposit is started with the booking; see deposit.test.ts.
+    expect(body.checkoutUrl).toMatch(/^https:\/\/checkout\.test\/pay\/laqum-dep-/u);
     // The payment window, not the arrival hold.
     expect(body.booking.holdExpiresAt).toBe('2026-03-01T08:03:00.000Z');
   });

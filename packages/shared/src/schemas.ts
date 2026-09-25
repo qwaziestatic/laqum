@@ -218,9 +218,10 @@ export const createBookingResponseSchema = z.object({
   paymentRequired: z.boolean(),
   depositAmountSantim: santim,
   /**
-   * Always null today: nothing initiates a deposit payment yet, so a deposit
-   * booking waits in PENDING_PAYMENT until its window lapses. Described as
-   * sent, not as intended.
+   * The deposit checkout, when one is owed and the provider started it. Null
+   * when no deposit is owed, AND when the provider could not be reached: the
+   * booking still exists in PENDING_PAYMENT, and the driver retries with
+   * POST /bookings/:id/deposit before the payment window lapses.
    */
   checkoutUrl: z.string().nullable(),
 });
@@ -258,6 +259,13 @@ export const payBookingResponseSchema = z.object({
   amountSantim: z.number().int().positive(),
 });
 export type PayBookingResponse = z.infer<typeof payBookingResponseSchema>;
+
+/**
+ * POST /v1/bookings/:id/deposit: the deposit checkout, reopened if one is
+ * still payable, otherwise started. 200 when reopened, 201 when started.
+ */
+export const payDepositResponseSchema = payBookingResponseSchema;
+export type PayDepositResponse = PayBookingResponse;
 
 // ─── Push ─────────────────────────────────────────────────────────────────
 
