@@ -581,6 +581,10 @@ The route is **not registered** when disabled, so it 404s like any unknown path
 refuses an unknown number (it will not create an account, unlike the real OTP
 flow) and reads the role from the database rather than the request.
 
+The dashboard offers its dev form only when `GET /v1/auth/dev-login` answers
+204, and that GET is registered in the same block, so production never shows
+the form. Off, the probe gets the generic 404 body, not a "disabled" reply.
+
 ### Emitting is structural, not remembered
 
 `transition()` and `create.ts` — the only two functions invariant 3 lets write
@@ -905,9 +909,22 @@ Atlantic and made every booking fail TOO_FAR for an unguessable reason.
 **Queued after the pass, in the product owner's priority order. Each needs
 an approved plan before work starts.**
 
-- [ ] **P0 — Dashboard OTP sign-in.** The dashboard signs in through
-      `/auth/dev-login` ONLY; with `DEV_AUTH` off (always in production)
-      attendants cannot sign in at all.
+- [x] **P0 — Dashboard OTP sign-in.** Done. It had signed in through
+      `/auth/dev-login` ONLY, so with `DEV_AUTH` off (always in production)
+      attendants could not sign in at all. It now uses the existing code
+      endpoints with `audience: 'staff'`, as the product owner decided.
+      **A number that is not staff learns nothing:** the same 202, but no
+      SMS, no code row and no account; and every staff-mode verify failure
+      is one answer (`OTP_INVALID`, one message), whether the number is
+      unknown, a driver, has no code, or the code is wrong or expired.
+      **Equal work either way:** the code is hashed on every request and a
+      non-staff verify compares against a dummy hash, so both paths pay the
+      same scrypt cost. What remains is the real SMS send's latency, zero
+      while SMS is console-only. **Phase 5: send the SMS after responding.**
+      A driver's app code is refused in staff mode and left untouched, so it
+      still works in the app. Tests: `staff-otp.test.ts`;
+      `dashboard-contract.test.ts` drives the dashboard's own `ApiClient`
+      against the real API; e2e `sign-in.spec.ts` covers the screen.
 - [ ] **P0 — Deposits at booking time.** Decided by the product owner: a
       deposit booking starts in `PENDING_PAYMENT` and returns a Chapa
       checkout; settlement moves it to `RESERVED`.
@@ -952,7 +969,7 @@ an approved plan before work starts.**
 ### Phase 3 open items
 
 - [ ] **Native-speaker Amharic review.** Every string in
-      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (56 keys) was written by
+      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (68 keys) was written by
       a non-native speaker. **BLOCKS RELEASE. Does not block Phase 4.**
       `i18n.test.ts` guarantees key parity and non-emptiness; it cannot
       guarantee the Amharic is idiomatic, which is the point of the review.

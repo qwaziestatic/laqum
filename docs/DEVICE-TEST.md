@@ -794,20 +794,18 @@ This needs the dashboard open too.
    fails, because 3000 is the port Windows took (step 1). Verified: through
    the proxy, `/v1` answers exactly as the API on 18000 does.
 
-   **The dashboard signs in through `/auth/dev-login` only**, so the API in
-   window A must run with it enabled. Ctrl+C there, then:
-
-   ```bash
-   DEV_AUTH=true pnpm --filter @laqum/api dev
-   ```
-
-   While it is on, anyone who can reach port 18000 can sign in as any seeded
-   number without a code; restart without it when you are done. (A real OTP
-   sign-in for the dashboard is a P0 open item: see CLAUDE.md.)
-
    Open `http://localhost:5173` and sign in as the attendant
-   (`+251911000001`), who is on TEST LOT's staff. Open TEST LOT **before**
+   (`+251911000001`), who is on TEST LOT's staff: enter the number, **Send
+   code**, then type the code. SMS is console-only, so the code is not texted:
+   it is printed in **window A**, the API's log, on a line reading
+   `ConsoleSmsProvider: SMS not actually sent`. Open TEST LOT **before**
    booking: TEST LOT holds a slot for only 3 minutes.
+
+   _(The first pass ran before the dashboard had code sign-in, and used
+   dev-login with `DEV_AUTH=true` on the API. That still works, and the
+   dashboard offers it below the code form only while the API has it on.
+   Don't use it here: anyone who can reach port 18000 can then sign in as any
+   seeded number.)_
 
 2. On the phone, book, and keep your held booking open to show the QR.
 3. On the dashboard, tap **Scan** and point the tablet/laptop camera at the
@@ -941,10 +939,10 @@ client, not a hotspot host. EAS development build
 | Home             | Refresh gave no visible feedback                                                                                                              | A busy button hid its label; nothing showed that new data had arrived                                                                  | `7acadfb`            |
 | Booking          | An expired hold kept its countdown under "Time remaining"; raw enum status; Navigate on a finished booking; overstay stuck at "Over by 00:00" | Per-status decisions scattered through the screen; `remainingMs` clamps at zero                                                        | `0e7987b`            |
 
-The pass also exposed gaps that are **not** fixed and are tracked as open
+The pass also exposed gaps that were **not** fixed during it, tracked as open
 items in CLAUDE.md: deposits are never initiated, the dashboard can only sign
-in with dev-login, the driver app polls instead of using realtime, and it has
-no Amharic.
+in with dev-login (since fixed: it signs in by SMS code), the driver app polls
+instead of using realtime, and it has no Amharic.
 
 ### Not device-tested
 
