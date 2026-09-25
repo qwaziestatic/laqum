@@ -227,7 +227,6 @@ export function bookingsRouter(ctx: AppContext): Router {
         bookingId: id,
         kind: 'final',
         amountSantim,
-        description: 'ላቁም? parking',
       });
 
       res.status(201).json({

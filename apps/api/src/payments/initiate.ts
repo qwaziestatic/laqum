@@ -1,5 +1,6 @@
 import { AppError, santimToProviderAmount } from '@laqum/shared';
 import { isProviderUnavailable } from './provider.js';
+import { PAYMENT_RETURN_PATH } from './returnPage.js';
 import { makeTxRef, type PaymentRow, type PaymentsContext } from './service.js';
 
 /**
@@ -9,6 +10,18 @@ import { makeTxRef, type PaymentRow, type PaymentsContext } from './service.js';
  * comes back later can be compared against what we intended to charge. A
  * provider-first flow would have nothing to compare against.
  */
+
+/**
+ * What Chapa shows on its checkout, by payment kind. PLAIN ASCII, both:
+ * Chapa's public docs state no rule for the description's characters, and an
+ * initialize Chapa rejects is a payment nobody can make. Keep them ASCII until
+ * the sandbox proves Amharic is accepted (CLAUDE.md, Phase 2 open items).
+ * Chosen here by kind, so no caller can pass anything else.
+ */
+export const PAYMENT_DESCRIPTIONS = {
+  deposit: 'Laqum parking deposit',
+  final: 'Laqum parking',
+} as const satisfies Record<'deposit' | 'final', string>;
 
 export interface InitiatedPayment {
   payment: PaymentRow;
@@ -21,7 +34,6 @@ export async function initiatePayment(
     bookingId: string;
     kind: 'deposit' | 'final';
     amountSantim: number;
-    description?: string;
   },
 ): Promise<InitiatedPayment> {
   if (input.amountSantim <= 0) {
@@ -59,8 +71,8 @@ export async function initiatePayment(
       txRef,
       amountSantim: input.amountSantim,
       callbackUrl: `${ctx.config.PUBLIC_BASE_URL}/v1/webhooks/chapa`,
-      returnUrl: `${ctx.config.PUBLIC_BASE_URL}/payment-complete`,
-      description: input.description,
+      returnUrl: `${ctx.config.PUBLIC_BASE_URL}${PAYMENT_RETURN_PATH}`,
+      description: PAYMENT_DESCRIPTIONS[input.kind],
     });
 
     // checkout_url marks the payment INITIALIZED: from here on the driver can

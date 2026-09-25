@@ -11,13 +11,6 @@ import { confirmPayment, type PaymentRow, type PaymentsContext } from './service
  * a deposit paid and moves the booking to RESERVED.
  */
 
-/**
- * ASCII on purpose. Chapa's public docs state no rule for the description's
- * characters, and an initialize Chapa rejects is a deposit nobody can pay.
- * Confirm against the sandbox (CLAUDE.md, Phase 2 open items).
- */
-export const DEPOSIT_DESCRIPTION = 'Laqum parking deposit';
-
 export function startDeposit(
   ctx: PaymentsContext,
   bookingId: string,
@@ -27,7 +20,6 @@ export function startDeposit(
     bookingId,
     kind: 'deposit',
     amountSantim,
-    description: DEPOSIT_DESCRIPTION,
   });
 }
 

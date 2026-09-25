@@ -5,6 +5,7 @@ import { bookingsRouter } from './bookings/routes.js';
 import { lotsRouter } from './lots/routes.js';
 import { refundsRouter } from './payments/adminRoutes.js';
 import { webhookRouter } from './payments/routes.js';
+import { PAYMENT_RETURN_PATH, servePaymentReturnPage } from './payments/returnPage.js';
 import { pushRouter } from './push/routes.js';
 import { staffRouter } from './staff/routes.js';
 import type { AppContext } from './context.js';
@@ -58,6 +59,10 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
         });
       });
   });
+
+  // Where Chapa sends the driver after its checkout. Outside /v1: a page for
+  // a browser, not an API response.
+  app.get(PAYMENT_RETURN_PATH, servePaymentReturnPage);
 
   app.use('/v1/auth', authRouter(ctx));
   app.use('/v1/lots', lotsRouter(ctx));
