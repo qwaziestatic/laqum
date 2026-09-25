@@ -196,6 +196,12 @@ Every other transition is illegal and must be rejected with a typed error.
 - **i18n**: Amharic and English from day one. No user-facing string is
   hard-coded. A test asserts the two bundles have identical keys, so a string
   added in English cannot ship untranslated.
+- **Amharic register: POLITE, everywhere** (ይመለሱ, ይክፈሉ, ያስገቡ), in the
+  driver app, the dashboard and the return page. **Decided by the product
+  owner:** the informal second person is gendered (ተመለስ / ተመለሺ) and the
+  apps cannot know who is reading; the polite form is gender-neutral and
+  respectful. `informalAmharic` (`packages/shared/src/register.ts`) runs over
+  both apps' Amharic bundles in their tests.
 - **Validation**: zod at every API boundary; request and response schemas live
   in `packages/shared` so all three apps share them.
 - **DB naming stays snake_case.** No Kysely `CamelCasePlugin`: the database is
@@ -987,9 +993,24 @@ an approved plan before work starts.**
       parameter and echoes nothing, because reaching it proves nothing. The
       app verifies with the provider. `return_url` is built from the same
       `PAYMENT_RETURN_PATH` constant the route uses.
-- [ ] **P1 — Amharic in the mobile app.** Every user-facing string is English
-      today; the brief requires Amharic and English. The product owner does
-      the native-speaker review.
+- [x] **P1 — Amharic in the mobile app.** Done, with the dashboard's i18next
+      26.4.2 and react-i18next 17.0.14. The language follows the phone
+      (React Native's `I18nManager` locale, so no new native module and no
+      new build): Amharic for an Amharic phone, English for an English one,
+      Amharic otherwise. A switch in every header remembers the choice in
+      SecureStore. The bundles are TypeScript (`src/i18n/en.ts`, `am.ts`),
+      so a key missing from either does not compile. **English cannot reach
+      an Amharic screen by accident**, in three layers: the UI primitives
+      accept only `Shown` text, produced by `t()` or by `verbatim()` for data;
+      pure modules return phrases (key and values), never strings; and
+      `i18n.test.ts` scans every `.tsx` for text the types cannot see (JSX
+      text, placeholders, header titles). The one English text left on
+      screen is the map's licence credit, by necessity. **API error messages
+      are never shown**: `errorPhrase` maps every `ErrorCode` (a `Record`,
+      so a new code does not compile without driver text), as shared
+      `errors.ts` always intended. Amounts read "20.00 ብር". Times are
+      24-hour digits in both languages (review doc: the Ethiopian clock).
+      Device check: DEVICE-TEST step 21.
 - [x] **P1 — Realtime in the driver app.** Done. The app holds one socket
       per signed-in user (`src/realtime/connection.ts`); the API joins it to
       `user:{id}` at connection and pushes `booking.updated` there. The
@@ -1046,12 +1067,14 @@ an approved plan before work starts.**
 ### Phase 3 open items
 
 - [ ] **Native-speaker Amharic review.** Every string in
-      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (70 keys) was written by
-      a non-native speaker. **BLOCKS RELEASE. Does not block Phase 4.**
-      `i18n.test.ts` guarantees key parity and non-emptiness; it cannot
-      guarantee the Amharic is idiomatic, which is the point of the review.
+      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (210 keys: dashboard 68,
+      driver app 140, return page 2) was written by a non-native speaker.
+      **BLOCKS RELEASE.** The tests guarantee key parity, placeholders, no
+      Latin text and the polite register; they cannot guarantee the Amharic
+      is idiomatic, which is the point of the review. The 35 dashboard
+      strings converted to the polite form are listed with their old text.
       No known defect — `slot.free` is correctly ነፃ; an earlier report of ገባ
-      was traced to the check-in verb አስገባ, which is a different key.
+      was traced to the check-in verb, now ያስገቡ, which is a different key.
 
 ### Phase 2 open items
 
