@@ -11,3 +11,4 @@ export * from './realtime.js';
 export * from './realtimeStore.js';
 export * from './schemas.js';
 export * from './transitions.js';
+export * from './register.js';

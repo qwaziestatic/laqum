@@ -1,4 +1,4 @@
-import { LOCALES, SLOT_DISPLAY_STATUSES } from '@laqum/shared';
+import { LOCALES, SLOT_DISPLAY_STATUSES, informalAmharic } from '@laqum/shared';
 import { describe, expect, it } from 'vitest';
 import { resources } from './i18n.js';
 
@@ -48,6 +48,17 @@ describe('translation bundles', () => {
         expect(Object.keys(slot), `${locale}.slot`).toContain(status);
       }
     }
+  });
+
+  it('speaks to the reader politely: no informal, gendered second person', () => {
+    // The product owner's decision (shared/register.ts). The dashboard was
+    // drafted in the informal form; docs/AMHARIC-REVIEW.md lists each change.
+    const bundle = resources.am.translation as unknown as Json;
+    const informal = keyPaths(bundle).flatMap((path) => {
+      const text = path.split('.').reduce<unknown>((acc, key) => (acc as Json)[key], bundle);
+      return informalAmharic(String(text)).map((word) => `${path}: ${word}`);
+    });
+    expect(informal).toEqual([]);
   });
 
   it('actually differs between Amharic and English', () => {
