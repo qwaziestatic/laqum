@@ -870,6 +870,88 @@ what the first pass did.
 _Should:_ you are returned to sign-in with "Your session has ended. Sign in
 again." Not a crash, and not a silent blank screen.
 
+### 19. Deposit at booking time
+
+Added after the first pass. The app change is JavaScript only: reload the
+app, no new build. The API needs migration 004 in the dev database first. In
+the fourth window. **Git Bash**, repo root:
+
+```bash
+set -a; . ./.env; set +a
+pnpm db:migrate up
+```
+
+_Should:_ `004_payment_checkout_url: applied`.
+
+TEST LOT has no deposit, so give it one. **Git Bash**, any folder:
+
+```bash
+docker exec laqum-postgres-1 psql -U laqum -d laqum \
+  -c "update lots set deposit_amount_santim = 2000 where name like 'TEST LOT%';"
+```
+
+**a. Paying.** The fake provider confirms a payment as soon as it is asked,
+so the deposit would settle before you could see it pending. Make it wait
+two minutes. Stop the API in window A (Ctrl+C) and restart it:
+
+```bash
+FAKE_PAYMENT_DELAY_SECONDS=120 pnpm --filter @laqum/api dev
+```
+
+1. Book TEST LOT.
+
+   _Should:_ the in-app browser opens `https://checkout.test/pay/laqum-dep-…`,
+   which cannot load (see step 17). Close it. The booking screen says "Pay
+   the deposit to hold your slot.", counts down **Time left to pay** from
+   3:00, and shows **Pay deposit 20.00 ETB**. No QR and no **Cancel**: the
+   gate cannot check in an unpaid booking, and an unpaid hold cannot be
+   cancelled, only left to lapse.
+
+2. Tap **Pay deposit**.
+
+   _Should:_ the same page opens again (the same `laqum-dep-…` reference, not
+   a new one). Close it.
+
+3. Once two minutes have passed since booking, and before **Time left to
+   pay** runs out, leave the app and come back.
+
+   _Should:_ "Your slot is held. Drive to the lot.", with the QR and the
+   **Slot held for** countdown. The app asked the provider on return; no
+   webhook is involved.
+
+**b. The payment service is down.** Point the API at a port nothing listens
+on, so every call to "Chapa" is refused, as in an outage. Ctrl+C in window A,
+then:
+
+```bash
+PAYMENT_PROVIDER=chapa CHAPA_SECRET_KEY=outage-test CHAPA_BASE_URL=http://127.0.0.1:9 \
+  pnpm --filter @laqum/api dev
+```
+
+1. Book TEST LOT.
+
+   _Should:_ no browser opens. The booking screen says the payment service
+   could not be reached, and shows **Pay deposit** and **Time left to pay**.
+
+2. Tap **Pay deposit**.
+
+   _Should:_ "The payment service could not be reached. Your slot is held
+   until the timer runs out. Try again in a moment."
+
+3. Wait for the timer.
+
+   _Should:_ at 0:00, within the 20-second refresh, "This hold expired and
+   the slot was released." **Not 15 minutes later**: a payment that never
+   started does not hold the slot while the provider is down.
+
+Afterwards, restart the API without the extra variables, and remove the
+deposit if you want TEST LOT as it was:
+
+```bash
+docker exec laqum-postgres-1 psql -U laqum -d laqum \
+  -c "update lots set deposit_amount_santim = 0 where name like 'TEST LOT%';"
+```
+
 ---
 
 ## Part 5 — Report back

@@ -379,6 +379,16 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
     `guards.test.ts` forbids `.listen(` anywhere else, and
     `server-startup.test.ts` runs the real entry to prove a bind failure
     exits 1.
+22. **A pending payment row does not mean the driver can have paid.** The
+    row is written BEFORE `initialize` (so a late webhook still resolves),
+    so an initialize that failed leaves a pending row the driver never had a
+    checkout for. "Initialized" is `payments.checkout_url IS NOT NULL`
+    (migration 004); anything that reasons about "may have been paid" must
+    ask that, as `checkDeposits` does.
+23. **`WebBrowser.openBrowserAsync` resolves when the browser OPENS on
+    Android** (`{ type: 'opened' }`), and when it closes on iOS. Code after
+    the `await` is not "on return" on Android; the foreground refetch is.
+    Stated in expo-web-browser 57.0.3's own typings.
 
 ---
 
@@ -414,9 +424,9 @@ LOCKED` slot assignment, `transition()`, all staff actions, admin endpoints,
 - **Phase 2 — payments.** ✅ Delivered. PaymentProvider interface,
   ChapaProvider (v1) incl. refunds, FakePaymentProvider, webhook + verify,
   the final-payment flow, deposit SETTLEMENT, operator refund queue.
-  **Correction from the Phase 4 device pass:** nothing INITIATES a deposit
-  payment — `POST /bookings` returns `checkoutUrl: null` — so a deposit
-  booking cannot be paid and expires. P0 open item, below.
+  **Correction from the Phase 4 device pass:** nothing INITIATED a deposit
+  payment, so a deposit booking could not be paid and expired. Fixed after
+  Phase 4: the deposit starts with the booking (P0 item, below).
 - **Phase 3 — realtime + dashboard.** ✅ Delivered. Socket.io with the Redis
   adapter, expiry-bound socket auth, commit-ordered event delivery, emits on
   every write path, and the attendant dashboard with QR scanning, plus a
@@ -925,9 +935,32 @@ an approved plan before work starts.**
       still works in the app. Tests: `staff-otp.test.ts`;
       `dashboard-contract.test.ts` drives the dashboard's own `ApiClient`
       against the real API; e2e `sign-in.spec.ts` covers the screen.
-- [ ] **P0 — Deposits at booking time.** Decided by the product owner: a
-      deposit booking starts in `PENDING_PAYMENT` and returns a Chapa
-      checkout; settlement moves it to `RESERVED`.
+- [x] **P0 — Deposits at booking time.** Done, as decided by the product
+      owner. `POST /bookings` starts the deposit AFTER the booking commits
+      and returns its checkout. If the provider cannot be reached, the
+      booking still stands in `PENDING_PAYMENT` with `checkoutUrl: null`; the
+      driver retries with `POST /bookings/:id/deposit`, which reopens a
+      still-payable checkout rather than opening a second reference, and
+      `POST /bookings/:id/deposit/verify` asks the provider on return from
+      the checkout. **The product owner's guard:** expiry is deferred during
+      an outage ONLY for a payment that was actually initialized, meaning
+      it has a `payments.checkout_url` (migration 004). A booking whose
+      payment never started expires exactly at its payment window, outage
+      or not. `deposit.test.ts` tests that to the second, and removing the
+      filter fails both guard tests. Two defects found on the way, both
+      fixed: **the sweeper stopped at the first deferred expiry.**
+      `expireHold` throws `ExpiryDeferredError` so BullMQ retries, and the
+      sweep loop did not catch it, so one outage skipped every later hold and
+      every overstay; it now records `DEFERRED` and carries on. And **the app
+      offered Cancel and the gate QR while `PENDING_PAYMENT`**, where the
+      state machine permits neither; both now come from `isLegalTransition`.
+- [ ] **Device check of deposits.** DEVICE-TEST step 19: paying, reopening,
+      and the outage path, including the expiry at the payment window.
+- [ ] **Chapa's return page.** `return_url` is
+      `${PUBLIC_BASE_URL}/payment-complete`, which no route serves: after
+      paying, the driver lands on the API's JSON 404 in the in-app browser.
+      Payment still settles (the app checks on return), but it reads like a
+      failure. Needs a decision: a small page, or another return target.
 - [ ] **P1 — Amharic in the mobile app.** Every user-facing string is English
       today; the brief requires Amharic and English. The product owner does
       the native-speaker review.
@@ -943,6 +976,13 @@ an approved plan before work starts.**
       smaller than real GPS uncertainty (±197 m observed) and at odds with a
       hold meant to cover travel time. Recommendation pending approval.
 - [ ] **P2 — App icon.** Still Expo's default Android icon.
+- [ ] **P2 — The flaky two-screen e2e test**, "taking a slot out of service
+      reaches the other screen". Failed once, passed on every rerun. Its
+      1-second budget starts BEFORE the clicks on screen A. Decided by the
+      product owner: do NOT loosen the limit. Measure only what the test is
+      about, from the moment screen A's action is confirmed to the moment
+      screen B updates, so click time and machine speed cannot fail it.
+      Then prove its stability with repeated runs.
 - [ ] **Camera QR scan on a real tablet**, over the mkcert HTTPS setup: the
       pass's laptop had no camera.
 - [x] **Link the EXISTING Expo project `@dagisha-dev-works/laqum`** (owner
@@ -982,7 +1022,10 @@ an approved plan before work starts.**
       `amount` vs `charge` result above. Also note which signature headers the
       real service actually sends — our `x-chapa-signature`-only policy is
       stricter than Chapa's documented guidance and has not been exercised
-      against the live service.
+      against the live service. Also check that Chapa accepts the final
+      payment's `customization.description`, "ላቁም? parking": Chapa's public
+      docs state no rule for its characters, and a rejected initialize is a
+      payment nobody can make. The deposit's is plain ASCII for that reason.
 
 ### Phase 1 open items
 
