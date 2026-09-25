@@ -65,7 +65,8 @@ describe('POST /v1/admin/lots', () => {
     expect(lot['payment_window_minutes']).toBe(3);
     expect(lot['hold_minutes']).toBe(15);
     expect(lot['deposit_amount_santim']).toBe(0);
-    expect(lot['max_booking_distance_m']).toBe(10_000);
+    // 5 km, not the brief's 10 km: an approved deviation (CLAUDE.md).
+    expect(lot['max_booking_distance_m']).toBe(5_000);
   });
 
   it('staffs the creating admin, so they can manage what they made', async () => {

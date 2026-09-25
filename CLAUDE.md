@@ -779,6 +779,29 @@ condition` reports the re-check as dead code, even though a cleanup handler
   which has no such scripts. They were broken from Phase 0 and now target
   `@laqum/db`.
 
+### Booking radius — APPROVED DEVIATION from the brief
+
+The brief's lots table gives `max_booking_distance_m` a default of **10 km**.
+Shipped instead: a default of **5 km, with a 1 km floor**. Approved by the
+product owner.
+
+- **5 km**: the radius should be what a driver can reach within the 15-minute
+  hold. At 15–20 km/h in Addis traffic that is about 5 km; 10 km means
+  30–40 minutes, so holds would expire before the driver arrived.
+- **1 km floor**: five times the worst position accuracy the device pass saw
+  (±197 m). On a smaller radius the location gate's "need a better fix" band
+  (`d - a <= r < d + a`) can cover the whole lot, and nobody can book.
+
+Where each lives: the default in migration 005 (forward-only; existing lots
+keep their radius) and in `createLotSchema`; the floor in `createLotSchema`
+and `updateLotSchema`, **not** in the database, because the development
+seed's TEST LOT is deliberately 150 m so walking a block flips the gate. Both
+are `DEFAULT_BOOKING_RADIUS_M` / `MIN_BOOKING_RADIUS_M` in
+`packages/shared/src/constants.ts`, and `db/test/schema.test.ts` pins the
+column default to the constant. The seeded Addis lots now say 5 km
+explicitly; they had silently used the 10 km default (the device test
+document said 200 m, which was never true).
+
 ### Map stack — APPROVED DEVIATION from the brief
 
 The brief specifies **react-native-maps with the Google provider**. Shipped
@@ -1035,17 +1058,19 @@ an approved plan before work starts.**
       keeps a child). Linux: `ss -ltnpH`, SIGTERM, then SIGKILL. Never PID 0
       or 4, nor itself. `dev-stop.test.ts` parses both outputs and stops a
       real listener. In the README and DEVICE-TEST.md.
-- [ ] **P2 — Booking radius: a product decision.** The seeds' 150–200 m is
-      smaller than real GPS uncertainty (±197 m observed) and at odds with a
-      hold meant to cover travel time. Recommendation pending approval.
+- [x] **P2 — Booking radius.** Done: 5 km default, 1 km floor, an approved
+      deviation from the brief's 10 km. See "Booking radius — APPROVED
+      DEVIATION" above.
 - [ ] **P2 — App icon.** Still Expo's default Android icon.
-- [ ] **P2 — The flaky two-screen e2e test**, "taking a slot out of service
-      reaches the other screen". Failed once, passed on every rerun. Its
-      1-second budget starts BEFORE the clicks on screen A. Decided by the
-      product owner: do NOT loosen the limit. Measure only what the test is
-      about, from the moment screen A's action is confirmed to the moment
-      screen B updates, so click time and machine speed cannot fail it.
-      Then prove its stability with repeated runs.
+- [x] **P2 — The flaky two-screen e2e test**, "taking a slot out of service
+      reaches the other screen". Done, as the product owner specified: the
+      limit is unchanged, and `realtimeLatency` (`e2e/fixtures.ts`) measures
+      from the server's response to screen A's request to the moment screen
+      B shows the change, so clicks, typing and machine speed are outside
+      it. The walk-in and check-out tests had the same flaw (the walk-in's
+      budget even included typing a plate) and use it too. **Proof: 30 of 30
+      passed** (the three tests, `--repeat-each=10`), latencies 9–446 ms,
+      mostly 40–110 ms, against 1,000 ms.
 - [ ] **Camera QR scan on a real tablet**, over the mkcert HTTPS setup: the
       pass's laptop had no camera.
 - [x] **Link the EXISTING Expo project `@dagisha-dev-works/laqum`** (owner

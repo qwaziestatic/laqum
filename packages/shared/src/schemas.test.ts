@@ -99,7 +99,25 @@ describe('updateLotSchema', () => {
     expect(created.holdMinutes).toBe(15);
     expect(created.paymentWindowMinutes).toBe(3);
     expect(created.depositAmountSantim).toBe(0);
-    expect(created.maxBookingDistanceM).toBe(10_000);
+    // 5 km, not the brief's 10 km: an approved deviation (constants.ts).
+    expect(created.maxBookingDistanceM).toBe(5_000);
+  });
+
+  it('refuses a booking radius under the 1 km floor, on create and on update', () => {
+    // Valid in every other field, so each assertion tests the radius alone.
+    const base = {
+      operatorId: 'c0911390-4d9f-446d-a29f-3cdd5f6caa5a',
+      name: 'New Lot',
+      latitude: 9,
+      longitude: 38.7,
+      contactPhone: '+251911234567',
+      ratePerBlockSantim: 2000,
+      overstayRatePerBlockSantim: 4000,
+    };
+    expect(createLotSchema.safeParse({ ...base, maxBookingDistanceM: 999 }).success).toBe(false);
+    expect(createLotSchema.safeParse({ ...base, maxBookingDistanceM: 1_000 }).success).toBe(true);
+    expect(updateLotSchema.safeParse({ maxBookingDistanceM: 150 }).success).toBe(false);
+    expect(updateLotSchema.safeParse({ maxBookingDistanceM: 1_000 }).success).toBe(true);
   });
 });
 

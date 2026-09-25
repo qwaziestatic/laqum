@@ -8,7 +8,7 @@
  *
  * Idempotent: it clears the tables it owns and reinserts. Safe to re-run.
  */
-import { DISPLAY_TIMEZONE } from '@laqum/shared';
+import { DEFAULT_BOOKING_RADIUS_M, DISPLAY_TIMEZONE } from '@laqum/shared';
 import type { Kysely } from 'kysely';
 import { createDb, createPool, type Database } from '../src/index.js';
 
@@ -279,8 +279,11 @@ export async function seed(
           deposit_amount_santim: spec.deposit_amount_santim,
           rate_per_block_santim: spec.rate_per_block_santim,
           overstay_rate_per_block_santim: spec.overstay_rate_per_block_santim,
+          // Explicit rather than the column default: 5 km, what a 15-minute
+          // hold can reach in Addis traffic (constants.ts).
+          max_booking_distance_m: DEFAULT_BOOKING_RADIUS_M,
           // The test lot overrides the schema defaults so a hold expires in
-          // minutes; the Addis lots keep them.
+          // minutes, and its radius so walking a block flips the gate.
           ...(spec.name === TEST_LOT_NAME && testLot
             ? {
                 hold_minutes: 3,

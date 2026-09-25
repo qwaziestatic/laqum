@@ -51,6 +51,7 @@ describe('migrator', () => {
       '002_payment_status_superseded',
       '003_lot_version',
       '004_payment_checkout_url',
+      '005_booking_radius_default',
     ]);
   });
 
@@ -65,6 +66,7 @@ describe('migrator', () => {
       '002_payment_status_superseded',
       '003_lot_version',
       '004_payment_checkout_url',
+      '005_booking_radius_default',
     ]);
   });
 
@@ -81,7 +83,7 @@ describe('migrator', () => {
       ctx.db,
       `SELECT count(*)::text AS count FROM kysely_migration`,
     );
-    expect(rows[0]?.count).toBe('4');
+    expect(rows[0]?.count).toBe('5');
   });
 
   /*
@@ -113,6 +115,7 @@ describe('migrator', () => {
       '002_payment_status_superseded',
       '003_lot_version',
       '004_payment_checkout_url',
+      '005_booking_radius_default',
     ]);
   });
 

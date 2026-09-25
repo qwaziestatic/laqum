@@ -209,7 +209,7 @@ one session rather than half an hour:
 | Block              | **5 min**                                          | 30 min                   |
 | Hold before expiry | **3 min**                                          | 15 min                   |
 | Slots              | **6** (T-1…T-3, U-1…U-3)                           | 48 and 24                |
-| Booking radius     | **150 m** (override with `SEED_TEST_LOT_RADIUS_M`) | 200 m                    |
+| Booking radius     | **150 m** (override with `SEED_TEST_LOT_RADIUS_M`) | 5 km                     |
 | Deposit            | none                                               | Bole 20 ETB, Piassa none |
 
 Pick the radius so that **walking one block flips the gate**. 80–150 m is

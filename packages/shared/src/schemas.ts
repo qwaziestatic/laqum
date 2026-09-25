@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SHORT_CODE_PATTERN } from './constants.js';
+import { DEFAULT_BOOKING_RADIUS_M, MIN_BOOKING_RADIUS_M, SHORT_CODE_PATTERN } from './constants.js';
 import { bookingSourceSchema, bookingStatusSchema, userRoleSchema } from './enums.js';
 import { PAYMENT_NOTICES } from './payments.js';
 
@@ -413,7 +413,8 @@ export const createLotSchema = z.object({
   depositAmountSantim: z.int().nonnegative().default(0),
   paymentWindowMinutes: z.int().positive().default(3),
   holdMinutes: z.int().positive().default(15),
-  maxBookingDistanceM: z.int().positive().default(10_000),
+  /** 5 km unless set; never under 1 km (constants.ts). */
+  maxBookingDistanceM: z.int().min(MIN_BOOKING_RADIUS_M).default(DEFAULT_BOOKING_RADIUS_M),
 });
 export type CreateLotRequest = z.infer<typeof createLotSchema>;
 
@@ -440,7 +441,7 @@ export const updateLotSchema = z
     depositAmountSantim: z.int().nonnegative().optional(),
     paymentWindowMinutes: z.int().positive().optional(),
     holdMinutes: z.int().positive().optional(),
-    maxBookingDistanceM: z.int().positive().optional(),
+    maxBookingDistanceM: z.int().min(MIN_BOOKING_RADIUS_M).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'at least one field must be provided');
 export type UpdateLotRequest = z.infer<typeof updateLotSchema>;

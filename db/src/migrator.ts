@@ -7,6 +7,7 @@ import * as migration001 from '../migrations/001_initial.js';
 import * as migration002 from '../migrations/002_payment_status_superseded.js';
 import * as migration003 from '../migrations/003_lot_version.js';
 import * as migration004 from '../migrations/004_payment_checkout_url.js';
+import * as migration005 from '../migrations/005_booking_radius_default.js';
 
 /**
  * Migrations are registered explicitly rather than discovered from disk.
@@ -28,6 +29,7 @@ const MIGRATIONS: Record<string, Migration> = {
   '002_payment_status_superseded': migration002,
   '003_lot_version': migration003,
   '004_payment_checkout_url': migration004,
+  '005_booking_radius_default': migration005,
 };
 
 const provider: MigrationProvider = {

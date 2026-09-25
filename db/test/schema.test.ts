@@ -1,6 +1,7 @@
 import {
   BOOKING_SOURCES,
   BOOKING_STATUSES,
+  DEFAULT_BOOKING_RADIUS_M,
   LIVE_STATUSES,
   PAYMENT_KINDS,
   PAYMENT_PROVIDERS,
@@ -256,6 +257,17 @@ describe('tables and columns', () => {
     for (const row of rows) {
       expect(row.data_type).toBe('timestamp with time zone');
     }
+  });
+});
+
+describe('column defaults that are decisions', () => {
+  it('books within 5 km by default: the shared constant, and migration 005', async () => {
+    const rows = await query<{ column_default: string }>(
+      ctx.db,
+      `SELECT column_default FROM information_schema.columns
+        WHERE table_name = 'lots' AND column_name = 'max_booking_distance_m'`,
+    );
+    expect(rows[0]?.column_default).toBe(String(DEFAULT_BOOKING_RADIUS_M));
   });
 });
 
