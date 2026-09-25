@@ -1,9 +1,9 @@
 import { formatBirr } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import type { DriverBooking } from '../../src/api/endpoints.js';
+import { useLiveBooking } from '../../src/realtime/useLiveBooking.js';
 import { useApp } from '../../src/state/app.js';
 import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
 
@@ -17,36 +17,20 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  */
 export default function Checkout(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { api, foregroundEpoch } = useApp();
+  const { api } = useApp();
   const bottomInset = useBottomInset(20);
 
-  const [booking, setBooking] = useState<DriverBooking | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!id) return;
-    const result = await api.booking(id);
-    if (result.ok) {
-      setBooking(result.data.booking);
-      setError(null);
-    } else setError(result.error.message);
-  }, [api, id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
   /*
-   * Refetch on return from the Chapa browser.
-   *
-   * The webhook may land while the driver is still on Chapa's page, so the
-   * booking can already be PAID by the time they come back. Extrapolating
-   * would leave a "Pay" button on a settled booking.
+   * Kept current by pushed changes, and refetched on return from the Chapa
+   * browser (src/realtime/useLiveBooking.ts). The webhook may land while the
+   * driver is still on Chapa's page, and an attendant may take cash while
+   * this screen is open: either way the booking turns PAID here without a
+   * tap, rather than leaving a "Pay" button on a settled booking.
    */
-  useEffect(() => {
-    if (foregroundEpoch > 0) void load();
-  }, [foregroundEpoch, load]);
+  const { booking, error: loadError, reload: load } = useLiveBooking(id);
+  const [actionError, setError] = useState<string | null>(null);
+  const error = actionError ?? loadError;
+  const [busy, setBusy] = useState(false);
 
   if (error && !booking) {
     return <Notice tone="error" message={error} actionLabel="Retry" onAction={() => void load()} />;

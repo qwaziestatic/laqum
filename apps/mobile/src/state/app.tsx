@@ -1,9 +1,11 @@
 import Constants from 'expo-constants';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import { io } from 'socket.io-client';
 import { ApiClient, type Session } from '../api/client.js';
 import { Api } from '../api/endpoints.js';
 import { secureTokenStore } from '../api/secureTokens.js';
+import { DriverRealtime, type RealtimeState, socketOriginFor } from '../realtime/connection.js';
 
 /**
  * One ApiClient for the whole app, so the single-flight refresh actually is
@@ -34,6 +36,10 @@ export interface AppContextValue {
   ready: boolean;
   /** Increments whenever the app returns to the foreground. */
   foregroundEpoch: number;
+  /** The driver's socket: their own booking's changes, pushed (realtime/connection.ts). */
+  realtime: DriverRealtime;
+  /** Screens poll only while this is not 'live'. */
+  realtimeState: RealtimeState;
   apiUrl: string;
 }
 
@@ -63,6 +69,35 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
 
   const api = useMemo(() => new Api(client), [client]);
 
+  /*
+   * One socket for the whole app, like the one ApiClient, and for the same
+   * reason: its token refresh goes through the client's single-flight
+   * refresh, so it can never race a request's.
+   */
+  const realtime = useMemo(
+    () =>
+      new DriverRealtime({
+        url: socketOriginFor(API_URL),
+        io,
+        token: () => client.session?.accessToken ?? null,
+        refresh: async () => (await client.refresh()).ok,
+      }),
+    [client],
+  );
+  const [realtimeState, setRealtimeState] = useState<RealtimeState>(realtime.state);
+  useEffect(() => realtime.onState(setRealtimeState), [realtime]);
+
+  // Open while someone is signed in. Keyed on the USER, not the session
+  // object, which every token refresh replaces.
+  const userId = session?.user.id;
+  useEffect(() => {
+    if (!userId) return;
+    realtime.start();
+    return () => {
+      realtime.close();
+    };
+  }, [realtime, userId]);
+
   // Restore a persisted session before the first render decides where to go.
   useEffect(() => {
     void client.restore().then((restored) => {
@@ -81,13 +116,16 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
    */
   useEffect(() => {
     const onChange = (next: AppStateStatus): void => {
-      if (next === 'active') setForegroundEpoch((epoch) => epoch + 1);
+      if (next !== 'active') return;
+      setForegroundEpoch((epoch) => epoch + 1);
+      // A socket that gave up while the app slept gets another chance.
+      realtime.resume();
     };
     const subscription = AppState.addEventListener('change', onChange);
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [realtime]);
 
   const setSession = useCallback(
     async (next: Session | null) => {
@@ -107,9 +145,21 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       setSession,
       ready,
       foregroundEpoch,
+      realtime,
+      realtimeState,
       apiUrl: API_URL,
     }),
-    [api, client, session, signedOutReason, setSession, ready, foregroundEpoch],
+    [
+      api,
+      client,
+      session,
+      signedOutReason,
+      setSession,
+      ready,
+      foregroundEpoch,
+      realtime,
+      realtimeState,
+    ],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

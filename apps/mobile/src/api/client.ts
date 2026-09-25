@@ -83,6 +83,15 @@ export class ApiClient {
     await this.#deps.tokens.write(session);
   }
 
+  /**
+   * Refresh the session now. The SAME single-flight refresh a 401 triggers:
+   * the realtime socket calls this when its token expires, and a second,
+   * independent refresh would race a request's on the rotating refresh token.
+   */
+  refresh(): Promise<ApiResult<Session>> {
+    return this.#refreshOnce();
+  }
+
   async request<T>(path: string, init: RequestInit = {}): Promise<ApiResult<T>> {
     const first = await this.#send<T>(path, init);
     if (first.status !== 401 || !this.#session) return first.result;

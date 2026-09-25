@@ -1,21 +1,21 @@
-import { formatBirr, isLiveStatus } from '@laqum/shared';
+import { formatBirr } from '@laqum/shared';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import type { DriverBooking, LotSummary } from '../../src/api/endpoints.js';
+import type { LotSummary } from '../../src/api/endpoints.js';
 import {
   DEPOSIT_NOT_STARTED,
   DEPOSIT_NOT_STARTED_PARAM,
   depositAttempt,
-  verifiesDeposit,
 } from '../../src/booking/deposit.js';
 import { bookingView } from '../../src/booking/view.js';
 import { navigateTo } from '../../src/nav/mapsLink.js';
-import { maybeRegisterForPush } from '../../src/push/registration.js';
+import { bookingEarnsPushAsk, maybeRegisterForPush } from '../../src/push/registration.js';
 import { pushDeps } from '../../src/push/expoDeps.js';
+import { useLiveBooking } from '../../src/realtime/useLiveBooking.js';
 import { useApp } from '../../src/state/app.js';
 import { formatRemaining } from '../../src/time/serverClock.js';
 import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
@@ -38,12 +38,19 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  */
 export default function BookingScreen(): React.JSX.Element {
   const { id, deposit } = useLocalSearchParams<{ id: string; deposit?: string }>();
-  const { api, client, foregroundEpoch } = useApp();
+  const { api, client } = useApp();
   const bottomInset = useBottomInset(20);
 
-  const [booking, setBooking] = useState<DriverBooking | null>(null);
+  /*
+   * The booking, kept current by pushed changes; refetched on entry, on
+   * foreground and on every reconnect; polled only while the socket is down.
+   * A pending deposit is verified on entry and on return from the checkout.
+   * All of it: src/realtime/useLiveBooking.ts.
+   */
+  const { booking, error: loadError, reload: load } = useLiveBooking(id);
   const [lot, setLot] = useState<LotSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setError] = useState<string | null>(null);
+  const error = actionError ?? loadError;
   const [busy, setBusy] = useState(false);
   const [coordinates, setCoordinates] = useState<string | null>(null);
   // Set by the Book screen when the deposit could not start.
@@ -53,48 +60,14 @@ export default function BookingScreen(): React.JSX.Element {
   const [tick, setTick] = useState(0);
   const askedForPush = useRef(false);
 
-  /*
-   * `verify` asks the payment service about a pending deposit directly, on
-   * entering the screen and on returning to the app (from the checkout,
-   * usually), instead of waiting for the webhook. The 20 s poll does not: it
-   * would call the provider for every driver every 20 s.
-   */
-  const load = useCallback(
-    async (options: { verify?: boolean } = {}) => {
-      if (!id) return;
-      let result = await api.booking(id);
-      if (!result.ok) {
-        setError(result.error.message);
-        return;
-      }
-      if (options.verify && verifiesDeposit(result.data.booking.status)) {
-        // A failure here changes nothing: the booking just read still stands.
-        const verified = await api.verifyDeposit(id);
-        if (verified.ok) result = verified;
-      }
-      setBooking(result.data.booking);
-      setError(null);
-
-      const lotResult = await api.lot(result.data.booking.lotId);
-      if (lotResult.ok) setLot(lotResult.data);
-    },
-    [api, id],
-  );
-
+  // A booking never changes lot, so the lot is read once per booking.
+  const lotId = booking?.lotId;
   useEffect(() => {
-    void load({ verify: true });
-  }, [load]);
-
-  /*
-   * FOREGROUND REFETCHES, it does not extrapolate.
-   *
-   * While the app slept the server may have expired the hold or an attendant
-   * may have checked the car in. Continuing the old countdown would show a
-   * confident, wrong number.
-   */
-  useEffect(() => {
-    if (foregroundEpoch > 0) void load({ verify: true });
-  }, [foregroundEpoch, load]);
+    if (!lotId) return;
+    void api.lot(lotId).then((result) => {
+      if (result.ok) setLot(result.data);
+    });
+  }, [api, lotId]);
 
   // A display tick. The VALUE comes from the server clock; this only decides
   // how often it is re-rendered.
@@ -107,27 +80,20 @@ export default function BookingScreen(): React.JSX.Element {
     };
   }, []);
 
-  // Poll while a deadline is running, so a server-side expiry lands here even
-  // if the driver never leaves the screen.
-  useEffect(() => {
-    if (!booking) return;
-    // LIVE_STATUSES is the one definition of "live"; never a local copy.
-    if (!isLiveStatus(booking.status)) return;
-    const timer = setInterval(() => void load(), 20_000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [booking, load]);
-
   /*
-   * THE PUSH ASK, after the first successful booking — never at launch.
-   * See push/registration.ts for why the timing is the whole design.
+   * THE PUSH ASK, once the driver holds a slot — never at launch, and never
+   * while paying the deposit. See push/registration.ts for why the timing is
+   * the whole design. "Too early" is not final: the booking may reach a held
+   * slot while this screen is open (the deposit confirms), so it asks then.
    */
+  const status = booking?.status;
   useEffect(() => {
-    if (!booking || askedForPush.current) return;
+    if (!status || askedForPush.current) return;
     askedForPush.current = true;
-    void maybeRegisterForPush(pushDeps(api, true));
-  }, [booking, api]);
+    void maybeRegisterForPush(pushDeps(api, bookingEarnsPushAsk(status))).then((outcome) => {
+      if (outcome.kind === 'too_early') askedForPush.current = false;
+    });
+  }, [status, api]);
 
   if (error && !booking) {
     return <Notice tone="error" message={error} actionLabel="Retry" onAction={() => void load()} />;
