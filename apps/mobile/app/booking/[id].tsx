@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import type { DriverBooking, LotSummary } from '../../src/api/endpoints.js';
+import {
+  DEPOSIT_NOT_STARTED,
+  DEPOSIT_NOT_STARTED_PARAM,
+  depositAttempt,
+  verifiesDeposit,
+} from '../../src/booking/deposit.js';
 import { bookingView } from '../../src/booking/view.js';
 import { navigateTo } from '../../src/nav/mapsLink.js';
 import { maybeRegisterForPush } from '../../src/push/registration.js';
@@ -16,6 +23,7 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
 /**
  * The booking, in whichever state it is in.
  *
+ * PENDING_PAYMENT → the time left to pay, and Pay deposit.
  * RESERVED → the hold countdown, navigate, and the QR to show at the gate.
  * CHECKED_IN / OVERSTAY → time remaining and extend.
  * CHECKED_OUT → straight to payment.
@@ -29,7 +37,7 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../.
  * would yank the screen out from under them mid-tap.
  */
 export default function BookingScreen(): React.JSX.Element {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, deposit } = useLocalSearchParams<{ id: string; deposit?: string }>();
   const { api, client, foregroundEpoch } = useApp();
   const bottomInset = useBottomInset(20);
 
@@ -38,25 +46,43 @@ export default function BookingScreen(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [coordinates, setCoordinates] = useState<string | null>(null);
+  // Set by the Book screen when the deposit could not start.
+  const [depositNotice, setDepositNotice] = useState<string | null>(
+    deposit === DEPOSIT_NOT_STARTED_PARAM ? DEPOSIT_NOT_STARTED : null,
+  );
   const [tick, setTick] = useState(0);
   const askedForPush = useRef(false);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    const result = await api.booking(id);
-    if (!result.ok) {
-      setError(result.error.message);
-      return;
-    }
-    setBooking(result.data.booking);
-    setError(null);
+  /*
+   * `verify` asks the payment service about a pending deposit directly, on
+   * entering the screen and on returning to the app (from the checkout,
+   * usually), instead of waiting for the webhook. The 20 s poll does not: it
+   * would call the provider for every driver every 20 s.
+   */
+  const load = useCallback(
+    async (options: { verify?: boolean } = {}) => {
+      if (!id) return;
+      let result = await api.booking(id);
+      if (!result.ok) {
+        setError(result.error.message);
+        return;
+      }
+      if (options.verify && verifiesDeposit(result.data.booking.status)) {
+        // A failure here changes nothing: the booking just read still stands.
+        const verified = await api.verifyDeposit(id);
+        if (verified.ok) result = verified;
+      }
+      setBooking(result.data.booking);
+      setError(null);
 
-    const lotResult = await api.lot(result.data.booking.lotId);
-    if (lotResult.ok) setLot(lotResult.data);
-  }, [api, id]);
+      const lotResult = await api.lot(result.data.booking.lotId);
+      if (lotResult.ok) setLot(lotResult.data);
+    },
+    [api, id],
+  );
 
   useEffect(() => {
-    void load();
+    void load({ verify: true });
   }, [load]);
 
   /*
@@ -67,7 +93,7 @@ export default function BookingScreen(): React.JSX.Element {
    * confident, wrong number.
    */
   useEffect(() => {
-    if (foregroundEpoch > 0) void load();
+    if (foregroundEpoch > 0) void load({ verify: true });
   }, [foregroundEpoch, load]);
 
   // A display tick. The VALUE comes from the server clock; this only decides
@@ -150,6 +176,38 @@ export default function BookingScreen(): React.JSX.Element {
           tone="error"
           testID="overstay-notice"
           message="You are over your booked time. Overstay is charged at a higher rate."
+        />
+      ) : null}
+
+      {view.actions.payDeposit && depositNotice ? (
+        <Notice tone="error" testID="deposit-not-started" message={depositNotice} />
+      ) : null}
+
+      {view.actions.payDeposit ? (
+        <Button
+          testID="pay-deposit"
+          // The amount is the lot's; unknown until the lot loads.
+          label={lot ? `Pay deposit ${formatBirr(lot.depositAmountSantim)}` : 'Pay deposit'}
+          busy={busy}
+          onPress={() => {
+            setBusy(true);
+            void api.payDeposit(booking.id).then(async (result) => {
+              setBusy(false);
+              const attempt = depositAttempt(result);
+              if (attempt.kind === 'error') {
+                setError(attempt.message);
+                return;
+              }
+              setError(null);
+              if (attempt.kind === 'open') {
+                setDepositNotice(null);
+                // Android resolves as the browser OPENS, iOS as it closes; the
+                // foreground refetch covers the return on both.
+                await WebBrowser.openBrowserAsync(attempt.checkoutUrl);
+              }
+              await load({ verify: true });
+            });
+          }}
         />
       ) : null}
 

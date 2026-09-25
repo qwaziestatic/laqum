@@ -1,4 +1,9 @@
-import { BOOKING_STATUSES, type BookingStatus, isLiveStatus } from '@laqum/shared';
+import {
+  BOOKING_STATUSES,
+  type BookingStatus,
+  isLegalTransition,
+  isLiveStatus,
+} from '@laqum/shared';
 import { describe, expect, it } from 'vitest';
 import { STATUS_TEXT, bookingView } from '../src/booking/view.js';
 
@@ -92,6 +97,7 @@ describe('actions', () => {
         showQr: false,
         extend: false,
         pay: false,
+        payDeposit: false,
         cancel: false,
       });
     }
@@ -104,21 +110,35 @@ describe('actions', () => {
       showQr: false,
       extend: false,
       pay: true,
+      payDeposit: false,
       cancel: false,
     });
   });
 
-  it('shows the QR and cancel while held, and extend while parked', () => {
-    for (const status of ['PENDING_PAYMENT', 'RESERVED'] as const) {
-      expect(bookingView(booking(status)).actions, status).toEqual({
-        navigate: true,
-        findAnotherSlot: false,
-        showQr: true,
-        extend: false,
-        pay: false,
-        cancel: true,
-      });
-    }
+  it('asks for the deposit, and only the deposit, while payment is pending', () => {
+    // No QR: the gate cannot check in an unpaid booking. No cancel: the state
+    // machine has no PENDING_PAYMENT -> CANCELLED; an unpaid hold just lapses.
+    expect(bookingView(booking('PENDING_PAYMENT')).actions).toEqual({
+      navigate: true,
+      findAnotherSlot: false,
+      showQr: false,
+      extend: false,
+      pay: false,
+      payDeposit: true,
+      cancel: false,
+    });
+  });
+
+  it('shows the QR and cancel once the slot is held, and extend while parked', () => {
+    expect(bookingView(booking('RESERVED')).actions).toEqual({
+      navigate: true,
+      findAnotherSlot: false,
+      showQr: true,
+      extend: false,
+      pay: false,
+      payDeposit: false,
+      cancel: true,
+    });
     for (const status of ['CHECKED_IN', 'OVERSTAY'] as const) {
       expect(bookingView(booking(status)).actions, status).toEqual({
         navigate: true,
@@ -126,8 +146,17 @@ describe('actions', () => {
         showQr: false,
         extend: true,
         pay: false,
+        payDeposit: false,
         cancel: false,
       });
+    }
+  });
+
+  it('offers cancel and the gate QR exactly where the state machine allows them', () => {
+    for (const status of BOOKING_STATUSES) {
+      const { actions } = bookingView(booking(status));
+      expect(actions.cancel, status).toBe(isLegalTransition(status, 'CANCELLED'));
+      expect(actions.showQr, status).toBe(isLegalTransition(status, 'CHECKED_IN'));
     }
   });
 

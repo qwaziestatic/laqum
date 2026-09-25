@@ -5,7 +5,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ApiClient, type ApiResult, type Session } from '../../mobile/src/api/client.js';
 import { Api } from '../../mobile/src/api/endpoints.js';
 import { VALIDATION_FALLBACK } from '../../mobile/src/api/messages.js';
+import {
+  DEPOSIT_UNAVAILABLE,
+  afterBooking,
+  depositAttempt,
+} from '../../mobile/src/booking/deposit.js';
 import { bookingRequest } from '../../mobile/src/booking/request.js';
+import { bookingView } from '../../mobile/src/booking/view.js';
 import { listen } from '../src/listen.js';
 import { makeActor, staffLot } from './helpers/auth.js';
 import { createTestContext, type TestContext } from './helpers/context.js';
@@ -212,6 +218,79 @@ describe('the app drives a whole booking journey', () => {
     expect(afterRefresh.ok).toBe(true);
     const refresh = app.raw.find((r) => r.path === '/auth/refresh');
     expect(refresh?.status).toBe(200);
+  });
+});
+
+describe('the deposit, as the app drives it', () => {
+  const DEPOSIT_LOT = { ...TEST_LOT, depositSantim: 2000, paymentWindowMinutes: 3, ...AT };
+
+  function bookAt(lotId: string): CreateBookingInput {
+    return bookingRequest({
+      lotId,
+      blocks: 2,
+      blockMinutes: TEST_LOT.blockMinutes,
+      position: AT,
+      plate: '',
+    });
+  }
+
+  it('opens the checkout at booking, reopens the same one, and is reserved on return', async () => {
+    t.provider.reset();
+    const app = appClient();
+    await signIn(app, '+251911000778');
+    const lot = await createLot(t.db.db, { name: 'DEPOSIT LOT', slots: 2, ...DEPOSIT_LOT });
+
+    const created = expectFullyParsed(await app.api.createBooking(bookAt(lot.lotId)), app.raw);
+    const next = afterBooking(created);
+    expect(next.checkoutUrl).toMatch(/^https?:\/\//u);
+    expect(next.params).toEqual({ id: created.booking.id });
+    const bookingId = created.booking.id;
+
+    // The driver left the checkout without paying, and taps Pay deposit.
+    const txRef = new URL(next.checkoutUrl ?? '').pathname.split('/').at(-1) ?? '';
+    t.provider.setStatus(txRef, 'pending');
+    const reopened = depositAttempt(await app.api.payDeposit(bookingId));
+    expect(reopened).toEqual({ kind: 'open', checkoutUrl: next.checkoutUrl });
+    expect(app.raw.at(-1)?.status).toBe(200);
+
+    // Pending on return: the booking stands, still asking for the deposit.
+    const pending = expectFullyParsed(await app.api.verifyDeposit(bookingId), app.raw);
+    expect(bookingView(pending.booking).actions.payDeposit).toBe(true);
+
+    // Paid, and the webhook has not arrived: the return check settles it.
+    t.provider.setStatus(txRef, 'success');
+    const paid = expectFullyParsed(await app.api.verifyDeposit(bookingId), app.raw);
+    expect(paid.booking.status).toBe('RESERVED');
+    expect(bookingView(paid.booking).actions.showQr).toBe(true);
+  });
+
+  it('when the payment service is down: books anyway, says so, and the retry works once it is back', async () => {
+    t.provider.reset();
+    const app = appClient();
+    await signIn(app, '+251911000779');
+    const lot = await createLot(t.db.db, { name: 'DEPOSIT LOT', slots: 2, ...DEPOSIT_LOT });
+
+    t.provider.unavailable = true;
+    const created = expectFullyParsed(await app.api.createBooking(bookAt(lot.lotId)), app.raw);
+    expect(created.booking.status).toBe('PENDING_PAYMENT');
+    expect(afterBooking(created)).toEqual({
+      checkoutUrl: null,
+      params: { id: created.booking.id, deposit: 'unavailable' },
+    });
+
+    // Still down: the retry reads as a payment-service problem, not a crash.
+    expect(depositAttempt(await app.api.payDeposit(created.booking.id))).toEqual({
+      kind: 'error',
+      message: DEPOSIT_UNAVAILABLE,
+    });
+    // The return check still answers: nothing was initialized, so it has
+    // nothing to ask the provider.
+    expect((await app.api.verifyDeposit(created.booking.id)).ok).toBe(true);
+
+    t.provider.unavailable = false;
+    const retried = depositAttempt(await app.api.payDeposit(created.booking.id));
+    expect(retried.kind).toBe('open');
+    expect(app.raw.at(-1)?.status).toBe(201);
   });
 });
 

@@ -1,4 +1,4 @@
-import { type Booking, type BookingStatus, isLiveStatus } from '@laqum/shared';
+import { type Booking, type BookingStatus, isLegalTransition, isLiveStatus } from '@laqum/shared';
 
 /**
  * What the booking screen shows, decided per status in ONE table.
@@ -80,10 +80,12 @@ export interface BookingView {
     /** Directions to the lot: only while there is a reason to go there. */
     navigate: boolean;
     findAnotherSlot: boolean;
-    /** The entry QR and short code: only before check-in. */
+    /** The entry QR and short code: only where the gate can check it in. */
     showQr: boolean;
     extend: boolean;
     pay: boolean;
+    /** Pay, or retry, the deposit that holds the slot. */
+    payDeposit: boolean;
     cancel: boolean;
   };
 }
@@ -93,7 +95,6 @@ export function bookingView(
 ): BookingView {
   const text = STATUS_TEXT[booking.status];
   const deadline = text.timer ? booking[text.timer.field] : null;
-  const held = booking.status === 'PENDING_PAYMENT' || booking.status === 'RESERVED';
   const parked = booking.status === 'CHECKED_IN' || booking.status === 'OVERSTAY';
 
   return {
@@ -107,10 +108,17 @@ export function bookingView(
     actions: {
       navigate: isLiveStatus(booking.status),
       findAnotherSlot: FINISHED.has(booking.status),
-      showQr: held && booking.qrToken !== null,
+      /*
+       * From the SHARED state machine, never a local list. Both were once
+       * offered while PENDING_PAYMENT, where the machine permits neither: the
+       * gate refuses an unpaid booking's QR, and cancelling fails. Deposits
+       * made that state reachable.
+       */
+      showQr: isLegalTransition(booking.status, 'CHECKED_IN') && booking.qrToken !== null,
       extend: parked,
       pay: booking.status === 'CHECKED_OUT',
-      cancel: held,
+      payDeposit: booking.status === 'PENDING_PAYMENT',
+      cancel: isLegalTransition(booking.status, 'CANCELLED'),
     },
   };
 }

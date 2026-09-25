@@ -12,6 +12,7 @@ import {
   type OtpRequestResponse,
   type OtpVerifyInput,
   type PayBookingResponse,
+  type PayDepositResponse,
   type PublicSnapshot,
   type RegisterPushTokenInput,
   bookingResponseSchema,
@@ -23,6 +24,7 @@ import {
   nearbyLotsResponseSchema,
   otpRequestResponseSchema,
   payBookingResponseSchema,
+  payDepositResponseSchema,
   publicSnapshotSchema,
   sessionResponseSchema,
 } from '@laqum/shared';
@@ -147,6 +149,16 @@ export class Api {
 
   async pay(id: string): Promise<ApiResult<PayBookingResponse>> {
     return parsed(await this.#post(`/bookings/${id}/pay`), payBookingResponseSchema);
+  }
+
+  /** Reopen the payable deposit checkout, or start one: also the retry. */
+  async payDeposit(id: string): Promise<ApiResult<PayDepositResponse>> {
+    return parsed(await this.#post(`/bookings/${id}/deposit`), payDepositResponseSchema);
+  }
+
+  /** Ask the provider now, on return from the checkout. Never starts a payment. */
+  async verifyDeposit(id: string): Promise<ApiResult<BookingResponse>> {
+    return parsed(await this.#post(`/bookings/${id}/deposit/verify`), bookingResponseSchema);
   }
 
   /** Answered 204 with no body. */

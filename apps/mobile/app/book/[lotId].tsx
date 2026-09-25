@@ -7,6 +7,7 @@ import type { LotSummary } from '../../src/api/endpoints.js';
 import { decide, gate, type GateDecision } from '../../src/location/gate.js';
 import { getFix, type FixAccuracy, type PermissionPrompt } from '../../src/location/useLocation.js';
 import { bookButton } from '../../src/booking/button.js';
+import { afterBooking } from '../../src/booking/deposit.js';
 import { bookingRequest } from '../../src/booking/request.js';
 import { useApp } from '../../src/state/app.js';
 import { useTheme } from '../../src/theme.js';
@@ -171,11 +172,11 @@ export default function Book(): React.JSX.Element {
     }
 
     // A deposit means Chapa, in an in-app browser so the driver keeps their
-    // place in the app.
-    if (result.data.paymentRequired && result.data.checkoutUrl) {
-      await WebBrowser.openBrowserAsync(result.data.checkoutUrl);
-    }
-    router.replace(`/booking/${result.data.booking.id}`);
+    // place in the app. When it could not start, the booking screen says so
+    // and offers the retry (src/booking/deposit.ts).
+    const next = afterBooking(result.data);
+    if (next.checkoutUrl !== null) await WebBrowser.openBrowserAsync(next.checkoutUrl);
+    router.replace({ pathname: '/booking/[id]', params: next.params });
   }
 
   if (error && !lot) return <Notice tone="error" message={error} />;
