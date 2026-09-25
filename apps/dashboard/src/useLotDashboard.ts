@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiClient, ApiError } from './api/client.js';
 import type { ActionKind } from './components/SlotDrawer.js';
+import { errorText } from './errors.js';
 import { RealtimeConnection } from './realtime/connection.js';
 
 /**
@@ -178,7 +179,7 @@ export function useLotDashboard(api: ApiClient, lotId: string | null): LotDashbo
       setCheckInBusy(false);
 
       if (!result.ok) {
-        setCheckInError(t(`error.${result.error.code}`, { defaultValue: result.error.message }));
+        setCheckInError(errorText(t, result.error));
         return;
       }
 

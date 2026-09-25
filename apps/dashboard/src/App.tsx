@@ -8,6 +8,7 @@ import { HeaderCounters } from './components/HeaderCounters.js';
 import { QrScanner, detectTier } from './components/QrScanner.js';
 import { ShortCodeEntry } from './components/ShortCodeEntry.js';
 import { SlotDrawer } from './components/SlotDrawer.js';
+import { errorText } from './errors.js';
 import { SlotTile } from './components/SlotTile.js';
 import { applyTheme, storedTheme, type ThemeChoice } from './theme.js';
 import { useLotDashboard } from './useLotDashboard.js';
@@ -448,7 +449,7 @@ function DevSignIn({ onSignedIn }: { onSignedIn: () => void }): React.JSX.Elemen
             api.setSession(result.data);
             onSignedIn();
           } else {
-            setError(result.error.message);
+            setError(errorText(t, result.error));
           }
         });
       }}

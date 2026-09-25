@@ -1,7 +1,8 @@
-import { type StaffSlotEvent, formatBirr } from '@laqum/shared';
+import { LOCALES, type Locale, type StaffSlotEvent, formatBirr, formatClock } from '@laqum/shared';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiError } from '../api/client.js';
+import { errorText } from '../errors.js';
 import { presentationFor } from './statusPresentation.js';
 
 /**
@@ -42,7 +43,8 @@ export function SlotDrawer({
   conflictNote,
   amountDueSantim,
 }: SlotDrawerProps): React.JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale: Locale = LOCALES.find((l) => l === i18n.language) ?? 'am';
   const [plate, setPlate] = useState('');
   const panelRef = useRef<HTMLDivElement>(null);
   const presentation = presentationFor(slot.displayStatus);
@@ -128,7 +130,7 @@ export function SlotDrawer({
             role="alert"
             className="rounded-lg border-2 border-danger px-3 py-2 text-sm font-bold text-danger"
           >
-            {t(`error.${error.code}`, { defaultValue: error.message })}
+            {errorText(t, error)}
           </p>
         ) : null}
 
@@ -137,10 +139,10 @@ export function SlotDrawer({
             <Detail label={t('drawer.plate')} value={slot.vehiclePlate} testId="drawer-plate" />
           ) : null}
           {slot.plannedEndAt ? (
-            <Detail label={t('drawer.until')} value={formatTime(slot.plannedEndAt)} />
+            <Detail label={t('drawer.until')} value={formatTime(slot.plannedEndAt, locale)} />
           ) : null}
           {slot.holdExpiresAt ? (
-            <Detail label={t('drawer.holdUntil')} value={formatTime(slot.holdExpiresAt)} />
+            <Detail label={t('drawer.holdUntil')} value={formatTime(slot.holdExpiresAt, locale)} />
           ) : null}
           {slot.source ? (
             <Detail label={t('drawer.source')} value={t(`source.${slot.source}`)} />
@@ -304,7 +306,12 @@ function ActionButton({
   );
 }
 
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+/**
+ * Addis Ababa time, in the reader's clock: "ከሰዓት 8:05" in Amharic (the
+ * Ethiopian clock), "14:05" in English (shared clockDisplay.ts). It used the
+ * browser's locale and zone, which showed an English "PM" on an Amharic
+ * screen, in whatever zone the laptop was set to.
+ */
+function formatTime(iso: string, locale: Locale): string {
+  return formatClock(new Date(iso), locale);
 }

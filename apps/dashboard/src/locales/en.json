@@ -99,7 +99,23 @@
     "ALREADY_PAID": "This booking was already paid in the app",
     "PAYMENT_PENDING": "An in-app payment is still pending. Confirm with the driver.",
     "NETWORK": "No connection to the server",
-    "UNAUTHENTICATED": "Your session has ended. Sign in again."
+    "UNAUTHENTICATED": "Your session has ended. Sign in again.",
+    "VALIDATION_ERROR": "The server could not accept that. Check what you entered and try again.",
+    "OTP_INVALID": "That code is not correct.",
+    "OTP_EXPIRED": "That code has expired. Request a new one.",
+    "LOT_FULL": "This lot is full.",
+    "OUTSTANDING_BALANCE": "This driver still owes for an earlier booking.",
+    "ILLEGAL_TRANSITION": "That is not possible for this booking now.",
+    "ALREADY_HAS_ACTIVE_BOOKING": "This driver already has an active booking.",
+    "PAYMENT_AMOUNT_MISMATCH": "That amount does not match what is due.",
+    "PAYMENT_NOT_CONFIRMED": "The payment has not been confirmed yet.",
+    "TOO_FAR": "Too far from the lot.",
+    "RATE_LIMITED": "Too many attempts. Wait a few minutes and try again.",
+    "OTP_TOO_MANY_ATTEMPTS": "Too many wrong codes. Request a new code.",
+    "INTERNAL": "Something went wrong on the server. Try again.",
+    "PROVIDER_UNAVAILABLE": "The payment service could not be reached. Try again in a moment.",
+    "BAD_RESPONSE": "The server sent a response this version of the dashboard does not understand. Reload the page.",
+    "UNKNOWN": "Something went wrong. Try again."
   },
   "common": {
     "language": "Language"
