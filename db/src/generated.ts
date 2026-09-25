@@ -113,6 +113,7 @@ export interface OtpCodes {
 export interface Payments {
   amount_santim: number;
   booking_id: string;
+  checkout_url: string | null;
   created_at: Generated<Timestamp>;
   id: Generated<string>;
   kind: PaymentKind;

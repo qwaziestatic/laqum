@@ -197,6 +197,8 @@ describe('tables and columns', () => {
       'payments.recorded_by uuid YES',
       'payments.created_at timestamp with time zone NO',
       'payments.updated_at timestamp with time zone NO',
+      // 004: set only when the provider accepted initialize.
+      'payments.checkout_url text YES',
 
       'push_tokens.id uuid NO',
       'push_tokens.user_id uuid NO',
