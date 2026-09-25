@@ -194,6 +194,16 @@ Every other transition is illegal and must be rejected with a typed error.
 - **Time** is `timestamptz` in UTC everywhere; displayed in
   `Africa/Addis_Ababa` (`DISPLAY_TIMEZONE`). A schema test asserts no naive
   timestamp column exists.
+- **Clock times on screen** (decided by the product owner): Amharic screens
+  use the **Ethiopian 12-hour clock** with a time-of-day word (14:05 reads
+  **ከሰዓት 8:05**; hour = (hour + 6) mod 12, 0 shown as 12); English screens
+  use 24-hour time. Always Addis Ababa time, whatever zone the phone or the
+  browser is in. One formatter, `formatClock` in
+  `packages/shared/src/clockDisplay.ts`, used by both apps, tested at every
+  boundary (00:00, 05:59, 06:00, 11:59, 12:00, 17:59, 18:00, 23:59).
+  **Durations and countdowns (02:45) never go through it.** No screen shows a
+  date; if one ever does, the Ethiopian calendar is an open question, not a
+  default.
 - **i18n**: Amharic and English from day one. No user-facing string is
   hard-coded. A test asserts the two bundles have identical keys, so a string
   added in English cannot ship untranslated.
@@ -648,6 +658,11 @@ in the state machine becomes a new test. **Verified:** removing the
   differently per platform and some Android builds ship no colour emoji font,
   so a tofu box would be worse than no glyph. Tests assert completeness,
   distinctness, and the no-emoji rule.
+- **Errors are the dashboard's own words, never the server's.** `errorText`
+  (`apps/dashboard/src/errors.ts`) maps every `ErrorCode` (a `Record`, so a
+  new code does not compile without a key) to text in both bundles. It used
+  to fall back to the API's English message; `errors.test.ts` scans the
+  source so that fallback cannot return.
 - **No optimistic updates.** An action sets `pending` and changes nothing. On
   `STATE_CONFLICT` or `SLOT_TAKEN` the view refetches and states what the slot
   actually is now — "conflict" alone just makes an attendant press again.
@@ -959,16 +974,13 @@ Atlantic and made every booking fail TOO_FAR for an unguessable reason.
 - [x] **The device pass.** Done 2026-09-24/25: every step passed; ten bugs
       found and fixed. Results, bugs and commits:
       [docs/DEVICE-TEST.md](docs/DEVICE-TEST.md), Part 6.
-- [ ] **How notifications came to be ALLOWED before the first prompt.** No
-      prompt appeared after the first booking and Settings showed the
-      permission already granted. The app asks in one place (the booking
-      screen, only while undetermined) and nothing native asks at startup.
-      The deciding evidence is on the phone: the `POST_NOTIFICATIONS` flags
-      and Expo's `expo.modules.permissions.asked` record. The commands, and
-      how to read them, are in DEVICE-TEST.md's Session 2, before the reset. (The constant
-      `hasBooked: true` noted here was fixed with realtime, below. It cannot
-      explain this: it made the app ask on ANY booking screen, but always
-      with a prompt.)
+- [x] **How notifications came to be ALLOWED before the first prompt.**
+      Settled in Session 2, from the evidence read before the reset:
+      Android's `POST_NOTIFICATIONS` was `granted=true` with `USER_SET`, and
+      Expo's asked record had NO `POST_NOTIFICATIONS` entry. **The app never
+      requested it: a person enabled it by hand.** Not an app defect. After
+      the reset the prompt appeared only once a slot was held, never while
+      paying the deposit.
 
 **Queued after the pass, in the product owner's priority order. Each needs
 an approved plan before work starts.**
@@ -1008,13 +1020,20 @@ an approved plan before work starts.**
       every overstay; it now records `DEFERRED` and carries on. And **the app
       offered Cancel and the gate QR while `PENDING_PAYMENT`**, where the
       state machine permits neither; both now come from `isLegalTransition`.
-- [ ] **Session 2 on the phone: deposits, realtime and Amharic.** One
-      session, prepared in DEVICE-TEST.md's "Session 2" (at the top): a
-      setup checklist, the notification evidence read BEFORE the reset,
-      then steps 19 (deposits: paying, reopening, the outage and its expiry
-      at the payment window, the return page), 20 (realtime timing) and 21
-      (Amharic on every screen, polite throughout), ordered so the API
-      restarts twice. JavaScript only: no new build.
+- [x] **Session 2 on the phone: deposits, realtime and Amharic.** Every
+      step passed (DEVICE-TEST.md, Part 6, "Session 2 results"). Worth
+      keeping: in 19a the API logged "expiry cancelled: the provider
+      confirmed the deposit after all", so the lost-webhook safeguard worked
+      on a real flow; in 19b the hold expired exactly at 3:00 with the
+      provider down (booked 22:56:19, expired 22:59:19), which is the
+      product owner's guard; realtime changes arrived in about a second and
+      survived an API restart. One UI defect, fixed after: a failed deposit
+      retry stacked a second red box under "deposit not started"; the
+      outcome now replaces it, and "not started" is a warning.
+- [x] **Decided after Session 2, and built:** Ethiopian clock times on
+      Amharic screens (Conventions), ጊዜ አልፏል for "overstay" in both apps,
+      and the dashboard's own text for every error code. JavaScript only;
+      a reload shows them on the phone.
 - [x] **Chapa's return page.** Done, as decided by the product owner.
       `return_url` had no route, so a driver who had just paid landed on the
       API's JSON 404. `GET /payment-complete` (`payments/returnPage.ts`) now
@@ -1102,15 +1121,16 @@ an approved plan before work starts.**
 
 ### Phase 3 open items
 
-- [ ] **Native-speaker Amharic review.** Every string in
-      [docs/AMHARIC-REVIEW.md](docs/AMHARIC-REVIEW.md) (210 keys: dashboard 68,
-      driver app 140, return page 2) was written by a non-native speaker.
-      **BLOCKS RELEASE.** The tests guarantee key parity, placeholders, no
-      Latin text and the polite register; they cannot guarantee the Amharic
-      is idiomatic, which is the point of the review. The 35 dashboard
-      strings converted to the polite form are listed with their old text.
-      No known defect — `slot.free` is correctly ነፃ; an earlier report of ገባ
-      was traced to the check-in verb, now ያስገቡ, which is a different key.
+- [x] **Native-speaker Amharic review.** Done after Session 2: the
+      product owner reviewed all 210 keys (dashboard 68, driver app 140,
+      return page 2, as of commit `a3b139f`) and found **no corrections**.
+      APPROVED; the release blocker is cleared for them.
+- [ ] **Amharic added after Session 2: 24 items awaiting review**
+      (docs/AMHARIC-REVIEW.md, "Awaiting review"): the four Ethiopian
+      time-of-day words and their hours, the three "overstay" sentences now
+      using ጊዜ አልፏል, one bill sentence adapted for the clock, and the
+      dashboard's 16 new error texts. **Blocks release for those strings
+      only.**
 
 ### Phase 2 open items
 

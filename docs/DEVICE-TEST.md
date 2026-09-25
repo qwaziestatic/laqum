@@ -4,8 +4,9 @@ Everything in this document needs your phone. Nothing here is covered by the
 automated suite. Where I expect something to work, I say "should"; where I
 genuinely do not know, I say so.
 
-**Next: Session 2** (deposits, realtime, Amharic). It starts in the section
-right below.
+**Session 2 is done too** (deposits, realtime, Amharic): every step passed.
+Its results are in Part 6, "Session 2 results"; its setup stays below, in
+case it is run again.
 
 **The first pass is done** (2026-09-24/25, Samsung Galaxy A15 5G, Android 16):
 every numbered test passed once the bugs it found were fixed. The results,
@@ -1291,7 +1292,40 @@ instead of using realtime, and it has no Amharic.
 - **iOS.** No build has been produced.
 - **Push.** Registration needs FCM credentials; delivery is Phase 5.
 - **The notification prompt's timing.** No prompt appeared after the first
-  booking, and Settings already showed notifications allowed. Under
-  investigation: the app asks in one place only, on the booking screen, and
-  only while the permission is undetermined.
+  booking, and Settings already showed notifications allowed. Settled in
+  Session 2 (below): a person had enabled it by hand, and after a reset the
+  prompt came only once a slot was held.
 - **Navigate's fallbacks** without Google Maps installed.
+
+### Session 2 results
+
+Deposits (step 19), realtime (step 20) and Amharic (step 21), in one phone
+session on the same Samsung Galaxy A15 5G, with the APK from the first pass:
+all three were JavaScript changes. **Every step passed.**
+
+| Step                     | Result | What was seen                                                                                                                                                                                                                                            |
+| ------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Notification evidence    | Read   | Before the reset: `POST_NOTIFICATIONS` `granted=true` with `USER_SET`, and **no** `POST_NOTIFICATIONS` entry in Expo's asked record. The app never requested it: a person enabled it by hand.                                                            |
+| Prompt timing            | Pass   | After the reset (`granted=false`), the prompt appeared in 19a **only once the slot was held**, never while paying.                                                                                                                                       |
+| 19a Paying               | Pass   | The checkout opened; **Pay deposit** reopened the same payment; back after two minutes, the held slot with its QR. At expiry time the API logged "expiry cancelled: the provider confirmed the deposit after all": the lost-webhook safeguard, for real. |
+| 19b Outage               | Pass   | Booked with the deposit not started; the retry answered 503 `PROVIDER_UNAVAILABLE`; the hold expired **exactly** at 3:00 (booked 22:56:19, `expire-hold` applied at 22:59:19).                                                                           |
+| 19c Return page          | Pass   | Amharic, then English; no success claim; `?status=success` changes nothing.                                                                                                                                                                              |
+| 20 Realtime              | Pass   | Check-in, check-out and cash reached the phone within about a second, untouched.                                                                                                                                                                         |
+| 20a After an API restart | Pass   | The phone reconnected by itself.                                                                                                                                                                                                                         |
+| 21a Phone language       | Pass   | English phone, English screens; the switch offered አማርኛ.                                                                                                                                                                                                 |
+| 21b Switch, remembered   | Pass   | Switched, restarted, still Amharic.                                                                                                                                                                                                                      |
+| 21c–f Every screen       | Pass   | Every screen in Amharic, polite throughout; the dashboard's buttons; back to English. The product owner's native-speaker review found **no corrections**.                                                                                                |
+
+**One UI defect found, fixed after the session:** after a failed **Pay
+deposit** retry in 19b, the booking screen showed two red boxes saying nearly
+the same thing. The retry's outcome now replaces the "deposit not started"
+notice, and that notice is a warning, not an error: the slot is still held.
+
+**Decided after the session, and built:** Ethiopian clock times on Amharic
+screens, ጊዜ አልፏል for "overstay" in both apps, and the dashboard's own text
+for every error code. Their new strings await review in
+docs/AMHARIC-REVIEW.md. They are JavaScript only; seeing them on the phone
+needs a reload, not a build.
+
+Still not device-tested: the camera QR scan, the Chapa sandbox, iOS, push
+delivery (Phase 5), and Navigate's fallbacks without Google Maps.

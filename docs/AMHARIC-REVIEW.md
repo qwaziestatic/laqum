@@ -1,9 +1,16 @@
 # Amharic strings for native-speaker review
 
 Every Amharic string in the product: the attendant dashboard, the driver
-app, and the driver's payment return page. All of it was written by a
-non-native speaker and needs a review pass before it is put in front of
-anyone.
+app, and the driver's payment return page. It was drafted by a non-native
+speaker.
+
+**STATUS: APPROVED, except "Awaiting review" at the end.** The product
+owner's native-speaker review after Session 2 on the phone found no
+corrections: every string in the tables below, as they stood at commit
+`a3b139f`, is approved, and the release blocker is cleared for them. The
+tables are kept as that approved record. Strings added or changed since are
+in **"Awaiting review (added after Session 2)"**, each with the approved text
+it replaces.
 
 ## Register: polite, everywhere (decided)
 
@@ -351,44 +358,104 @@ i18n bundles). Both languages are always shown, Amharic first.
 | `title` | Return to the ላቁም? app                                                                                           | ወደ ላቁም? መተግበሪያው ይመለሱ                                                                |
 | `body`  | You can close this page. The app checks your payment with the payment service and shows whether it went through. | ይህን ገጽ መዝጋት ይችላሉ። መተግበሪያው ክፍያዎን ከክፍያ አገልግሎቱ ጋር አረጋግጦ ክፍያው መፈጸሙን ወይም አለመፈጸሙን ያሳይዎታል። |
 
-## Specific doubts
+## Settled in the Session 2 review
 
-- **`slot.occupied`** — changed from **ተይዞ ነው** to **መኪና አለ** ("there is a
-  car") to separate it from `slot.reserved` (**ተይዟል**, "it is taken"). Both
-  previously read as "taken", which is exactly the distinction an attendant
-  must make at a glance. Please confirm the pair is now unambiguous.
-- **`action.park`** — **በቦታው የመጣ አስገባ** is literal ("admit the one who came
-  to the place"). There is probably an ordinary word attendants actually use.
-- **`connection.reconnecting` / `connection.offline`** — these warn that the
-  screen may be wrong. Tone matters more than literal accuracy: the attendant
-  must not keep trusting the grid.
-- **`action.waitingForServer`** — must not read as though the action already
-  succeeded. That is the entire purpose of the string.
-- **`drawer.plateOptional`** — "(አማራጭ)" for "(optional)"; check this is the
-  usual way to mark an optional field.
-- **`signIn.codeOnItsWay`** — must stay CONDITIONAL: "if this number is a
-  staff account, a code is on its way". The screen deliberately does not
-  reveal whether a number is staff, so a translation that reads as "a code
-  has been sent" would be wrong for every number that is not.
-- **The return page must not say the payment succeeded.** Anyone can open
-  it, so it only sends the driver back to the app, which checks. A
-  translation reading "your payment was received" would be wrong.
-- **Register: DECIDED, polite everywhere.** Please check the converted
-  dashboard strings read naturally, especially the short button labels
-  (ይቃኙ, ያስገቡ, ያስወጡ), where the informal form may be what attendants
-  expect to see on a button.
-- **Driver app, "deposit"** is **ቅድመ ክፍያ** ("advance payment") throughout.
-  If drivers know it by another word, it changes in six places.
-- **Driver app, "overstay"** is **ከተያዘው ጊዜ በላይ** ("beyond the reserved
-  time"). The dashboard's slot label says **ጊዜ አልፏል**; check they read as
-  the same idea.
-- **Times are 24-hour international time in both languages** (e.g. 14:05).
-  The Ethiopian clock counts from 6 a.m., so "8:05" could be read two ways.
-  Whether Amharic screens should show Ethiopian time is a product decision,
-  not a translation one.
-- **`errors.*` in the driver app** are written for a driver, not an
-  attendant; the dashboard has its own `error.*` for staff.
-- Technical terms deliberately left in English: **QR**, **HTTPS**,
-  **localhost**. Confirm that is right rather than transliterating.
-- Verb forms: see "Register" at the top. The informal forms this list
-  used to describe (አስገባ, አስወጣ, ቃኝ) are gone from both apps.
+Every doubt this document raised was answered by the review, which approved
+the strings as drafted. For the record:
+
+- **Register:** polite everywhere, decided by the product owner.
+- **"Deposit"** stays **ቅድመ ክፍያ**.
+- **"Overstay"** is **ጊዜ አልፏል** in both apps (decided; the driver app's
+  changes are awaiting review below).
+- **Clock times** on Amharic screens use the Ethiopian clock (decided; the
+  time-of-day words are awaiting review below).
+- `slot.occupied` / `slot.reserved`, `action.park`, the connection
+  warnings, `action.waitingForServer`, `drawer.plateOptional`,
+  `signIn.codeOnItsWay` (conditional) and the return page (no success
+  claim): approved as drafted.
+- **QR**, **HTTPS** and **localhost** stay in Latin letters.
+
+## Awaiting review (added after Session 2)
+
+24 items, from the product owner's decisions after Session 2.
+
+### Clock times: the Ethiopian clock (4 words)
+
+Every clock time on an Amharic screen, in the driver app and the dashboard,
+reads `{word} {hour}:{mm}` in Addis Ababa time: the Ethiopian 12-hour clock,
+where hour = (international hour + 6) mod 12 and 0 is shown as 12. English
+screens keep 24-hour time. Durations and countdowns (02:45) are unchanged.
+No screen shows a date. The words and their hours are in
+`packages/shared/src/clockDisplay.ts`; every boundary below is tested.
+
+| Word | International | Ethiopian  | Boundaries, as tested                 |
+| ---- | ------------- | ---------- | ------------------------------------- |
+| ሌሊት  | 00:00–05:59   | 6:00–11:59 | 00:00 → ሌሊት 6:00, 05:59 → ሌሊት 11:59   |
+| ጠዋት  | 06:00–11:59   | 12:00–5:59 | 06:00 → ጠዋት 12:00, 11:59 → ጠዋት 5:59   |
+| ከሰዓት | 12:00–17:59   | 6:00–11:59 | 12:00 → ከሰዓት 6:00, 17:59 → ከሰዓት 11:59 |
+| ምሽት  | 18:00–23:59   | 12:00–5:59 | 18:00 → ምሽት 12:00, 23:59 → ምሽት 5:59   |
+
+Your example reads as asked: 14:05 → **ከሰዓት 8:05**. Where they appear: the
+app's Home ("የተዘመነው ጠዋት 2:15:09", with seconds), the bill ("የቆሙበት
+ሰዓት፦ …", "እስከ … ተይዟል"), and the dashboard drawer ("እስከ", "የተያዘው እስከ").
+
+Please confirm, or correct:
+
+- **ምሽት** for 18:00–23:59, or **ማታ**, which may be more usual for late
+  evening (21:00 as ማታ 3:00)? Or ምሽት until about 21:00 and ማታ after?
+- **ከሰዓት** for the whole afternoon, or **ከሰዓት በኋላ**? And noon itself as
+  **ቀን 6:00** rather than ከሰዓት 6:00?
+- **ሌሊት** from midnight to 05:59, including the last hours before dawn?
+
+### "Overstay" as ጊዜ አልፏል in the driver app (3 changed)
+
+The dashboard's slot label already said ጊዜ አልፏል. The app's three sentences
+now use it too; where the term would not read as a plain phrase, the
+sentence around it was adapted.
+
+| Key                | English                                                              | Amharic (approved)                                 | Amharic (now)                            |
+| ------------------ | -------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| `status.OVERSTAY`  | Your booked time is up.                                              | ያስያዙት ጊዜ አልቋል።                                     | ያስያዙት ጊዜ አልፏል።                           |
+| `booking.overstay` | You are over your booked time. Overstay is charged at a higher rate. | ከተያዘልዎ ጊዜ አልፈዋል። ከተያዘው ጊዜ በላይ መቆየት በከፍተኛ ዋጋ ይከፈላል። | ጊዜ አልፏል። ከአሁን በኋላ ያለው ጊዜ በከፍተኛ ዋጋ ይከፈላል። |
+| `lot.overstayRate` | Overstay {{rate}} per {{minutes}} minutes                            | ከተያዘው ጊዜ በላይ፦ {{rate}} በ{{minutes}} ደቂቃ            | «ጊዜ አልፏል» ሲሆን፦ {{rate}} በ{{minutes}} ደቂቃ |
+
+Adapted: `booking.overstay` now reads "Time has passed. The time from now
+on is charged at a higher rate."; `lot.overstayRate` quotes the term as the
+state's name, "when it is «ጊዜ አልፏል»: …". Unchanged: `timer.overBy`,
+**ያለፈው ጊዜ** ("the time that has passed"), the label over the overstay
+timer: the same verb, as a label rather than the state. Say if it should
+change too.
+
+### A sentence adapted for the clock (1 changed)
+
+| Key                   | English              | Amharic (approved) | Amharic (now)       |
+| --------------------- | -------------------- | ------------------ | ------------------- |
+| `checkout.parkedFrom` | Parked from {{time}} | ከ{{time}} ጀምሮ ቆመዋል | የቆሙበት ሰዓት፦ {{time}} |
+
+A time now starts with its word, and ከ + ከሰዓት read "ከከሰዓት 8:05 ጀምሮ". Now
+"the time you parked: ከሰዓት 8:05".
+
+### Dashboard errors (16 new)
+
+The dashboard now has its own text for every error code, as the app does,
+and never shows the server's English. These codes had none; the nine it
+already had are approved above.
+
+| Key                                | English                                                                                        | Amharic                                            |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `error.VALIDATION_ERROR`           | The server could not accept that. Check what you entered and try again.                        | ሰርቨሩ ይህን ሊቀበል አልቻለም። ያስገቡትን አረጋግጠው እንደገና ይሞክሩ።     |
+| `error.OTP_INVALID`                | That code is not correct.                                                                      | ኮዱ ትክክል አይደለም።                                     |
+| `error.OTP_EXPIRED`                | That code has expired. Request a new one.                                                      | ኮዱ ጊዜው አልፎበታል። አዲስ ኮድ ይጠይቁ።                        |
+| `error.LOT_FULL`                   | This lot is full.                                                                              | ይህ ማቆሚያ ሞልቷል።                                      |
+| `error.OUTSTANDING_BALANCE`        | This driver still owes for an earlier booking.                                                 | ይህ ሹፌር ለቀደመ ቦታ ማስያዣ ገና ያልከፈለው ሂሳብ አለ።              |
+| `error.ILLEGAL_TRANSITION`         | That is not possible for this booking now.                                                     | ይህ አሁን ለዚህ ቦታ ማስያዣ አይቻልም።                          |
+| `error.ALREADY_HAS_ACTIVE_BOOKING` | This driver already has an active booking.                                                     | ይህ ሹፌር አስቀድሞ ንቁ የቦታ ማስያዣ አለው።                      |
+| `error.PAYMENT_AMOUNT_MISMATCH`    | That amount does not match what is due.                                                        | ያ መጠን ከሚከፈለው ሂሳብ ጋር አይዛመድም።                        |
+| `error.PAYMENT_NOT_CONFIRMED`      | The payment has not been confirmed yet.                                                        | ክፍያው ገና አልተረጋገጠም።                                  |
+| `error.TOO_FAR`                    | Too far from the lot.                                                                          | ከማቆሚያው በጣም ይርቃል።                                   |
+| `error.RATE_LIMITED`               | Too many attempts. Wait a few minutes and try again.                                           | በጣም ብዙ ሙከራዎች። ጥቂት ደቂቃዎች ቆይተው እንደገና ይሞክሩ።           |
+| `error.OTP_TOO_MANY_ATTEMPTS`      | Too many wrong codes. Request a new code.                                                      | በጣም ብዙ የተሳሳቱ ኮዶች። አዲስ ኮድ ይጠይቁ።                     |
+| `error.INTERNAL`                   | Something went wrong on the server. Try again.                                                 | በሰርቨሩ ላይ ችግር ተፈጥሯል። እንደገና ይሞክሩ።                    |
+| `error.PROVIDER_UNAVAILABLE`       | The payment service could not be reached. Try again in a moment.                               | የክፍያ አገልግሎቱን ማግኘት አልተቻለም። ትንሽ ቆይተው እንደገና ይሞክሩ።     |
+| `error.BAD_RESPONSE`               | The server sent a response this version of the dashboard does not understand. Reload the page. | ሰርቨሩ ይህ የዳሽቦርድ ስሪት የማይረዳውን ምላሽ ልኳል። ገጹን እንደገና ይጫኑ። |
+| `error.UNKNOWN`                    | Something went wrong. Try again.                                                               | ችግር ተፈጥሯል። እንደገና ይሞክሩ።                             |
