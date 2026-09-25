@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ListenError, listen } from '../src/listen.js';
+import { isBadPortError, listenForFetch } from './helpers/listen.js';
 
 /**
  * listen() is the only way the API binds a port (guards.test.ts). These pin
@@ -99,5 +100,33 @@ describe('listen()', () => {
     expect(error.message).toContain('Cannot listen on port 3000');
     expect(error.message).toContain('netsh interface ipv4 show excludedportrange protocol=tcp');
     expect(error.message).toContain('Set PORT');
+  });
+});
+
+describe('ports fetch refuses (test/helpers/listen.ts)', () => {
+  it('fetch refuses a Fetch-standard "bad port" before connecting', async () => {
+    // 6679 is the port the driver realtime test was once handed by port 0.
+    // Nothing needs to listen there: the refusal comes first.
+    const err: unknown = await fetch('http://127.0.0.1:6679/').catch((e: unknown) => e);
+    expect(isBadPortError(err)).toBe(true);
+  });
+
+  it('tells a bad port apart from a port nothing listens on', async () => {
+    const server = track(createServer());
+    const { port } = await listen(server, 0);
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+    const err: unknown = await fetch(`http://127.0.0.1:${String(port)}/`).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TypeError);
+    expect(isBadPortError(err)).toBe(false);
+  });
+
+  it('listenForFetch hands out a port fetch uses', async () => {
+    const server = track(createServer((_req, res) => res.end('ok')));
+    const port = await listenForFetch(server);
+    expect(await (await fetch(`http://127.0.0.1:${String(port)}/`)).text()).toBe('ok');
   });
 });

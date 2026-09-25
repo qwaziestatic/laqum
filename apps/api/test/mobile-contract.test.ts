@@ -12,10 +12,10 @@ import {
 } from '../../mobile/src/booking/deposit.js';
 import { bookingRequest } from '../../mobile/src/booking/request.js';
 import { bookingView } from '../../mobile/src/booking/view.js';
-import { listen } from '../src/listen.js';
 import { makeActor, staffLot } from './helpers/auth.js';
 import { createTestContext, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
+import { listenForFetch } from './helpers/listen.js';
 import { createLot } from './helpers/fixtures.js';
 
 /**
@@ -44,7 +44,7 @@ beforeAll(async () => {
   await migrateFresh();
   t = await createTestContext();
   server = createServer(t.app);
-  const { port } = await listen(server, 0);
+  const port = await listenForFetch(server);
   baseUrl = `http://127.0.0.1:${String(port)}/v1`;
 }, 60_000);
 

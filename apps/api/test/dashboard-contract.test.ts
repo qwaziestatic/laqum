@@ -1,9 +1,9 @@
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ApiClient } from '../../dashboard/src/api/client.js';
-import { listen } from '../src/listen.js';
 import { clearRateLimits, createTestContext, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
+import { listenForFetch } from './helpers/listen.js';
 import { createLot, createUser } from './helpers/fixtures.js';
 
 /**
@@ -21,7 +21,7 @@ let baseUrl: string;
 
 async function serve(context: TestContext): Promise<{ server: Server; baseUrl: string }> {
   const s = createServer(context.app);
-  const { port } = await listen(s, 0);
+  const port = await listenForFetch(s);
   return { server: s, baseUrl: `http://127.0.0.1:${String(port)}/v1` };
 }
 
