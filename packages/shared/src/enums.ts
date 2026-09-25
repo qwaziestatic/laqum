@@ -11,6 +11,20 @@ export const USER_ROLES = ['driver', 'attendant', 'operator_admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 export const userRoleSchema = z.enum(USER_ROLES);
 
+/**
+ * The roles that may use the attendant dashboard. One definition: the staff
+ * routes require these, and the OTP "staff" audience admits only these, so
+ * the two cannot disagree about who is staff.
+ */
+export const STAFF_ROLES = ['attendant', 'operator_admin'] as const satisfies readonly UserRole[];
+export type StaffRole = (typeof STAFF_ROLES)[number];
+
+const STAFF_ROLE_SET: ReadonlySet<UserRole> = new Set<UserRole>(STAFF_ROLES);
+
+export function isStaffRole(role: UserRole): role is StaffRole {
+  return STAFF_ROLE_SET.has(role);
+}
+
 export const BOOKING_SOURCES = ['app', 'walk_in'] as const;
 export type BookingSource = (typeof BOOKING_SOURCES)[number];
 export const bookingSourceSchema = z.enum(BOOKING_SOURCES);

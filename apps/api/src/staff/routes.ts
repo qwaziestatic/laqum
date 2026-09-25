@@ -1,4 +1,5 @@
 import {
+  STAFF_ROLES,
   cashPaymentSchema,
   checkInSchema,
   slotServiceSchema,
@@ -28,7 +29,8 @@ import {
 
 export function staffRouter(ctx: AppContext): Router {
   const router = Router();
-  router.use(requireAuth(ctx), requireRole('attendant', 'operator_admin'));
+  // STAFF_ROLES is also what the OTP staff audience admits: one definition.
+  router.use(requireAuth(ctx), requireRole(...STAFF_ROLES));
 
   router.get(
     '/lots',

@@ -95,6 +95,19 @@ describe('POST /v1/auth/dev-login', () => {
     expect(res.status).toBe(404);
   });
 
+  it('answers the dashboard probe only when dev auth is on', async () => {
+    // The dashboard offers dev sign-in only when GET answers 204. Off, the
+    // probe 404s exactly like a path that was never there.
+    const off = await request(disabled.app).get('/v1/auth/dev-login');
+    expect(off.status).toBe(404);
+    // The generic unknown-route answer, not a "disabled" reply.
+    expect(off.body).toEqual({
+      error: { code: 'NOT_FOUND', message: 'No route for GET /v1/auth/dev-login' },
+    });
+
+    expect((await request(enabled.app).get('/v1/auth/dev-login')).status).toBe(204);
+  });
+
   it('signs in a seeded user when dev auth is on', async () => {
     const userId = await createUser(enabled.db.db, 'attendant', '+251911000001');
 

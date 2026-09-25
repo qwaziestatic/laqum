@@ -1,4 +1,11 @@
-import { devLoginSchema, otpRequestSchema, otpVerifySchema, refreshSchema } from '@laqum/shared';
+import {
+  type OtpRequest,
+  type OtpVerify,
+  devLoginSchema,
+  otpRequestSchema,
+  otpVerifySchema,
+  refreshSchema,
+} from '@laqum/shared';
 import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { handle, validateBody } from '../middleware/validate.js';
@@ -36,11 +43,12 @@ export function authRouter(ctx: AppContext): Router {
     '/otp/request',
     validateBody(otpRequestSchema),
     handle(async (req, res) => {
-      const { phone } = req.body as { phone: string };
-      const { expiresAt } = await requestOtp(deps, { phone, ip: req.ip ?? 'unknown' });
+      const { phone, audience } = req.body as OtpRequest;
+      const { expiresAt } = await requestOtp(deps, { phone, audience, ip: req.ip ?? 'unknown' });
 
       // 202: the code has been dispatched, not that it has arrived. The
-      // response never says whether the number is registered.
+      // response never says whether the number is registered — nor, for the
+      // staff audience, whether it is staff (see OTP_AUDIENCES).
       res.status(202).json({ expiresAt: expiresAt.toISOString() });
     }),
   );
@@ -49,8 +57,8 @@ export function authRouter(ctx: AppContext): Router {
     '/otp/verify',
     validateBody(otpVerifySchema),
     handle(async (req, res) => {
-      const { phone, code } = req.body as { phone: string; code: string };
-      const session = await verifyOtpAndSignIn(deps, { phone, code });
+      const { phone, code, audience } = req.body as OtpVerify;
+      const session = await verifyOtpAndSignIn(deps, { phone, code, audience });
       res.status(200).json(toSessionResponse(session));
     }),
   );
@@ -93,6 +101,13 @@ export function authRouter(ctx: AppContext): Router {
     ctx.logger.warn(
       'DEV_AUTH is enabled: POST /v1/auth/dev-login signs in any seeded user without an OTP',
     );
+
+    // A probe the dashboard uses to decide whether to OFFER dev sign-in.
+    // Registered only here, so with DEV_AUTH off it 404s like any unknown
+    // path and the dashboard shows the OTP sign-in alone.
+    router.get('/dev-login', (_req, res) => {
+      res.status(204).end();
+    });
 
     router.post(
       '/dev-login',

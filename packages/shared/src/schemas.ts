@@ -21,8 +21,23 @@ export const longitudeSchema = z.coerce.number().min(-180).max(180);
 
 // ─── Auth ─────────────────────────────────────────────────────────────────
 
+/**
+ * Who a code is for.
+ *
+ * Absent (or 'driver'): the app. A first sign-in creates a driver account.
+ *
+ * 'staff': the attendant dashboard. Only a number whose account holds a
+ * STAFF_ROLES role gets an SMS or a session; for any other number no code is
+ * sent, no account is created, and every response is exactly what a staff
+ * number would get — so the dashboard's sign-in cannot be used to discover
+ * who is staff, or to create accounts by mistyping.
+ */
+export const OTP_AUDIENCES = ['driver', 'staff'] as const;
+export type OtpAudience = (typeof OTP_AUDIENCES)[number];
+
 export const otpRequestSchema = z.object({
   phone: phoneSchema,
+  audience: z.enum(OTP_AUDIENCES).optional(),
 });
 export type OtpRequest = z.infer<typeof otpRequestSchema>;
 export type OtpRequestInput = z.input<typeof otpRequestSchema>;
@@ -45,6 +60,7 @@ export const otpVerifySchema = z.object({
     .string()
     .trim()
     .regex(/^\d{6}$/u, 'must be six digits'),
+  audience: z.enum(OTP_AUDIENCES).optional(),
 });
 export type OtpVerify = z.infer<typeof otpVerifySchema>;
 export type OtpVerifyInput = z.input<typeof otpVerifySchema>;

@@ -1,5 +1,12 @@
 import type { Database } from '@laqum/db';
-import { AppError, type Clock, type UserRole, addMinutes } from '@laqum/shared';
+import {
+  AppError,
+  type Clock,
+  type OtpAudience,
+  type UserRole,
+  addMinutes,
+  isStaffRole,
+} from '@laqum/shared';
 import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import type { Config } from '../config.js';
@@ -36,7 +43,7 @@ export interface Session extends TokenPair {
  */
 export async function requestOtp(
   deps: AuthDeps,
-  input: { phone: string; ip: string },
+  input: { phone: string; ip: string; audience?: OtpAudience | undefined },
 ): Promise<{ expiresAt: Date }> {
   const window = deps.config.OTP_RATE_LIMIT_WINDOW_MINUTES;
 
@@ -65,12 +72,23 @@ export async function requestOtp(
   const now = deps.clock.now();
   const code = generateOtp();
   const expiresAt = addMinutes(now, deps.config.OTP_TTL_MINUTES);
+  // Hashed for EVERY request, including a staff-mode request that sends
+  // nothing: scrypt is deliberately slow, and skipping it would make those
+  // answers measurably faster, i.e. tell a staff number from any other.
+  const codeHash = await hashOtp(code);
+
+  if (input.audience === 'staff' && !isStaffUser(await findUser(deps, input.phone))) {
+    // No code, no SMS, no account — and the same answer a staff number gets.
+    // Not logged with the phone: that would be a list of probed numbers.
+    deps.logger.info('staff OTP requested for a number that is not staff: nothing sent');
+    return { expiresAt };
+  }
 
   await deps.db
     .insertInto('otp_codes')
     .values({
       phone: input.phone,
-      code_hash: await hashOtp(code),
+      code_hash: codeHash,
       expires_at: expiresAt,
       // Explicit, not the column default: otp_codes are ordered by created_at
       // and the fake clock must drive that ordering.
@@ -84,16 +102,68 @@ export async function requestOtp(
 }
 
 /**
- * Verify an OTP and start a session.
+ * Verify an OTP and start a session. See OTP_AUDIENCES for the two audiences.
+ */
+export async function verifyOtpAndSignIn(
+  deps: AuthDeps,
+  input: { phone: string; code: string; audience?: OtpAudience | undefined },
+): Promise<Session> {
+  if (input.audience === 'staff') return verifyStaffAndSignIn(deps, input);
+
+  await consumeCode(deps, input);
+  return signIn(deps, await findOrCreateUser(deps, input.phone));
+}
+
+/**
+ * The dashboard's sign-in: staff accounts only, and nothing learnable.
+ *
+ * A number that is not staff gets no session and no account, and EVERY
+ * failure, staff or not, is one answer with no details. Otherwise a wrong
+ * code would say "not correct, 4 attempts left" for a staff number and "no
+ * code was requested" for anyone else, which is exactly the directory of
+ * staff numbers this mode exists to withhold.
+ */
+async function verifyStaffAndSignIn(
+  deps: AuthDeps,
+  input: { phone: string; code: string },
+): Promise<Session> {
+  const user = await findUser(deps, input.phone);
+  if (!isStaffUser(user)) {
+    // The same scrypt work a real comparison costs, so the refusal is not
+    // measurably faster. The number's own codes (a driver's, from the app)
+    // are not touched: no attempt is burned on them.
+    await verifyOtp(input.code, await dummyHash());
+    throw staffSignInFailed();
+  }
+  try {
+    await consumeCode(deps, input);
+  } catch (err) {
+    if (err instanceof AppError && err.code.startsWith('OTP_')) throw staffSignInFailed();
+    throw err;
+  }
+  return signIn(deps, user);
+}
+
+function staffSignInFailed(): AppError {
+  return new AppError('OTP_INVALID', 'That code is not correct or has expired. Request a new one.');
+}
+
+let dummyHashPromise: Promise<string> | null = null;
+
+/** A hash to compare against when there is no real code: see verifyStaffAndSignIn. */
+function dummyHash(): Promise<string> {
+  dummyHashPromise ??= hashOtp('000000');
+  return dummyHashPromise;
+}
+
+/**
+ * Check a code and consume it, or throw the reason it cannot be used.
  *
  * Only the most recent unconsumed code for the phone is considered: requesting
  * a new code must invalidate the previous one, or a leaked older code stays
  * usable for its whole five minutes.
  */
-export async function verifyOtpAndSignIn(
-  deps: AuthDeps,
-  input: { phone: string; code: string },
-): Promise<Session> {
+async function consumeCode(deps: AuthDeps, input: { phone: string; code: string }): Promise<void> {
   const now = deps.clock.now();
 
   const record = await deps.db
@@ -134,12 +204,12 @@ export async function verifyOtpAndSignIn(
     .set({ consumed_at: now })
     .where('id', '=', record.id)
     .execute();
+}
 
-  const user = await findOrCreateUser(deps, input.phone);
-
+async function signIn(deps: AuthDeps, user: SessionUser): Promise<Session> {
   // A successful sign-in should not leave the caller rate limited.
   await deps.rateLimiter.reset(
-    `otp:phone:${input.phone}`,
+    `otp:phone:${user.phone}`,
     deps.config.OTP_RATE_LIMIT_WINDOW_MINUTES,
   );
 
@@ -151,22 +221,23 @@ export async function verifyOtpAndSignIn(
   return { ...tokens, user };
 }
 
-/** First sign-in creates the account. Staff roles are assigned by an admin. */
-async function findOrCreateUser(deps: AuthDeps, phone: string): Promise<SessionUser> {
-  const existing = await deps.db
+async function findUser(deps: AuthDeps, phone: string): Promise<SessionUser | null> {
+  const row = await deps.db
     .selectFrom('users')
     .select(['id', 'phone', 'role', 'full_name'])
     .where('phone', '=', phone)
     .executeTakeFirst();
+  return row ? { id: row.id, phone: row.phone, role: row.role, fullName: row.full_name } : null;
+}
 
-  if (existing) {
-    return {
-      id: existing.id,
-      phone: existing.phone,
-      role: existing.role,
-      fullName: existing.full_name,
-    };
-  }
+function isStaffUser(user: SessionUser | null): user is SessionUser {
+  return user !== null && isStaffRole(user.role);
+}
+
+/** First sign-in creates the account. Staff roles are assigned by an admin. */
+async function findOrCreateUser(deps: AuthDeps, phone: string): Promise<SessionUser> {
+  const existing = await findUser(deps, phone);
+  if (existing) return existing;
 
   const created = await deps.db
     .insertInto('users')
