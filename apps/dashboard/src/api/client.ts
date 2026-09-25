@@ -259,7 +259,10 @@ export class ApiClient {
     );
   }
 
-  async setSlotService(slotId: string, inService: boolean): Promise<ApiResult<SlotServiceResponse>> {
+  async setSlotService(
+    slotId: string,
+    inService: boolean,
+  ): Promise<ApiResult<SlotServiceResponse>> {
     const body: SlotServiceInput = { inService };
     return parsed(
       await this.request(`/staff/slots/${slotId}`, { method: 'PATCH', body: JSON.stringify(body) }),
