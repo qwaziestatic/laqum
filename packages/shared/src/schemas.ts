@@ -330,6 +330,74 @@ export const slotServiceSchema = z.object({
 });
 export type SlotServiceRequest = z.infer<typeof slotServiceSchema>;
 
+/** What the dashboard builds its request bodies as (defaults still optional). */
+export type WalkInInput = z.input<typeof walkInSchema>;
+export type CheckInInput = z.input<typeof checkInSchema>;
+export type CashPaymentInput = z.input<typeof cashPaymentSchema>;
+export type SlotServiceInput = z.input<typeof slotServiceSchema>;
+
+/**
+ * The staff responses, as sent. The dashboard parses every one with these
+ * (apps/dashboard/src/api/client.ts), and the API's routes are typed
+ * against them, so the two cannot drift: the dashboard had described the
+ * check-out bill with fields the API never sent.
+ */
+
+/** The attendant's view of a booking: the owner's, without the QR token. */
+export const staffBookingSchema = bookingSchema.omit({ qrToken: true });
+export type StaffBooking = z.infer<typeof staffBookingSchema>;
+
+/** POST /staff/lots/:id/walk-ins (201), POST /staff/check-in, POST /staff/bookings/:id/cash */
+export const staffBookingResponseSchema = z.object({ booking: staffBookingSchema });
+export type StaffBookingResponse = z.infer<typeof staffBookingResponseSchema>;
+
+/**
+ * GET /staff/lots. In snake_case, unlike every other response: it is sent
+ * straight from the lots row. Described as sent, not as intended.
+ */
+export const staffedLotSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  address: z.string().nullable(),
+  block_minutes: z.int().positive(),
+  rate_per_block_santim: santim,
+  overstay_rate_per_block_santim: santim,
+  deposit_amount_santim: santim,
+});
+export type StaffedLot = z.infer<typeof staffedLotSchema>;
+export const staffedLotsResponseSchema = z.object({ lots: z.array(staffedLotSchema) });
+export type StaffedLotsResponse = z.infer<typeof staffedLotsResponseSchema>;
+
+/** One line of computeBill's breakdown (billing.ts). */
+export const billLineSchema = z.object({
+  kind: z.enum(['planned', 'overstay', 'walk_in', 'deposit_credit']),
+  minutes: z.int().nonnegative(),
+  blocks: z.int().nonnegative(),
+  unitSantim: santim,
+  /** Signed: the deposit credit is negative. */
+  amountSantim: z.int(),
+});
+export const billBreakdownSchema = z.object({
+  lines: z.array(billLineSchema),
+  subtotalSantim: santim,
+  depositCreditSantim: santim,
+  depositUnusedSantim: santim,
+  amountDueSantim: santim,
+});
+
+/** POST /staff/bookings/:id/check-out */
+export const checkOutResponseSchema = z.object({
+  booking: staffBookingSchema,
+  bill: billBreakdownSchema,
+  /** True when nothing was due and the booking went straight to PAID. */
+  settled: z.boolean(),
+});
+export type CheckOutResponse = z.infer<typeof checkOutResponseSchema>;
+
+/** PATCH /staff/slots/:id */
+export const slotServiceResponseSchema = z.object({ slotId: uuidSchema, inService: z.boolean() });
+export type SlotServiceResponse = z.infer<typeof slotServiceResponseSchema>;
+
 // ─── Admin ────────────────────────────────────────────────────────────────
 
 export const createLotSchema = z.object({

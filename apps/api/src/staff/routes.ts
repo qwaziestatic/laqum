@@ -1,5 +1,10 @@
 import {
+  type CheckOutResponse,
   STAFF_ROLES,
+  type SlotServiceResponse,
+  type StaffBookingResponse,
+  type StaffedLotsResponse,
+  type StaffSnapshot,
   cashPaymentSchema,
   checkInSchema,
   slotServiceSchema,
@@ -36,7 +41,7 @@ export function staffRouter(ctx: AppContext): Router {
     '/lots',
     handle(async (_req, res) => {
       const user = currentUser(res);
-      res.json({ lots: await listStaffedLots(ctx, user.userId) });
+      res.json({ lots: await listStaffedLots(ctx, user.userId) } satisfies StaffedLotsResponse);
     }),
   );
 
@@ -45,7 +50,7 @@ export function staffRouter(ctx: AppContext): Router {
     requireLotStaff(ctx, 'id'),
     handle(async (req, res) => {
       const lotId = uuidSchema.parse(req.params['id']);
-      res.json(await listLotSlots(ctx, lotId));
+      res.json((await listLotSlots(ctx, lotId)) satisfies StaffSnapshot);
     }),
   );
 
@@ -62,7 +67,7 @@ export function staffRouter(ctx: AppContext): Router {
         slotId: body.slotId,
         vehiclePlate: body.vehiclePlate ?? null,
       });
-      res.status(201).json({ booking: toStaffBookingDto(booking) });
+      res.status(201).json({ booking: toStaffBookingDto(booking) } satisfies StaffBookingResponse);
     }),
   );
 
@@ -73,7 +78,7 @@ export function staffRouter(ctx: AppContext): Router {
       const user = currentUser(res);
       const { code } = req.body as { code: string };
       const booking = await checkIn(ctx, user.userId, code);
-      res.json({ booking: toStaffBookingDto(booking) });
+      res.json({ booking: toStaffBookingDto(booking) } satisfies StaffBookingResponse);
     }),
   );
 
@@ -89,7 +94,7 @@ export function staffRouter(ctx: AppContext): Router {
         booking: toStaffBookingDto(result.booking),
         bill: result.bill,
         settled: result.settled,
-      });
+      } satisfies CheckOutResponse);
     }),
   );
 
@@ -108,7 +113,7 @@ export function staffRouter(ctx: AppContext): Router {
       const booking = await recordCash(ctx, user.userId, bookingId, amountSantim, {
         overridePending,
       });
-      res.json({ booking: toStaffBookingDto(booking) });
+      res.json({ booking: toStaffBookingDto(booking) } satisfies StaffBookingResponse);
     }),
   );
 
@@ -136,7 +141,7 @@ export function staffRouter(ctx: AppContext): Router {
       }
 
       const { inService } = req.body as { inService: boolean };
-      res.json(await setSlotService(ctx, slotId, inService));
+      res.json((await setSlotService(ctx, slotId, inService)) satisfies SlotServiceResponse);
     }),
   );
 

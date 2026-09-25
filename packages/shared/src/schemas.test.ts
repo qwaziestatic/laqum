@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { z } from 'zod';
+import { type BillBreakdown, computeBill } from './billing.js';
 import {
+  billBreakdownSchema,
   createLotSchema,
   looksLikeShortCode,
   lotSummarySchema,
@@ -141,5 +144,29 @@ describe('lot response schemas', () => {
     expect(
       nearbyLotSchema.safeParse({ ...lot, distanceM: 0, withinBookingRange: true }).success,
     ).toBe(true);
+  });
+});
+
+describe('the bill schema describes computeBill exactly', () => {
+  it('matches BillBreakdown in both directions, at compile time', () => {
+    // A field added to one and not the other fails to compile here.
+    const fromSchema = (value: z.infer<typeof billBreakdownSchema>): BillBreakdown => value;
+    const toSchema = (value: BillBreakdown): z.infer<typeof billBreakdownSchema> => value;
+    expect([fromSchema, toSchema]).toHaveLength(2);
+  });
+
+  it('parses a real bill, deposit credit included', () => {
+    const bill = computeBill(
+      {
+        source: 'app',
+        planned_minutes: 60,
+        checked_in_at: new Date('2026-03-01T08:00:00Z'),
+        planned_end_at: new Date('2026-03-01T09:00:00Z'),
+        deposit_paid_santim: 2000,
+      },
+      { block_minutes: 30, rate_per_block_santim: 2000, overstay_rate_per_block_santim: 4000 },
+      new Date('2026-03-01T09:00:00Z'),
+    );
+    expect(billBreakdownSchema.parse(bill)).toEqual(bill);
   });
 });

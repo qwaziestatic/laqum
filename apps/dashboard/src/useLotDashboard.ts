@@ -110,6 +110,10 @@ export function useLotDashboard(api: ApiClient, lotId: string | null): LotDashbo
       setError(null);
       setConflictNote(null);
 
+      // A check-out returns the bill: what is due, so the cash button appears
+      // without a second round trip. Read where the response is still typed.
+      let billed: number | null | undefined;
+
       const result = await (async () => {
         switch (kind) {
           case 'park':
@@ -117,10 +121,16 @@ export function useLotDashboard(api: ApiClient, lotId: string | null): LotDashbo
               slotId: selected.slotId,
               ...(input.vehiclePlate ? { vehiclePlate: input.vehiclePlate } : {}),
             });
-          case 'checkOut':
-            return selected.bookingId
-              ? api.checkOut(selected.bookingId)
-              : ({ ok: false, error: { code: 'NOT_FOUND', message: 'No booking' } } as const);
+          case 'checkOut': {
+            if (!selected.bookingId) {
+              return { ok: false, error: { code: 'NOT_FOUND', message: 'No booking' } } as const;
+            }
+            const outcome = await api.checkOut(selected.bookingId);
+            if (outcome.ok) {
+              billed = outcome.data.settled ? null : outcome.data.bill.amountDueSantim;
+            }
+            return outcome;
+          }
           case 'cash':
             return selected.bookingId && amountDueSantim !== null
               ? api.recordCash(selected.bookingId, amountDueSantim)
@@ -144,12 +154,7 @@ export function useLotDashboard(api: ApiClient, lotId: string | null): LotDashbo
         return;
       }
 
-      // A checkout returns the bill; surface the amount so the cash button
-      // appears without a second round trip.
-      if (kind === 'checkOut') {
-        const data = result.data as { bill?: { amountDueSantim: number }; settled?: boolean };
-        setAmountDue(data.settled ? null : (data.bill?.amountDueSantim ?? null));
-      }
+      if (billed !== undefined) setAmountDue(billed);
       if (kind === 'cash') setAmountDue(null);
 
       /*
