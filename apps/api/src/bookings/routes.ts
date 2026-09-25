@@ -93,6 +93,7 @@ export function bookingsRouter(ctx: AppContext): Router {
       res.json({
         booking: booking ? toBookingDto(booking) : null,
         paymentNotice: booking ? await paymentNoticeFor(ctx, booking.id) : null,
+        lotVersion: booking?.lot_version ?? null,
       } satisfies CurrentBookingResponse);
     }),
   );
@@ -106,6 +107,7 @@ export function bookingsRouter(ctx: AppContext): Router {
       res.json({
         booking: toBookingDto(booking),
         paymentNotice: await paymentNoticeFor(ctx, booking.id),
+        lotVersion: booking.lot_version,
       } satisfies BookingResponse);
     }),
   );
@@ -176,6 +178,7 @@ export function bookingsRouter(ctx: AppContext): Router {
       res.json({
         booking: toBookingDto(current),
         paymentNotice: await paymentNoticeFor(ctx, id),
+        lotVersion: current.lot_version,
       } satisfies BookingResponse);
     }),
   );

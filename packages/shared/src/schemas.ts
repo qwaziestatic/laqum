@@ -227,10 +227,18 @@ export const createBookingResponseSchema = z.object({
 });
 export type CreateBookingResponse = z.infer<typeof createBookingResponseSchema>;
 
-/** GET /v1/bookings/:id */
+/**
+ * The lot version a driver's booking was read at. The app applies a
+ * booking.updated event only when its lotVersion is higher (realtime.ts has
+ * the rule); the row and this version come from one statement.
+ */
+const bookingLotVersion = z.int().nonnegative();
+
+/** GET /v1/bookings/:id, and POST /v1/bookings/:id/deposit/verify */
 export const bookingResponseSchema = z.object({
   booking: bookingSchema,
   paymentNotice: paymentNoticeSchema,
+  lotVersion: bookingLotVersion,
 });
 export type BookingResponse = z.infer<typeof bookingResponseSchema>;
 
@@ -238,6 +246,8 @@ export type BookingResponse = z.infer<typeof bookingResponseSchema>;
 export const currentBookingResponseSchema = z.object({
   booking: bookingSchema.nullable(),
   paymentNotice: paymentNoticeSchema,
+  /** Null exactly when booking is. */
+  lotVersion: bookingLotVersion.nullable(),
 });
 export type CurrentBookingResponse = z.infer<typeof currentBookingResponseSchema>;
 

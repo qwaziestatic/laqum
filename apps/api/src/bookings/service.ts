@@ -12,16 +12,39 @@ import { transitionOrThrow } from './transition.js';
  * booking, and an unknown id is indistinguishable from someone else's.
  */
 
+/**
+ * A booking, with the lot version it was read at.
+ *
+ * The driver app orders realtime events against this, exactly as the
+ * dashboard orders slot events against its snapshot: an event applies only
+ * when its lotVersion is higher.
+ */
+export type VersionedBooking = BookingRow & { lot_version: number };
+
+/**
+ * ONE statement, so ONE snapshot: the version and the row cannot disagree at
+ * all. That is stronger than the slot snapshot's "version first, then rows",
+ * which needs two reads and settles for erring in the idempotent direction.
+ * Every write to a booking (create.ts, transition(), extendBooking) bumps its
+ * lot's version in the same transaction, so a statement sees the change and
+ * its version together, or neither.
+ */
+function versionedBookings(ctx: AppContext) {
+  return ctx.db
+    .selectFrom('bookings')
+    .innerJoin('lots', 'lots.id', 'bookings.lot_id')
+    .selectAll('bookings')
+    .select('lots.version as lot_version');
+}
+
 async function ownedBooking(
   ctx: AppContext,
   userId: string,
   bookingId: string,
-): Promise<BookingRow> {
-  const booking = await ctx.db
-    .selectFrom('bookings')
-    .selectAll()
-    .where('id', '=', bookingId)
-    .where('user_id', '=', userId)
+): Promise<VersionedBooking> {
+  const booking = await versionedBookings(ctx)
+    .where('bookings.id', '=', bookingId)
+    .where('bookings.user_id', '=', userId)
     .executeTakeFirst();
 
   if (!booking) throw new AppError('NOT_FOUND', 'No such booking');
@@ -36,22 +59,21 @@ export { ownedBooking };
  * A live booking first; otherwise an unpaid CHECKED_OUT one, because that is
  * what blocks them from booking again and is the thing they must act on.
  */
-export async function currentBooking(ctx: AppContext, userId: string): Promise<BookingRow | null> {
-  const live = await ctx.db
-    .selectFrom('bookings')
-    .selectAll()
-    .where('user_id', '=', userId)
-    .where('status', 'in', [...LIVE_STATUSES])
+export async function currentBooking(
+  ctx: AppContext,
+  userId: string,
+): Promise<VersionedBooking | null> {
+  const live = await versionedBookings(ctx)
+    .where('bookings.user_id', '=', userId)
+    .where('bookings.status', 'in', [...LIVE_STATUSES])
     .executeTakeFirst();
 
   if (live) return live;
 
-  const unpaid = await ctx.db
-    .selectFrom('bookings')
-    .selectAll()
-    .where('user_id', '=', userId)
-    .where('status', '=', 'CHECKED_OUT')
-    .orderBy('updated_at', 'desc')
+  const unpaid = await versionedBookings(ctx)
+    .where('bookings.user_id', '=', userId)
+    .where('bookings.status', '=', 'CHECKED_OUT')
+    .orderBy('bookings.updated_at', 'desc')
     .executeTakeFirst();
 
   return unpaid ?? null;
