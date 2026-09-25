@@ -9,7 +9,9 @@ import { errorPhrase } from '../../src/api/messages.js';
 import {
   DEPOSIT_NOT_STARTED,
   DEPOSIT_NOT_STARTED_PARAM,
+  type DepositNotice,
   depositAttempt,
+  depositNoticeAfter,
 } from '../../src/booking/deposit.js';
 import { bookingView } from '../../src/booking/view.js';
 import { type Phrase, verbatim } from '../../src/i18n/core.js';
@@ -56,8 +58,9 @@ export default function BookingScreen(): React.JSX.Element {
   const error = actionError ?? (loadError ? errorPhrase(loadError) : null);
   const [busy, setBusy] = useState(false);
   const [coordinates, setCoordinates] = useState<string | null>(null);
-  // Set by the Book screen when the deposit could not start.
-  const [depositNotice, setDepositNotice] = useState<Phrase | null>(
+  // ONE deposit notice: "not started" from the Book screen, replaced by a
+  // retry's outcome, never stacked under it (src/booking/deposit.ts).
+  const [depositNotice, setDepositNotice] = useState<DepositNotice | null>(
     deposit === DEPOSIT_NOT_STARTED_PARAM ? DEPOSIT_NOT_STARTED : null,
   );
   const [tick, setTick] = useState(0);
@@ -148,7 +151,11 @@ export default function BookingScreen(): React.JSX.Element {
       ) : null}
 
       {view.actions.payDeposit && depositNotice ? (
-        <Notice tone="error" testID="deposit-not-started" message={t.phrase(depositNotice)} />
+        <Notice
+          tone={depositNotice.tone}
+          testID="deposit-notice"
+          message={t.phrase(depositNotice.message)}
+        />
       ) : null}
 
       {view.actions.payDeposit ? (
@@ -166,13 +173,12 @@ export default function BookingScreen(): React.JSX.Element {
             void api.payDeposit(booking.id).then(async (result) => {
               setBusy(false);
               const attempt = depositAttempt(result);
-              if (attempt.kind === 'error') {
-                setError(attempt.message);
-                return;
-              }
+              // The outcome REPLACES the deposit notice; it never goes in the
+              // screen's general error box, which is how two boxes stacked.
+              setDepositNotice((current) => depositNoticeAfter(current, attempt));
+              if (attempt.kind === 'notice') return;
               setError(null);
               if (attempt.kind === 'open') {
-                setDepositNotice(null);
                 // Android resolves as the browser OPENS, iOS as it closes; the
                 // foreground refetch covers the return on both.
                 await WebBrowser.openBrowserAsync(attempt.checkoutUrl);

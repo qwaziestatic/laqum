@@ -285,8 +285,8 @@ describe('the deposit, as the app drives it', () => {
 
     // Still down: the retry reads as a payment-service problem, not a crash.
     expect(depositAttempt(await app.api.payDeposit(created.booking.id))).toEqual({
-      kind: 'error',
-      message: DEPOSIT_UNAVAILABLE,
+      kind: 'notice',
+      notice: DEPOSIT_UNAVAILABLE,
     });
     // The return check still answers: nothing was initialized, so it has
     // nothing to ask the provider.

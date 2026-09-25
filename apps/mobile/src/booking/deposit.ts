@@ -12,11 +12,32 @@ import { type Phrase, phrase } from '../i18n/core.js';
  * the driver retries with "Pay deposit" before the payment window lapses.
  */
 
-/** Booked, but the deposit did not start. Shown on arrival at the booking screen. */
-export const DEPOSIT_NOT_STARTED: Phrase = phrase('deposit.notStarted');
+/**
+ * THE deposit notice: one slot on the booking screen, never two.
+ *
+ * Session 2 on the phone showed two red boxes saying nearly the same thing
+ * after a failed retry: "not started" from arrival, and the retry's failure
+ * under it. A retry's outcome now REPLACES the notice (depositNoticeAfter).
+ * The tone says whether the slot is still held: a WARNING when it is (the
+ * deposit has not started, or the payment service is still down), an ERROR
+ * for anything else.
+ */
+export interface DepositNotice {
+  message: Phrase;
+  tone: 'warn' | 'error';
+}
 
-/** "Pay deposit" failed to reach the payment service. */
-export const DEPOSIT_UNAVAILABLE: Phrase = phrase('deposit.unavailable');
+/** Booked, but the deposit did not start. Shown on arrival: the slot is still held. */
+export const DEPOSIT_NOT_STARTED: DepositNotice = {
+  message: phrase('deposit.notStarted'),
+  tone: 'warn',
+};
+
+/** "Pay deposit" failed to reach the payment service. The slot is still held. */
+export const DEPOSIT_UNAVAILABLE: DepositNotice = {
+  message: phrase('deposit.unavailable'),
+  tone: 'warn',
+};
 
 /** The query flag the Book screen sets when the deposit did not start. */
 export const DEPOSIT_NOT_STARTED_PARAM = 'unavailable' as const;
@@ -49,7 +70,8 @@ export type DepositAttempt =
   | { kind: 'open'; checkoutUrl: string }
   /** The booking moved on (paid meanwhile, or expired): refetch, no error. */
   | { kind: 'refresh' }
-  | { kind: 'error'; message: Phrase };
+  /** It failed: this notice replaces whatever was showing. */
+  | { kind: 'notice'; notice: DepositNotice };
 
 /** What a tap on "Pay deposit" leads to. */
 export function depositAttempt(result: ApiResult<PayDepositResponse>): DepositAttempt {
@@ -62,10 +84,22 @@ export function depositAttempt(result: ApiResult<PayDepositResponse>): DepositAt
     case 'STATE_CONFLICT':
       return { kind: 'refresh' };
     case 'PROVIDER_UNAVAILABLE':
-      return { kind: 'error', message: DEPOSIT_UNAVAILABLE };
+      return { kind: 'notice', notice: DEPOSIT_UNAVAILABLE };
     default:
-      return { kind: 'error', message: errorPhrase(result.error) };
+      return { kind: 'notice', notice: { message: errorPhrase(result.error), tone: 'error' } };
   }
+}
+
+/**
+ * The deposit notice after a tap on "Pay deposit": the attempt's REPLACES the
+ * one showing, and a checkout that opens, or a booking that moved on, clears
+ * it. Never both.
+ */
+export function depositNoticeAfter(
+  _current: DepositNotice | null,
+  attempt: DepositAttempt,
+): DepositNotice | null {
+  return attempt.kind === 'notice' ? attempt.notice : null;
 }
 
 /**

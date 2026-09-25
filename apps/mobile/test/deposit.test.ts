@@ -1,9 +1,11 @@
 import { BOOKING_STATUSES, type Booking, type CreateBookingResponse } from '@laqum/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  DEPOSIT_NOT_STARTED,
   DEPOSIT_UNAVAILABLE,
   afterBooking,
   depositAttempt,
+  depositNoticeAfter,
   verifiesDeposit,
 } from '../src/booking/deposit.js';
 
@@ -75,13 +77,50 @@ describe('a tap on Pay deposit', () => {
         ok: false,
         error: { code: 'PROVIDER_UNAVAILABLE', message: 'Could not reach the payment provider' },
       }),
-    ).toEqual({ kind: 'error', message: DEPOSIT_UNAVAILABLE });
+    ).toEqual({ kind: 'notice', notice: DEPOSIT_UNAVAILABLE });
   });
 
   it('words anything else by its error code, never the client or API message', () => {
     expect(
       depositAttempt({ ok: false, error: { code: 'NETWORK', message: 'No connection' } }),
-    ).toEqual({ kind: 'error', message: { key: 'errors.NETWORK' } });
+    ).toEqual({ kind: 'notice', notice: { message: { key: 'errors.NETWORK' }, tone: 'error' } });
+  });
+});
+
+describe('one deposit notice, never two (Session 2, step 19b)', () => {
+  it('warns, not errors, that the deposit did not start: the slot is still held', () => {
+    expect(DEPOSIT_NOT_STARTED.tone).toBe('warn');
+    expect(DEPOSIT_UNAVAILABLE.tone).toBe('warn');
+  });
+
+  it('REPLACES "not started" with a failed retry, instead of stacking under it', () => {
+    const failed = depositAttempt({
+      ok: false,
+      error: { code: 'PROVIDER_UNAVAILABLE', message: 'x' },
+    });
+    expect(depositNoticeAfter(DEPOSIT_NOT_STARTED, failed)).toEqual(DEPOSIT_UNAVAILABLE);
+  });
+
+  it('shows a failure that is not the payment service as an error, in the same slot', () => {
+    const failed = depositAttempt({ ok: false, error: { code: 'NETWORK', message: 'x' } });
+    expect(depositNoticeAfter(DEPOSIT_NOT_STARTED, failed)).toEqual({
+      message: { key: 'errors.NETWORK' },
+      tone: 'error',
+    });
+  });
+
+  it('clears the notice when the checkout opens, or the booking has moved on', () => {
+    const opened = depositAttempt({
+      ok: true,
+      data: {
+        checkoutUrl: 'https://checkout.test/pay/z',
+        txRef: 'laqum-dep-z',
+        amountSantim: 2000,
+      },
+    });
+    expect(depositNoticeAfter(DEPOSIT_NOT_STARTED, opened)).toBeNull();
+    const movedOn = depositAttempt({ ok: false, error: { code: 'ALREADY_PAID', message: 'x' } });
+    expect(depositNoticeAfter(DEPOSIT_UNAVAILABLE, movedOn)).toBeNull();
   });
 });
 
