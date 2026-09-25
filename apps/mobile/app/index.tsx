@@ -6,7 +6,7 @@ import type { ApiError } from '../src/api/client.js';
 import type { NearbyLot } from '../src/api/endpoints.js';
 import { errorPhrase } from '../src/api/messages.js';
 import { verbatim } from '../src/i18n/core.js';
-import { clockTime, useT } from '../src/i18n/react.js';
+import { useT } from '../src/i18n/react.js';
 import { MapAttribution } from '../src/map/Attribution.js';
 import { mapStyleFor } from '../src/map/tiles.js';
 import {
@@ -259,7 +259,7 @@ export default function Home(): React.JSX.Element {
         {updatedAt ? (
           // With seconds: a refresh inside the same minute must still visibly
           // change something, or the driver cannot tell it ran.
-          <Body muted>{t('home.updated', { time: clockTime(updatedAt, true) })}</Body>
+          <Body muted>{t('home.updated', { time: t.clock(updatedAt, { seconds: true }) })}</Body>
         ) : null}
         <Button
           label={refreshing ? t('home.refreshing') : t('home.refresh')}

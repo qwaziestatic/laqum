@@ -12,3 +12,4 @@ export * from './realtimeStore.js';
 export * from './schemas.js';
 export * from './transitions.js';
 export * from './register.js';
+export * from './clockDisplay.js';

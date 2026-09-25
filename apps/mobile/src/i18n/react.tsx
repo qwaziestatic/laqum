@@ -1,4 +1,4 @@
-import { formatSantim, type Locale } from '@laqum/shared';
+import { formatClock, formatSantim, type Locale } from '@laqum/shared';
 import * as SecureStore from 'expo-secure-store';
 import i18next from 'i18next';
 import { useMemo } from 'react';
@@ -66,20 +66,17 @@ export async function chooseLanguage(locale: Locale): Promise<void> {
   }
 }
 
-/** Hours, minutes and seconds, 24-hour: the same digits in both languages. */
-export function clockTime(date: Date, withSeconds = false): Shown {
-  const pad = (value: number): string => String(value).padStart(2, '0');
-  const parts = [pad(date.getHours()), pad(date.getMinutes())];
-  if (withSeconds) parts.push(pad(date.getSeconds()));
-  return verbatim(parts.join(':'));
-}
-
 export interface Translate {
   (key: MessageKey, params?: Params): Shown;
   /** A phrase from a pure module (view.ts, messages.ts, …). */
   phrase: (item: Phrase) => Shown;
   /** An amount in birr: "20.00 ብር" / "20.00 ETB". */
   money: (santim: number) => Shown;
+  /**
+   * A clock time in Addis Ababa: "ከሰዓት 8:05" (the Ethiopian clock) or
+   * "14:05". Never for durations or countdowns (shared clockDisplay.ts).
+   */
+  clock: (instant: Date, options?: { seconds?: boolean }) => Shown;
   language: Locale;
 }
 
@@ -93,6 +90,8 @@ export function useT(): Translate {
     return Object.assign(translate, {
       phrase: (item: Phrase) => translate(item.key, item.params),
       money: (santim: number) => translate('money.birr', { amount: formatSantim(santim) }),
+      clock: (instant: Date, options?: { seconds?: boolean }) =>
+        verbatim(formatClock(instant, language, options)),
       language,
     });
   }, [t, language]);

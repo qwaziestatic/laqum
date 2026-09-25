@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { errorPhrase } from '../../src/api/messages.js';
 import type { Phrase } from '../../src/i18n/core.js';
-import { clockTime, useT } from '../../src/i18n/react.js';
+import { useT } from '../../src/i18n/react.js';
 import { useLiveBooking } from '../../src/realtime/useLiveBooking.js';
 import { useApp } from '../../src/state/app.js';
 import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../../src/ui.js';
@@ -73,12 +73,12 @@ export default function Checkout(): React.JSX.Element {
         <Title testID="amount-due">{t.money(due)}</Title>
         {booking.checkedInAt ? (
           <Body muted>
-            {t('checkout.parkedFrom', { time: clockTime(new Date(booking.checkedInAt)) })}
+            {t('checkout.parkedFrom', { time: t.clock(new Date(booking.checkedInAt)) })}
           </Body>
         ) : null}
         {booking.plannedEndAt ? (
           <Body muted>
-            {t('checkout.bookedUntil', { time: clockTime(new Date(booking.plannedEndAt)) })}
+            {t('checkout.bookedUntil', { time: t.clock(new Date(booking.plannedEndAt)) })}
           </Body>
         ) : null}
       </Card>
