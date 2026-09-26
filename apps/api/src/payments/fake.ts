@@ -23,8 +23,12 @@ import {
 
 export interface FakePaymentOptions {
   clock: Clock;
-  /** Seconds after initialize before a payment reports success. 0 = instant. */
-  autoSucceedAfterSeconds?: number;
+  /**
+   * Seconds after initialize before a payment reports success by itself.
+   * 0 = instant (the default, which every automated test relies on); null =
+   * never, so only setStatus (the development checkout's Pay / Fail) decides.
+   */
+  autoSucceedAfterSeconds?: number | null;
   baseCheckoutUrl?: string;
 }
 
@@ -43,7 +47,7 @@ interface FakePayment {
 export class FakePaymentProvider implements PaymentProvider {
   readonly name = 'fake';
   readonly #clock: Clock;
-  readonly #autoSucceedAfterSeconds: number;
+  readonly #autoSucceedAfterSeconds: number | null;
   readonly #baseCheckoutUrl: string;
   readonly #payments = new Map<string, FakePayment>();
   readonly refunds: RefundInput[] = [];
@@ -53,7 +57,8 @@ export class FakePaymentProvider implements PaymentProvider {
 
   constructor(options: FakePaymentOptions) {
     this.#clock = options.clock;
-    this.#autoSucceedAfterSeconds = options.autoSucceedAfterSeconds ?? 0;
+    this.#autoSucceedAfterSeconds =
+      options.autoSucceedAfterSeconds === undefined ? 0 : options.autoSucceedAfterSeconds;
     this.#baseCheckoutUrl = options.baseCheckoutUrl ?? 'https://checkout.test/pay';
   }
 
@@ -96,9 +101,10 @@ export class FakePaymentProvider implements PaymentProvider {
     }
 
     const elapsedSeconds = (this.#clock.now().getTime() - payment.initializedAt.getTime()) / 1000;
+    const automatic =
+      this.#autoSucceedAfterSeconds !== null && elapsedSeconds >= this.#autoSucceedAfterSeconds;
     const status: ProviderPaymentStatus =
-      payment.forcedStatus ??
-      (elapsedSeconds >= this.#autoSucceedAfterSeconds ? 'success' : 'pending');
+      payment.forcedStatus ?? (automatic ? 'success' : 'pending');
 
     return Promise.resolve({
       status,

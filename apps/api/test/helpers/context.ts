@@ -4,7 +4,7 @@ import type { Express } from 'express';
 import { createApp } from '../../src/app.js';
 import { RateLimiter } from '../../src/auth/rateLimit.js';
 import { RecordingSmsProvider } from '../../src/auth/sms.js';
-import { FakePaymentProvider } from '../../src/payments/fake.js';
+import { FakePaymentProvider, type FakePaymentOptions } from '../../src/payments/fake.js';
 import { loadConfig, type Config } from '../../src/config.js';
 import type { AppContext } from '../../src/context.js';
 import { RecordingEmitter } from '../../src/realtime/emitter.js';
@@ -41,7 +41,11 @@ export function testConfig(overrides: Record<string, string> = {}): Config {
  * outbound side effects under the test's control.
  */
 export async function createTestContext(
-  options: { poolSize?: number; config?: Record<string, string> } = {},
+  options: {
+    poolSize?: number;
+    config?: Record<string, string>;
+    fakeProvider?: Omit<FakePaymentOptions, 'clock'>;
+  } = {},
 ): Promise<TestContext> {
   const db = connect(options.poolSize ?? 10);
   const clock = testClock();
@@ -52,7 +56,7 @@ export async function createTestContext(
 
   const sms = new RecordingSmsProvider();
   const scheduler = new RecordingScheduler();
-  const provider = new FakePaymentProvider({ clock });
+  const provider = new FakePaymentProvider({ clock, ...options.fakeProvider });
   const emitter = new RecordingEmitter();
 
   const ctx: AppContext = {

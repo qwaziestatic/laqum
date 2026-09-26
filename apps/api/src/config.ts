@@ -79,8 +79,13 @@ const baseSchema = z.object({
    * hold a slot hostage; a payment that lands later goes to the refund queue.
    */
   PAYMENT_VERIFY_DEFERRAL_MINUTES: z.coerce.number().int().positive().default(15),
-  /** Seconds before a FakePaymentProvider payment reports success. */
-  FAKE_PAYMENT_DELAY_SECONDS: z.coerce.number().int().nonnegative().default(0),
+  /**
+   * Seconds before a FakePaymentProvider payment reports success BY ITSELF.
+   * Unset: never by itself; the development checkout page (Pay / Fail)
+   * decides, as a driver does at Chapa's. A number keeps the old automatic
+   * success for unattended runs; Pay or Fail still wins if pressed first.
+   */
+  FAKE_PAYMENT_DELAY_SECONDS: z.coerce.number().int().nonnegative().optional(),
 
   /** Run the BullMQ worker in this process. Split out in Phase 5 if needed. */
   RUN_WORKER: z
@@ -139,6 +144,12 @@ export const configSchema = baseSchema
      * safe value the obvious one to reach for.
      */
     DEV_AUTH_ENABLED: cfg.DEV_AUTH && cfg.NODE_ENV !== 'production',
+    /*
+     * The ONLY gate on the development checkout page (payments/devCheckout.ts),
+     * written once for the same reason: the fake provider, and never in
+     * production, whatever else is set.
+     */
+    DEV_CHECKOUT_ENABLED: cfg.PAYMENT_PROVIDER === 'fake' && cfg.NODE_ENV !== 'production',
   }));
 
 export type Config = z.infer<typeof configSchema>;

@@ -102,6 +102,9 @@ export default defineConfig({
         REDIS_URL: TEST_REDIS_URL,
         DEV_AUTH: 'true',
         PAYMENT_PROVIDER: 'fake',
+        // The fake provider's checkout page is served by this API; drivers
+        // are sent to it at its public address (e2e/dev-checkout.spec.ts).
+        PUBLIC_BASE_URL: `http://localhost:${String(API_PORT)}`,
         // The sweeper and job workers are Phase 1's concern and add noise
         // here; the dashboard tests drive transitions through the API.
         RUN_WORKER: 'false',
