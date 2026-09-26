@@ -1,0 +1,46 @@
+{
+  "generatedBy": "scripts/brand/build.mjs",
+  "source": {
+    "file": "assets/brand/source/laqum-illustration.jpg",
+    "sha256": "615646dc66439b7a816ffb2915bf9aacaba730ad310773419b5430e1e4a05774",
+    "width": 1456,
+    "height": 736
+  },
+  "colours": {
+    "navy": {
+      "hex": "#1f3f71",
+      "pixels": 22576,
+      "method": "median of the wordmark ink, eroded 2 px"
+    },
+    "orange": {
+      "hex": "#d57933",
+      "pixels": 13215,
+      "method": "median of the attendant's vest orange"
+    },
+    "carRed": {
+      "hex": "#dc544e",
+      "pixels": 15288,
+      "method": "median of the car body red; FORBIDDEN as a UI colour"
+    },
+    "paper": {
+      "hex": "#fdfdfd",
+      "pixels": 1600,
+      "method": "median of the four 20 px corners"
+    }
+  },
+  "intro": {
+    "crop": {
+      "left": 93,
+      "top": 70,
+      "width": 1316,
+      "height": 600
+    },
+    "aspect": 2.19333,
+    "wordmark": {
+      "left": 0.59726,
+      "top": 0.30125,
+      "width": 0.38412,
+      "height": 0.2925
+    }
+  }
+}

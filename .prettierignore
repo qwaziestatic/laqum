@@ -21,3 +21,9 @@ docs/BRIEF.md
 # by apps/mobile/.gitignore. Prettier reads only the ROOT .gitignore, so it
 # is listed here too, or format:check fails on any machine that ran Metro.
 apps/mobile/expo-env.d.ts
+
+# Written by scripts/brand/build.mjs, whose --check (CI) compares them byte
+# for byte with what the one brand source produces. Never hand-formatted.
+assets/brand/generated/
+apps/dashboard/public/favicon.svg
+apps/dashboard/src/brand/intro-wordmark.svg

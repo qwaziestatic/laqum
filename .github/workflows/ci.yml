@@ -80,6 +80,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Every icon, splash and intro image is generated from one source image
+      # (docs/BRAND.md). This fails if a committed one differs from it.
+      - name: Brand assets are reproducible
+        run: pnpm brand:check
+
       # Exercises the dist/ resolution path that production uses, which the
       # test aliases deliberately bypass.
       - name: Build

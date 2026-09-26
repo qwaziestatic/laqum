@@ -13,3 +13,4 @@ export * from './schemas.js';
 export * from './transitions.js';
 export * from './register.js';
 export * from './clockDisplay.js';
+export * from './brand.js';
