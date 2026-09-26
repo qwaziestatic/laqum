@@ -574,7 +574,20 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       sets them out of the way (a frozen clock shares one window across a
       suite); `rate-limit.test.ts` sets its own. Seven deliberate
       breakages, all caught.
-- [ ] Structured logging (pino-http, request IDs, redaction).
+- [x] **Structured logging.** Every request gets an id (the caller's
+      `X-Request-Id` if it is a short safe token, else a UUID), echoed in
+      the response and carried in AsyncLocalStorage (`logContext.ts`), so
+      EVERY line written while handling it carries `reqId` through pino's
+      `mixin`, unchanged `ctx.logger` calls included; a job records the
+      `reqId` that scheduled it and runs in a context with its `jobId`.
+      Verified first: the context survives body parsing on Express 5 /
+      Node 24. The access line (`pino-http` 11.0.0) holds method, PATH (no
+      query string), address, status and time, never headers or bodies;
+      the probes are not logged; 5xx is `error`. The base logger redacts
+      tokens, credential headers and Chapa signatures and masks phone
+      numbers (`+251******567`); the console SMS provider's message stays
+      readable, because in development it is the only delivery. Rotation is
+      Docker's (the compose step).
 - [ ] Graceful shutdown (an open websocket blocks `server.close()`:
       verified; today every deploy with a dashboard open ends in the forced
       `exit(1)`).

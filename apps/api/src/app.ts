@@ -14,6 +14,7 @@ import type { AppContext } from './context.js';
 import { checkReadiness } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { generalLimit } from './middleware/rateLimit.js';
+import { requestLog } from './middleware/requestLog.js';
 
 export interface AppOptions {
   startedAt?: number;
@@ -24,6 +25,8 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   const startedAt = options.startedAt ?? Date.now();
 
   app.disable('x-powered-by');
+  // First of all, so every request (the webhook's too) has an id on its logs.
+  app.use(...requestLog(ctx));
   // req.ip is the client's address only if exactly the proxies in front of
   // us are trusted, and no more: per-IP rate limiting depends on it. See
   // TRUST_PROXY_HOPS in config.ts; `true` let any client choose its own.

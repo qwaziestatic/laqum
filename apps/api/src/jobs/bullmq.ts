@@ -4,6 +4,7 @@ import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import { JOB_HANDLERS, type JobDeps } from './handlers.js';
 import { sweep } from './sweeper.js';
+import { currentLogContext, withLogContext } from '../logContext.js';
 import {
   JOB_QUEUES,
   type JobQueue,
@@ -40,6 +41,8 @@ export const SWEEP_INTERVAL_MS = 60_000;
 
 export interface JobPayload {
   bookingId: string;
+  /** The request that scheduled it, so its log lines can be followed there. */
+  reqId?: string;
 }
 
 export interface BullMqOptions {
@@ -84,7 +87,9 @@ export class BullMqScheduler implements JobScheduler {
     await queue.remove(jobId).catch(() => 0);
 
     const delay = Math.max(0, job.runAt.getTime() - this.#clock.now().getTime());
-    await queue.add(job.queue, { bookingId: job.bookingId }, { jobId, delay });
+    const { reqId } = currentLogContext();
+    const payload: JobPayload = { bookingId: job.bookingId, ...(reqId ? { reqId } : {}) };
+    await queue.add(job.queue, payload, { jobId, delay });
 
     this.#logger.debug({ jobId, delay }, 'scheduled job');
   }
@@ -98,6 +103,26 @@ export class BullMqScheduler implements JobScheduler {
   async close(): Promise<void> {
     await Promise.all([...this.#queues.values()].map((q) => q.close()));
   }
+}
+
+/**
+ * One job, in its own log context: every line it writes carries the job's id
+ * and the id of the request that scheduled it.
+ */
+export function runJob(
+  deps: JobDeps,
+  name: JobQueue,
+  job: { id?: string | undefined; data: JobPayload },
+): Promise<unknown> {
+  const context = {
+    ...(job.id === undefined ? {} : { jobId: job.id }),
+    ...(job.data.reqId === undefined ? {} : { reqId: job.data.reqId }),
+  };
+  return withLogContext(context, async () => {
+    const result = await JOB_HANDLERS[name](deps, job.data.bookingId);
+    deps.logger.debug({ result }, 'job finished');
+    return result;
+  });
 }
 
 /**
@@ -121,16 +146,7 @@ export function startWorkers(
   };
 
   const workers = JOB_QUEUES.map(
-    (name) =>
-      new Worker<JobPayload>(
-        name,
-        async (job) => {
-          const result = await JOB_HANDLERS[name](deps, job.data.bookingId);
-          deps.logger.debug({ jobId: job.id, result }, 'job finished');
-          return result;
-        },
-        workerOptions,
-      ),
+    (name) => new Worker<JobPayload>(name, (job) => runJob(deps, name, job), workerOptions),
   );
 
   const sweeperQueue = new Queue(SWEEPER_QUEUE, {

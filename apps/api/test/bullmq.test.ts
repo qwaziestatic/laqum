@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { BullMqScheduler, DEFAULT_JOB_OPTIONS } from '../src/jobs/bullmq.js';
 import { jobIdFor } from '../src/jobs/scheduler.js';
+import { withLogContext } from '../src/logContext.js';
 import { TEST_REDIS_URL } from './helpers/context.js';
 import { testLogger } from './helpers/db.js';
 
@@ -82,6 +83,19 @@ describe('scheduling', () => {
     expect(job?.data.bookingId).toBe(BOOKING);
     // 15 minutes from the fake clock, not from real time.
     expect(job?.opts.delay).toBe(15 * 60_000);
+  });
+
+  it('records the request that scheduled it, so its log lines can be followed there', async () => {
+    await withLogContext({ reqId: 'req-42' }, () =>
+      scheduler.schedule({ queue: 'expire-hold', bookingId: BOOKING, runAt: clock.now() }),
+    );
+    const job = await scheduler.queueFor('expire-hold').getJob(`expire-hold.${BOOKING}`);
+    expect(job?.data).toEqual({ bookingId: BOOKING, reqId: 'req-42' });
+
+    // Outside a request (the sweeper, a startup task) there is none to record.
+    await scheduler.schedule({ queue: 'mark-overstay', bookingId: BOOKING, runAt: clock.now() });
+    const plain = await scheduler.queueFor('mark-overstay').getJob(`mark-overstay.${BOOKING}`);
+    expect(plain?.data).toEqual({ bookingId: BOOKING });
   });
 
   it('clamps a deadline in the past to no delay', async () => {
