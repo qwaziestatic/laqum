@@ -558,7 +558,22 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       digit only, so `true` or an empty value is a startup error.
       `trust-proxy.test.ts` drives it through the OTP limit; putting `true`
       back fails 3 of its tests.
-- [ ] Rate limiting.
+- [x] **Rate limiting.** `middleware/rateLimit.ts` over the existing
+      Redis `RateLimiter` (fixed windows on the injected clock), per USER
+      wherever there is one and per IP only before sign-in, since a carrier
+      can put many phones behind one address. The approved numbers, each an
+      env setting: every /v1 request 300/min; book, cancel, extend, pay and
+      deposit 10/min; staff actions 120/min (reads are not actions); OTP
+      verify 30 per IP per 15 min; Socket.io connections 30 per IP per
+      minute, the address read through `clientAddress` exactly as Express
+      reads `req.ip` (checked against Express). OTP requests unchanged. Not
+      limited: the probes and the Chapa webhook. Every 429 has
+      `Retry-After`, set once in the error handler. **Redis down: the broad
+      limits FAIL OPEN** (a blip must not stop the lot), **the OTP limits
+      FAIL CLOSED** (an outage must not open a guessing window). Test config
+      sets them out of the way (a frozen clock shares one window across a
+      suite); `rate-limit.test.ts` sets its own. Seven deliberate
+      breakages, all caught.
 - [ ] Structured logging (pino-http, request IDs, redaction).
 - [ ] Graceful shutdown (an open websocket blocks `server.close()`:
       verified; today every deploy with a dashboard open ends in the forced

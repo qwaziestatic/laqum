@@ -78,6 +78,7 @@ async function main(): Promise<void> {
     clock: systemClock,
     logger,
     adapter: createAdapter(pubClient, subClient),
+    rateLimiter: ctx.rateLimiter,
   });
   ctx.emitter = new SocketEmitter(realtime.io);
   logger.info('realtime server attached');

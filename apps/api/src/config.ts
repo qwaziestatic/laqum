@@ -63,6 +63,27 @@ const baseSchema = z.object({
   OTP_RATE_LIMIT_PER_IP: z.coerce.number().int().positive().default(10),
   OTP_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
 
+  /*
+   * THE REST OF THE RATE LIMITS (Phase 5; the numbers are the product
+   * owner's starting point, each overridable here). Counted in Redis, in
+   * fixed windows, by middleware/rateLimit.ts.
+   *
+   * By USER wherever there is one, by IP only before sign-in: a mobile
+   * carrier can put many phones behind one public address, so a tight
+   * per-IP limit would block strangers together. Per-IP limits exist to stop
+   * floods, and are generous.
+   */
+  /** Every /v1 request, per signed-in user, or per IP before sign-in. */
+  RATE_LIMIT_GENERAL_PER_MINUTE: z.coerce.number().int().positive().default(300),
+  /** Book, cancel, extend, pay and pay the deposit, per user. */
+  RATE_LIMIT_BOOKING_WRITES_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  /** Every staff action (check-in, walk-in, check-out, cash, service), per attendant. */
+  RATE_LIMIT_STAFF_ACTIONS_PER_MINUTE: z.coerce.number().int().positive().default(120),
+  /** OTP verification attempts per IP, over OTP_RATE_LIMIT_WINDOW_MINUTES. */
+  RATE_LIMIT_OTP_VERIFY_PER_IP: z.coerce.number().int().positive().default(30),
+  /** Socket.io connections per IP. The Chapa webhook has no per-IP limit at all. */
+  RATE_LIMIT_SOCKET_CONNECTIONS_PER_MINUTE: z.coerce.number().int().positive().default(30),
+
   /**
    * How many reverse proxies stand in front of this process: EXACTLY. 0 when
    * clients connect straight to it (development, the device test), 1 behind

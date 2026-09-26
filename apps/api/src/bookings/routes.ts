@@ -17,6 +17,7 @@ import {
 import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { currentUser, requireAuth, requireRole } from '../middleware/auth.js';
+import { bookingWriteLimit } from '../middleware/rateLimit.js';
 import { handle, validateBody } from '../middleware/validate.js';
 import { createBooking } from './create.js';
 import { toBookingDto } from './dto.js';
@@ -31,6 +32,7 @@ export function bookingsRouter(ctx: AppContext): Router {
 
   router.post(
     '/',
+    bookingWriteLimit(ctx),
     validateBody(createBookingSchema),
     handle(async (req, res) => {
       const user = currentUser(res);
@@ -114,6 +116,7 @@ export function bookingsRouter(ctx: AppContext): Router {
 
   router.post(
     '/:id/cancel',
+    bookingWriteLimit(ctx),
     handle(async (req, res) => {
       const user = currentUser(res);
       const id = uuidSchema.parse(req.params['id']);
@@ -125,6 +128,7 @@ export function bookingsRouter(ctx: AppContext): Router {
 
   router.post(
     '/:id/extend',
+    bookingWriteLimit(ctx),
     validateBody(extendBookingSchema),
     handle(async (req, res) => {
       const user = currentUser(res);
@@ -145,6 +149,7 @@ export function bookingsRouter(ctx: AppContext): Router {
    */
   router.post(
     '/:id/deposit',
+    bookingWriteLimit(ctx),
     handle(async (req, res) => {
       const user = currentUser(res);
       const id = uuidSchema.parse(req.params['id']);
@@ -191,6 +196,7 @@ export function bookingsRouter(ctx: AppContext): Router {
    */
   router.post(
     '/:id/pay',
+    bookingWriteLimit(ctx),
     handle(async (req, res) => {
       const user = currentUser(res);
       const id = uuidSchema.parse(req.params['id']);

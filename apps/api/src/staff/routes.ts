@@ -22,6 +22,7 @@ import {
   requireRole,
 } from '../middleware/auth.js';
 import { handle, validateBody } from '../middleware/validate.js';
+import { staffActionLimit } from '../middleware/rateLimit.js';
 import {
   checkIn,
   checkOut,
@@ -35,7 +36,8 @@ import {
 export function staffRouter(ctx: AppContext): Router {
   const router = Router();
   // STAFF_ROLES is also what the OTP staff audience admits: one definition.
-  router.use(requireAuth(ctx), requireRole(...STAFF_ROLES));
+  // Every action counts against the attendant's own limit; reads do not.
+  router.use(requireAuth(ctx), requireRole(...STAFF_ROLES), staffActionLimit(ctx));
 
   router.get(
     '/lots',

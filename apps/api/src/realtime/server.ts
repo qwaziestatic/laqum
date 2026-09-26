@@ -15,6 +15,8 @@ import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import { Server, type Socket } from 'socket.io';
 import { currentLotVersion } from '../bookings/transition.js';
+import type { RateLimiter } from '../auth/rateLimit.js';
+import { clientAddress } from '../clientAddress.js';
 import type { Config } from '../config.js';
 import { type Cancellable, type Timers, systemTimers } from './timers.js';
 import { authoriseHandshake, expiryDelayMs, isLotStaff } from './authorise.js';
@@ -46,6 +48,12 @@ export interface RealtimeDeps {
   timers?: Timers;
   /** Applied before any connection is accepted; used for the Redis adapter. */
   adapter?: Parameters<Server['adapter']>[0];
+  /**
+   * Connections per client address per minute (RATE_LIMIT_SOCKET_CONNECTIONS_
+   * PER_MINUTE). The server passes it; unit tests of other behaviour omit it.
+   * Fails open, like the other broad limits: see middleware/rateLimit.ts.
+   */
+  rateLimiter?: RateLimiter;
 }
 
 export interface RealtimeServer {
@@ -83,6 +91,32 @@ export function createRealtimeServer(httpServer: HttpServer, deps: RealtimeDeps)
    * HANDSHAKE. A socket that fails here is never connected at all, so there is
    * no window in which an unauthenticated socket exists and could subscribe.
    */
+  /*
+   * Too many connections from one address: refused before the token is even
+   * looked at. The address is read the way Express reads req.ip, through
+   * exactly TRUST_PROXY_HOPS proxies (clientAddress.ts); the handshake's own
+   * peer address is the proxy's.
+   */
+  const limiter = deps.rateLimiter;
+  if (limiter) {
+    io.use((socket, next) => {
+      const address = clientAddress(
+        socket.handshake.address,
+        socket.handshake.headers['x-forwarded-for'],
+        deps.config.TRUST_PROXY_HOPS,
+      );
+      limiter
+        .hit(`sockets:ip:${address}`, deps.config.RATE_LIMIT_SOCKET_CONNECTIONS_PER_MINUTE, 1)
+        .then((result) => {
+          next(result.allowed ? undefined : new Error('RATE_LIMITED'));
+        })
+        .catch((err: unknown) => {
+          deps.logger.warn({ err }, 'socket connection not counted: Redis unreachable');
+          next();
+        });
+    });
+  }
+
   io.use((socket, next) => {
     void (async (): Promise<void> => {
       const result = await authoriseHandshake(

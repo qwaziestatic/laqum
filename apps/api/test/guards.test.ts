@@ -183,3 +183,13 @@ describe('THE BIND LAW: only listen.ts binds a port', () => {
     expect(LISTEN_CALL.test('const listener = onListening;')).toBe(false);
   });
 });
+
+describe('THE SOCKET LIMIT reaches production', () => {
+  // createRealtimeServer takes the limiter as an option, so tests of other
+  // behaviour can leave it out. The one real caller must not.
+  it('is passed by server.ts, the only production caller', async () => {
+    const server = await readFile(join(SRC, 'server.ts'), 'utf8');
+    const call = /createRealtimeServer\(server, \{([\s\S]*?)\}\);/u.exec(server)?.[1] ?? '';
+    expect(call).toMatch(/\brateLimiter: ctx\.rateLimiter\b/u);
+  });
+});

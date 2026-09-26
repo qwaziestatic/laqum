@@ -13,6 +13,7 @@ import { staffRouter } from './staff/routes.js';
 import type { AppContext } from './context.js';
 import { checkReadiness } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { generalLimit } from './middleware/rateLimit.js';
 
 export interface AppOptions {
   startedAt?: number;
@@ -37,6 +38,10 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   app.use('/v1/webhooks', webhookRouter(ctx));
 
   app.use(express.json({ limit: '64kb' }));
+
+  // Every /v1 request, per user or per IP before sign-in. Mounted after the
+  // webhook, which it therefore never counts, and not on the probes below.
+  app.use('/v1', generalLimit(ctx));
 
   // Liveness. Deliberately dependency-free: it must stay 200 while Postgres is
   // down, or an orchestrator will restart a process that is working fine.
@@ -82,7 +87,7 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   app.use('/v1/admin', refundsRouter(ctx));
 
   app.use(notFoundHandler());
-  app.use(errorHandler(ctx.logger));
+  app.use(errorHandler(ctx.logger, ctx.clock));
 
   return app;
 }

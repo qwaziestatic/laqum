@@ -32,6 +32,13 @@ export function testConfig(overrides: Record<string, string> = {}): Config {
     DATABASE_URL:
       process.env['TEST_DATABASE_URL'] ?? 'postgres://laqum:laqum@localhost:55432/laqum_test',
     REDIS_URL: TEST_REDIS_URL,
+    // Tests run on a frozen clock, so a whole suite shares one rate-limit
+    // window. Out of the way by default; rate-limit.test.ts sets its own.
+    RATE_LIMIT_GENERAL_PER_MINUTE: '100000',
+    RATE_LIMIT_BOOKING_WRITES_PER_MINUTE: '100000',
+    RATE_LIMIT_STAFF_ACTIONS_PER_MINUTE: '100000',
+    RATE_LIMIT_OTP_VERIFY_PER_IP: '100000',
+    RATE_LIMIT_SOCKET_CONNECTIONS_PER_MINUTE: '100000',
     ...overrides,
   });
 }

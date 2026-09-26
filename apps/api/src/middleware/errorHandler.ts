@@ -1,4 +1,4 @@
-import { AppError, type ErrorBody, isAppError } from '@laqum/shared';
+import { AppError, type Clock, type ErrorBody, isAppError } from '@laqum/shared';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import type { Logger } from 'pino';
 import { ZodError } from 'zod';
@@ -18,9 +18,15 @@ export function notFoundHandler(): RequestHandler {
   };
 }
 
-export function errorHandler(logger: Logger): ErrorRequestHandler {
+export function errorHandler(logger: Logger, clock: Clock): ErrorRequestHandler {
   return (err: unknown, req, res, _next) => {
     if (isAppError(err)) {
+      // Every refusal for rate says when to come back, whichever limit it was.
+      const retryAt = retryAtOf(err);
+      if (err.code === 'RATE_LIMITED' && retryAt !== null) {
+        const seconds = Math.ceil((retryAt.getTime() - clock.now().getTime()) / 1000);
+        res.set('Retry-After', String(Math.max(1, seconds)));
+      }
       if (err.status >= 500) {
         logger.error({ err, path: req.path }, 'request failed');
       } else {
@@ -46,4 +52,11 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
       error: { code: 'INTERNAL', message: 'Something went wrong' },
     } satisfies ErrorBody);
   };
+}
+
+function retryAtOf(err: AppError): Date | null {
+  const details = err.details as { retryAt?: unknown } | undefined;
+  if (typeof details?.retryAt !== 'string') return null;
+  const at = new Date(details.retryAt);
+  return Number.isNaN(at.getTime()) ? null : at;
 }

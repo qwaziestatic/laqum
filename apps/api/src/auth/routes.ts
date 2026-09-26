@@ -9,6 +9,7 @@ import {
 import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { handle, validateBody } from '../middleware/validate.js';
+import { otpVerifyLimit } from '../middleware/rateLimit.js';
 import {
   devSignIn,
   logout,
@@ -55,6 +56,9 @@ export function authRouter(ctx: AppContext): Router {
 
   router.post(
     '/otp/verify',
+    // Per address, on top of each code's own five attempts: one caller
+    // cannot try code after code across many numbers.
+    otpVerifyLimit(ctx),
     validateBody(otpVerifySchema),
     handle(async (req, res) => {
       const { phone, code, audience } = req.body as OtpVerify;
