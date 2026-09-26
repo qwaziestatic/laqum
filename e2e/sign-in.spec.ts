@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { hashOtp } from '../apps/api/src/auth/otp.js';
 import { withDb } from './db.js';
-import { FIRST_PAINT_BUDGET_MS, SEEDED_ATTENDANT_PHONE, reseed } from './fixtures.js';
+import { FIRST_PAINT_BUDGET_MS, SEEDED_ATTENDANT_PHONE, reseed, skipIntro } from './fixtures.js';
 
 /**
  * The dashboard's real sign-in: a code by SMS, through the OTP staff audience.
@@ -44,6 +44,10 @@ async function pendingCodes(phone: string): Promise<number> {
       (await db.selectFrom('otp_codes').select('id').where('phone', '=', phone).execute()).length,
   );
 }
+
+test.beforeEach(async ({ page }) => {
+  await skipIntro(page);
+});
 
 test('an attendant signs in with a code sent by SMS', async ({ page }) => {
   await page.goto('/');

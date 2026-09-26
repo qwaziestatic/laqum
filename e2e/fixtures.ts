@@ -97,6 +97,21 @@ export function reseed(): void {
   });
 }
 
+/** The compiled API the e2e run starts (playwright.config.ts), for pages it serves itself. */
+export const API_ORIGIN = 'http://localhost:3100';
+
+/**
+ * Mark the opening animation as already shown this session, before the page
+ * loads. It plays once per browser session and lets every touch through, but
+ * a test about something else should not have to reason about it, and a
+ * screenshot should not catch it mid-fade. e2e/intro.spec.ts tests it.
+ */
+export async function skipIntro(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('laqum:intro-shown', '1');
+  });
+}
+
 /**
  * Sign in through the dev endpoint, select the lot, and wait for it to be live.
  *
@@ -109,6 +124,7 @@ export async function signIn(
   phone = SEEDED_ATTENDANT_PHONE,
   lotName = PIASSA,
 ): Promise<void> {
+  await skipIntro(page);
   await page.goto('/');
   await page.getByTestId('sign-in-phone').fill(phone);
   await page.getByTestId('sign-in-submit').click();
