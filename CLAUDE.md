@@ -588,9 +588,22 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       numbers (`+251******567`); the console SMS provider's message stays
       readable, because in development it is the only delivery. Rotation is
       Docker's (the compose step).
-- [ ] Graceful shutdown (an open websocket blocks `server.close()`:
-      verified; today every deploy with a dashboard open ends in the forced
-      `exit(1)`).
+- [x] **Graceful shutdown** (`shutdown.ts`). The old order waited for the
+      HTTP server before closing the sockets, and an open WebSocket keeps
+      `server.close()` from ever calling back: every deploy with a dashboard
+      open ended at the forced `exit(1)`, workers never closed. Now: /ready
+      answers 503 (`draining`); the server stops accepting; then SIDE BY
+      SIDE the sockets are cut (clients see `transport close`, which they
+      reconnect after; `io server disconnect` would strand them), running
+      jobs finish, in-flight requests finish; then the database and Redis
+      close and it exits 0. Idle connections are dropped every 100 ms while
+      draining, because `close()` drops only those idle at that moment and a
+      finished keep-alive connection otherwise lingered 3.4 s.
+      `SHUTDOWN_TIMEOUT_MS` (20 s, below compose's 30 s grace) then cuts
+      everything and exits 1. `shutdown.test.ts` runs it in process with a
+      real socket, request and job; the real-signal test in
+      `server-startup.test.ts` is **Linux only** (Windows cannot deliver
+      SIGTERM to a child) and runs in CI, not on the dev machine.
 - [ ] Production image, prod compose, migrate, Caddy.
 - [ ] Push: Firebase (the product owner's steps), delivery, D2, D3. **The
       icon and the native splash ship in this same EAS build.**

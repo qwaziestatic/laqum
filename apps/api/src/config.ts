@@ -129,6 +129,13 @@ const baseSchema = z.object({
    */
   FAKE_PAYMENT_DELAY_SECONDS: z.coerce.number().int().nonnegative().optional(),
 
+  /**
+   * How long a graceful shutdown may take before every connection is cut and
+   * the process exits 1 (shutdown.ts). Keep it BELOW the container's stop
+   * grace period (compose: 30 s), so this process decides, not SIGKILL.
+   */
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+
   /** Run the BullMQ worker in this process. Split out in Phase 5 if needed. */
   RUN_WORKER: z
     .enum(['true', 'false'])

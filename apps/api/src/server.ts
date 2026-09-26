@@ -8,6 +8,7 @@ import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { BullMqScheduler, startWorkers } from './jobs/bullmq.js';
 import { listen } from './listen.js';
+import { gracefulShutdown } from './shutdown.js';
 import { createLogger } from './logger.js';
 import { paymentProviderFor } from './payments/providerFor.js';
 import { SocketEmitter, nullEmitter } from './realtime/emitter.js';
@@ -18,8 +19,8 @@ import { createAdapter } from '@socket.io/redis-adapter';
 /**
  * Process entry point.
  *
- * Shutdown here closes the HTTP server and the connection pools. Draining
- * in-flight BullMQ jobs and Socket.io connections is Phase 5.
+ * Shutdown is graceful (shutdown.ts): sockets, running jobs and in-flight
+ * requests are finished in an order that completes, within a deadline.
  *
  * The port is bound BEFORE the job workers start, so a process that cannot
  * serve HTTP exits without having picked up any work.
@@ -60,7 +61,8 @@ async function main(): Promise<void> {
 
   // NOT app.listen(port, callback): Express 5 calls that callback with the
   // bind error, so a failed bind would log "listening". See listen.ts.
-  const server = createServer(createApp(ctx));
+  let draining = false;
+  const server = createServer(createApp(ctx, { isDraining: () => draining }));
 
   /*
    * Realtime, with the Redis adapter.
@@ -101,46 +103,25 @@ async function main(): Promise<void> {
     : null;
   if (workers) logger.info({ queues: workers.queueWorkers.length }, 'job workers started');
 
-  let shuttingDown = false;
-  const shutdown = (signal: string): void => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info({ signal }, 'shutting down');
-
-    server.close((err) => {
-      if (err) logger.error({ err }, 'error closing HTTP server');
-      void (async (): Promise<void> => {
-        try {
-          // Sockets first: closing them lets clients reconnect elsewhere
-          // rather than sit on a connection to a process that is going away.
-          await realtime.close();
-          await workers?.close();
-          await scheduler.close();
-          await db.destroy();
-          redis.disconnect();
-          queueRedis.disconnect();
-          pubClient.disconnect();
-          subClient.disconnect();
-        } catch (closeErr) {
-          logger.error({ err: closeErr }, 'error closing connections');
-        } finally {
-          process.exit(err ? 1 : 0);
-        }
-      })();
+  const shutdown = gracefulShutdown({
+    server,
+    realtime,
+    workers,
+    scheduler,
+    db,
+    redis: [redis, queueRedis, pubClient, subClient],
+    logger,
+    timeoutMs: config.SHUTDOWN_TIMEOUT_MS,
+    drain: () => {
+      draining = true;
+    },
+    exit: (code) => process.exit(code),
+  });
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(signal, () => {
+      void shutdown(signal);
     });
-
-    setTimeout(() => {
-      logger.error('forced exit after shutdown timeout');
-      process.exit(1);
-    }, 10_000).unref();
-  };
-
-  process.on('SIGTERM', () => {
-    shutdown('SIGTERM');
-  });
-  process.on('SIGINT', () => {
-    shutdown('SIGINT');
-  });
+  }
 }
 
 main().catch((err: unknown) => {

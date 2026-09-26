@@ -18,6 +18,8 @@ import { requestLog } from './middleware/requestLog.js';
 
 export interface AppOptions {
   startedAt?: number;
+  /** True once a graceful shutdown has begun: /ready then answers 503. */
+  isDraining?: () => boolean;
 }
 
 export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
@@ -58,6 +60,11 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   // Readiness. 503 when a dependency is unreachable, with per-dependency
   // detail so an operator can see which one without opening a shell.
   app.get('/ready', (_req: Request, res: Response) => {
+    // Shutting down: still serving what is in flight, but send nothing new.
+    if (options.isDraining?.() === true) {
+      res.status(503).json({ status: 'draining', checks: {} });
+      return;
+    }
     checkReadiness({ db: ctx.db, redis: ctx.redis })
       .then((report) => {
         res.status(report.status === 'ready' ? 200 : 503).json(report);

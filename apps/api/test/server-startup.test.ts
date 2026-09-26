@@ -1,9 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { systemClock } from '@laqum/shared';
+import { io as ioClient } from 'socket.io-client';
 import { afterEach, describe, expect, it } from 'vitest';
+import { signAccessToken } from '../src/auth/tokens.js';
 import { listen } from '../src/listen.js';
-import { TEST_REDIS_URL } from './helpers/context.js';
+import { TEST_REDIS_URL, testConfig } from './helpers/context.js';
 import { TEST_DATABASE_URL } from './helpers/db.js';
 
 /**
@@ -21,6 +25,8 @@ import { TEST_DATABASE_URL } from './helpers/db.js';
 
 const API_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const STARTUP_TIMEOUT_MS = 30_000;
+/** Pinned in the child, so the test can sign a token it accepts. */
+const SIGNING_SECRET = 'startup-test-signing-secret-0123456789abcdef';
 
 const children: ChildProcess[] = [];
 const servers: Server[] = [];
@@ -60,6 +66,7 @@ function startApi(port: number): ChildProcess {
         RUN_WORKER: 'false',
         PAYMENT_PROVIDER: 'fake',
         DEV_AUTH: 'false',
+        JWT_ACCESS_SECRET: SIGNING_SECRET,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -187,6 +194,50 @@ describe('API process startup', () => {
       // The log is only worth something if it is true.
       const res = await fetch(`http://127.0.0.1:${String(port)}/health`);
       expect(res.status).toBe(200);
+    },
+    STARTUP_TIMEOUT_MS + 5_000,
+  );
+
+  /*
+   * The real signal, to the real process, with a socket open: exactly the
+   * case the old shutdown never finished (it waited on the HTTP server,
+   * which an open WebSocket keeps open, and died at its forced exit 1).
+   * Linux only: on Windows, Node cannot deliver SIGTERM to a child, it
+   * terminates it. CI runs on Linux; shutdown.test.ts covers the order on
+   * every platform.
+   */
+  it.skipIf(process.platform === 'win32')(
+    'on SIGTERM with a socket connected, shuts down cleanly and exits 0',
+    async () => {
+      const port = await freePort();
+      const child = startApi(port);
+      const output = capture(child);
+      await lineMatching(child, output, /API listening/u);
+
+      const { token } = await signAccessToken(
+        testConfig({ JWT_ACCESS_SECRET: SIGNING_SECRET }),
+        systemClock,
+        { userId: randomUUID(), role: 'driver' },
+      );
+      const socket = ioClient(`http://127.0.0.1:${String(port)}`, {
+        auth: { token },
+        transports: ['websocket'],
+        reconnection: false,
+      });
+      await new Promise<void>((resolve, reject) => {
+        socket.on('connect', () => {
+          resolve();
+        });
+        socket.on('connect_error', reject);
+      });
+
+      child.kill('SIGTERM');
+      const code = await exitOf(child, output);
+      socket.close();
+
+      expect(code).toBe(0);
+      expect(output.stdout).toContain('shut down cleanly');
+      expect(output.stdout).not.toContain('deadline passed');
     },
     STARTUP_TIMEOUT_MS + 5_000,
   );

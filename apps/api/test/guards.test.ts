@@ -193,3 +193,15 @@ describe('THE SOCKET LIMIT reaches production', () => {
     expect(call).toMatch(/\brateLimiter: ctx\.rateLimiter\b/u);
   });
 });
+
+describe('THE SHUTDOWN reaches production', () => {
+  it('is wired to both signals, with the configured deadline and the draining flag', async () => {
+    const server = await readFile(join(SRC, 'server.ts'), 'utf8');
+    expect(server).toMatch(/gracefulShutdown\(\{/u);
+    expect(server).toMatch(/timeoutMs: config\.SHUTDOWN_TIMEOUT_MS/u);
+    expect(server).toMatch(/isDraining: \(\) => draining/u);
+    expect(server).toMatch(/for \(const signal of \['SIGTERM', 'SIGINT'\] as const\)/u);
+    // The old in-line shutdown, which waited on the HTTP server first, is gone.
+    expect(server).not.toMatch(/server\.close\(/u);
+  });
+});
