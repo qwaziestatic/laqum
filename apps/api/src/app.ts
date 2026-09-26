@@ -23,9 +23,10 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Express {
   const startedAt = options.startedAt ?? Date.now();
 
   app.disable('x-powered-by');
-  // Behind a proxy in production, so req.ip reflects the client rather than
-  // the load balancer. Per-IP rate limiting depends on this being right.
-  app.set('trust proxy', true);
+  // req.ip is the client's address only if exactly the proxies in front of
+  // us are trusted, and no more: per-IP rate limiting depends on it. See
+  // TRUST_PROXY_HOPS in config.ts; `true` let any client choose its own.
+  app.set('trust proxy', ctx.config.TRUST_PROXY_HOPS);
   /*
    * The webhook is mounted BEFORE express.json, and parses its own raw body.
    *

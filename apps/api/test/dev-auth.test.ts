@@ -36,6 +36,7 @@ describe('DEV_AUTH_ENABLED is the only gate, and it is a conjunction', () => {
       DEV_AUTH: 'true',
       JWT_ACCESS_SECRET: 'a'.repeat(32),
       JWT_REFRESH_SECRET: 'b'.repeat(32),
+      TRUST_PROXY_HOPS: '1',
     });
 
     // The raw variable is honestly reported as set...

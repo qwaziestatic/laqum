@@ -63,6 +63,27 @@ const baseSchema = z.object({
   OTP_RATE_LIMIT_PER_IP: z.coerce.number().int().positive().default(10),
   OTP_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
 
+  /**
+   * How many reverse proxies stand in front of this process: EXACTLY. 0 when
+   * clients connect straight to it (development, the device test), 1 behind
+   * Caddy. req.ip, and every per-IP limit with it, comes from this.
+   *
+   * It used to be `trust proxy: true`, which believes the whole
+   * X-Forwarded-For header: any client could send its own and pick its own
+   * address, so the per-IP OTP limit was one header away from not existing.
+   * With a count, only the entries the proxies themselves appended are
+   * trusted. Too high is as bad as `true` (a client's own entry is read as
+   * the proxy's), too low makes every client look like the proxy.
+   *
+   * A single digit, nothing else: 'true' or '' is a startup error, never a
+   * quiet default. REQUIRED when NODE_ENV is production.
+   */
+  TRUST_PROXY_HOPS: z
+    .string()
+    .regex(/^\d$/u, 'must be a single digit: the number of proxies in front of the API')
+    .transform(Number)
+    .optional(),
+
   // ─── Payments ───────────────────────────────────────────────────────────
   /** 'fake' for development and every automated test; 'chapa' for real money. */
   PAYMENT_PROVIDER: z.enum(['fake', 'chapa']).default('fake'),
@@ -123,7 +144,7 @@ export const configSchema = baseSchema
       });
     }
     if (cfg.NODE_ENV !== 'production') return;
-    for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+    for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'TRUST_PROXY_HOPS'] as const) {
       if (cfg[key] === undefined) {
         ctx.addIssue({
           code: 'custom',
@@ -137,6 +158,8 @@ export const configSchema = baseSchema
     ...cfg,
     JWT_ACCESS_SECRET: cfg.JWT_ACCESS_SECRET ?? DEV_ACCESS_SECRET,
     JWT_REFRESH_SECRET: cfg.JWT_REFRESH_SECRET ?? DEV_REFRESH_SECRET,
+    // Required in production (above); nothing in front of it otherwise.
+    TRUST_PROXY_HOPS: cfg.TRUST_PROXY_HOPS ?? 0,
     /*
      * The ONLY gate on dev auth. Derived here rather than at the call site so
      * that there is exactly one place the conjunction is written; a future

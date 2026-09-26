@@ -549,8 +549,15 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
 
 - [x] **Branding, opening animations, a development checkout page.** See
       "Brand" below and docs/BRAND.md.
-- [ ] Trust proxy (`trust proxy` is `true`, so any client picks its own
-      `req.ip`: verified, and it defeats the per-IP OTP limit).
+- [x] **Trust proxy.** It was `true`, which believes the whole
+      X-Forwarded-For header, so any client picked its own `req.ip` and the
+      per-IP OTP limit was one header away from not existing (verified).
+      Now `TRUST_PROXY_HOPS`: exactly how many proxies stand in front, 0
+      directly (the default outside production), 1 behind Caddy. Only the
+      entries they appended are trusted. Required in production; a single
+      digit only, so `true` or an empty value is a startup error.
+      `trust-proxy.test.ts` drives it through the OTP limit; putting `true`
+      back fails 3 of its tests.
 - [ ] Rate limiting.
 - [ ] Structured logging (pino-http, request IDs, redaction).
 - [ ] Graceful shutdown (an open websocket blocks `server.close()`:

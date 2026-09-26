@@ -207,6 +207,7 @@ describe('it is impossible in production', () => {
         PAYMENT_PROVIDER: 'fake',
         JWT_ACCESS_SECRET: 'a'.repeat(32),
         JWT_REFRESH_SECRET: 'b'.repeat(32),
+        TRUST_PROXY_HOPS: '1',
       }).DEV_CHECKOUT_ENABLED,
     ).toBe(false);
   });
