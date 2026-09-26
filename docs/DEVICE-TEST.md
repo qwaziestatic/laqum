@@ -4,6 +4,11 @@ Everything in this document needs your phone. Nothing here is covered by the
 automated suite. Where I expect something to work, I say "should"; where I
 genuinely do not know, I say so.
 
+**Next: step 22** (the opening animation and the development checkout page),
+JavaScript only, so a reload of the current APK. The new app icon and the
+native splash are NATIVE and wait for the next EAS build, the one that adds
+Firebase (Phase 5); step 22i lists what to check then.
+
 **Session 2 is done too** (deposits, realtime, Amharic): every step passed.
 Its results are in Part 6, "Session 2 results"; its setup stays below, in
 case it is run again.
@@ -1201,6 +1206,108 @@ the informal form; AMHARIC-REVIEW.md lists each with its old text.
 **f. Back to English.** Tap **English** in the app's header.
 
 _Should:_ every screen is English again, and stays English after a restart.
+
+### 22. The opening animation, and the development checkout page
+
+Added with the branding. JavaScript only: the APK you have, a reload. What
+the animation should look like, frame by frame, is in
+`docs/brand-previews/intro-mobile-light.png` (composited from the app's own
+images and timeline, so this step is its first real test).
+
+Start the API with the fake provider sending the phone to its own checkout
+page: **the LAN address, not localhost**, and no automatic payment. Window A,
+**Git Bash**, repo root:
+
+```bash
+set -a; . ./.env; set +a
+unset FAKE_PAYMENT_DELAY_SECONDS
+PUBLIC_BASE_URL=http://<your LAN address>:18000 PORT=18000 pnpm --filter @laqum/api dev
+```
+
+Metro in window B as before. Reload the app once so it has the new code.
+
+**a. A cold start.** Close the app completely (Recents, swipe it away) and
+open it from its icon.
+
+_Should:_ after the development build's bundle download (the ~8.5 s the first
+pass measured), a **navy** screen; a white rounded card with the car and the
+attendant fades and grows in; the **ላቁም?** wordmark settles into place on
+it; then the app appears. About a second, once, no loop, no sound. If the
+app is not ready by then, the finished picture stays with a small white
+spinner, and the app appears the moment it is ready: never a replay.
+
+**b. Not from the background.** Press Home, then reopen from Recents.
+
+_Should:_ the app, straight away, with no animation. Also press Back to close
+it and reopen within a few seconds: no animation either, because the app's
+JavaScript is still running. (If Android had to restart it, that is a cold
+start and the animation plays; that is correct.)
+
+**c. A reload is a cold start.** In window B, press `r`.
+
+_Should:_ the animation plays again.
+
+**d. Reduced motion.** Settings → Accessibility → Visibility enhancements →
+**Remove animations** on. Close the app completely and open it.
+
+_Should:_ the finished picture (card, car, wordmark), perfectly still, for a
+moment (at most 0.3 s), then the app. Nothing moves or fades. Turn **Remove
+animations** off again and repeat a: the animation is back.
+
+**e. Dark mode.** Settings → Display → **Dark**. Close the app completely
+and open it.
+
+_Should:_ the same navy screen and white rounded card; never a white
+rectangle floating on a dark screen. Then the app, dark. Back to Light after.
+
+**f. TalkBack** (optional). With TalkBack on, close the app completely and
+open it.
+
+_Should:_ one announcement, in the app's language: **"ላቁም?, በመጫን ላይ"** in
+Amharic, **"Laqum, loading"** in English. Nothing about the picture.
+
+**g. Opened by a link.** Close the app completely. In the fourth window
+(**Git Bash**):
+
+```bash
+adb shell am start -a android.intent.action.VIEW -d "laqum://" et.laqum.driver
+```
+
+_Should:_ the app, with no animation. **I do not know** how the development
+client treats a link on a cold start: if it shows its own launcher instead of
+the app, write down what it showed; the rule is still tested in code
+(`apps/mobile/test/intro.test.ts`) and the release build has no launcher.
+
+**h. The development checkout page.** TEST LOT needs a deposit (step 19's
+setup). Book it.
+
+_Should:_ the in-app browser opens a page headed **የሙከራ ክፍያ / Test
+payment**, with a yellow notice that no money moves, **TEST LOT**, the
+deposit as **20.00 ብር / ETB 20.00** (or your amount), a green **ይክፈሉ /
+Pay** and a plain **… / Fail**. It used to be a browser error
+(`checkout.test` cannot load).
+
+Tap **Pay**. _Should:_ the return page (**ወደ ላቁም? መተግበሪያው ይመለሱ**).
+Go back to the app. _Should:_ the booking checks the payment and the slot is
+held, with its QR. Pressing Pay itself changed nothing: the app's check with
+the provider did, as with Chapa.
+
+Book again and tap **Fail**, then go back. _Should:_ the booking still waits
+for its deposit, with **Pay deposit** offered again.
+
+Leave it without pressing either, and go back. _Should:_ still waiting:
+without `FAKE_PAYMENT_DELAY_SECONDS` nothing succeeds by itself any more.
+
+**i. After the next EAS build — NOT NOW.** The build that adds Firebase
+(Phase 5) also carries these; check them then:
+
+- the home-screen icon: the navy **ላቁም?** on white, whole under your
+  launcher's mask (Samsung: a squircle);
+- themed icons (Android 13+: Settings → Wallpaper and style → Themed icons):
+  the wordmark in the system's colour;
+- the native splash on a cold start: navy with the white wordmark in the
+  middle, in light and dark, handing over to the navy animation without a
+  flash.
 
 ---
 

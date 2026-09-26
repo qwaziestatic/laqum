@@ -377,7 +377,8 @@ the strings as drafted. For the record:
 
 ## Awaiting review (added after Session 2)
 
-24 items, from the product owner's decisions after Session 2.
+24 items from the product owner's decisions after Session 2, then 9 from the
+branding work (the last two sections).
 
 ### Clock times: the Ethiopian clock (4 words)
 
@@ -459,3 +460,34 @@ already had are approved above.
 | `error.PROVIDER_UNAVAILABLE`       | The payment service could not be reached. Try again in a moment.                               | የክፍያ አገልግሎቱን ማግኘት አልተቻለም። ትንሽ ቆይተው እንደገና ይሞክሩ።     |
 | `error.BAD_RESPONSE`               | The server sent a response this version of the dashboard does not understand. Reload the page. | ሰርቨሩ ይህ የዳሽቦርድ ስሪት የማይረዳውን ምላሽ ልኳል። ገጹን እንደገና ይጫኑ። |
 | `error.UNKNOWN`                    | Something went wrong. Try again.                                                               | ችግር ተፈጥሯል። እንደገና ይሞክሩ።                             |
+
+### The opening animation (1 new)
+
+The mobile intro is decorative; a screen reader hears only this, once, in the
+app's current language. The dashboard's intro is silent (aria-hidden); its page
+is named with the approved `app.name` and `app.attendantConsole`.
+
+| Key             | English        | Amharic       |
+| --------------- | -------------- | ------------- |
+| `intro.loading` | Laqum, loading | ላቁም?, በመጫን ላይ |
+
+### The development checkout page (8 new, development only)
+
+The page the fake payment provider opens instead of Chapa's
+(`apps/api/src/payments/devCheckout.ts`). It cannot exist in production, so
+drivers never see it; testers on the phone do. Both languages are always
+shown, Amharic first.
+
+| Key        | English                                                                                         | Amharic                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `title`    | Test payment                                                                                    | የሙከራ ክፍያ                                                         |
+| `notice`   | This page is for testing only. No money moves.                                                  | ይህ ገጽ ለሙከራ ብቻ ነው። ምንም ገንዘብ አይንቀሳቀስም።                             |
+| `lot`      | Parking                                                                                         | የመኪና ማቆሚያ                                                        |
+| `amount`   | Amount                                                                                          | የሚከፈለው                                                           |
+| `currency` | ETB                                                                                             | ብር                                                               |
+| `pay`      | Pay                                                                                             | ይክፈሉ                                                             |
+| `fail`     | Fail                                                                                            | ክፍያው እንዳይሳካ ያድርጉ                                                 |
+| `notFound` | This test payment was not found. If the server restarted, start the payment again from the app. | ይህ የሙከራ ክፍያ አልተገኘም። ሰርቨሩ እንደገና ከተጀመረ፣ ክፍያውን ከመተግበሪያው እንደገና ይጀምሩ። |
+
+A doubt: `fail` reads "make the payment not succeed"; it is a tester's button,
+so plain is better than elegant, but say if a shorter word fits.

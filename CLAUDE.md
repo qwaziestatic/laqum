@@ -89,6 +89,9 @@ pnpm install                    # install the workspace
 
 pnpm infra:up                   # dev postgres + redis (5432 / 6379)
 pnpm dev:stop                   # stop whatever holds 18000/18081/5173/5174
+pnpm brand                      # regenerate every brand asset (docs/BRAND.md)
+pnpm brand:check                # CI: committed brand assets = what the source produces
+pnpm brand:previews             # icon, favicon, mobile-intro previews -> docs/brand-previews/
 pnpm test:infra:up              # test postgres + redis (55432 / 56379)
 docker compose up -d --build    # full stack incl. the api container
 
@@ -417,6 +420,18 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
     phone's own WebSocket; no `ws`, no Node transports), verified from the
     source map of an Android export. The app forces
     `transports: ['websocket']`.
+26. **Playwright's `clock.install()` does not stop time.** Timers still fire
+    in real time; only `clock.pauseAt()` freezes them. A test that "froze"
+    the dashboard intro with `install()` alone photographed it after its
+    800 ms timer had removed it. `e2e/intro.spec.ts` pauses before loading.
+27. **SDK 57 has no native splash without `expo-splash-screen`.**
+    `@expo/prebuild-config` 57 handles no `splash` key at all; the plugin
+    does (a 288 dp box shown through a 192 dp circle). Adding the package is
+    safe for a build that lacks it: expo-router loads its native module with
+    `requireOptionalNativeModule`, and the app never imports it.
+28. **Expo's config loader cannot import `@laqum/shared`.** It resolves the
+    package to its built `dist`, so `app.config.ts` writes the brand navy
+    literally and `brand-config.test.ts` asserts it equals `BRAND.navy`.
 
 ---
 
@@ -511,6 +526,90 @@ Deliverable at the start of Phase 5: **2–3 concrete options with evidence** �
 provider, how payment actually works, cost, and what the deploy looks like —
 then aim the deploy README at whichever is chosen. Do not write a Heroku
 guide.
+
+### Phase 5 — the approved plan, and progress
+
+Approved by the product owner on 2026-09-26, with these decisions:
+
+- **D1 Hosting: AletCloud**, conditional on a one-hour trial deploy measuring
+  acceptable latency from a phone on Ethio telecom mobile data. Nightly
+  backups ALSO go to a second storage location in Ethiopia, independent of
+  AletCloud, with a tested restore.
+- **D2 Expiry notifications: both** a warning 5 minutes before the hold
+  expires (a new `hold-reminder` job) and a notice once it has expired. The
+  same re-read-before-send rule for both.
+- **D3** The language is stored with the push token (migration 006); the
+  app re-registers when the language changes.
+- **D4** The rate-limit numbers from the plan, as a starting point, all
+  configurable in env.
+- **D5** Caddy for HTTPS.
+
+**Order**, each with gates, negative tests, commits and a note here; stop
+only for the work-queue reasons; one 🛑 report after the deploy README:
+
+- [x] **Branding, opening animations, a development checkout page.** See
+      "Brand" below and docs/BRAND.md.
+- [ ] Trust proxy (`trust proxy` is `true`, so any client picks its own
+      `req.ip`: verified, and it defeats the per-IP OTP limit).
+- [ ] Rate limiting.
+- [ ] Structured logging (pino-http, request IDs, redaction).
+- [ ] Graceful shutdown (an open websocket blocks `server.close()`:
+      verified; today every deploy with a dashboard open ends in the forced
+      `exit(1)`).
+- [ ] Production image, prod compose, migrate, Caddy.
+- [ ] Push: Firebase (the product owner's steps), delivery, D2, D3. **The
+      icon and the native splash ship in this same EAS build.**
+- [ ] Deploy README, for AletCloud.
+
+### Brand — docs/BRAND.md is the rulebook
+
+- **The source is never edited.** `assets/brand/source/laqum-illustration.jpg`
+  (supplied as `laqum-illustration.png.jpg`: a JPEG). Its SHA-256 is checked
+  by the build and by `brand.test.ts`. **Source and licence: TO CONFIRM BY
+  PRODUCT OWNER.** Do not assume it is licensed.
+- **Every asset is generated** by `scripts/brand/build.mjs` (sharp +
+  imagetracerjs, development dependencies only): the colours sampled, the
+  wordmark traced into one vector master, the icons, splash, favicons and
+  intro layers drawn from it. CI runs `pnpm brand:check`. No hand-edited
+  binaries.
+- **Brand colours are identity, not interface.** `BRAND` (shared
+  `brand.ts`): navy `#1f3f71`, orange `#d57933`, paper `#fdfdfd`. Only the
+  icon, splash, intros and favicon use them; a scan in each app fails if one
+  reaches the operational UI, because navy is ΔE2000 8.0 from the dark
+  out-of-service tile and orange 9.0 from the dark "reconnecting" chip. The
+  car's red (`#dc544e`, 8.3 from overstay) is FORBIDDEN.
+- **The mark is the full wordmark**, legible at 48 px (about 41 × 14 px on a
+  launcher icon); ላ alone is offered in the previews as the fallback, not used.
+- **THE ICON AND THE NATIVE SPLASH SHIP IN THE FIREBASE EAS BUILD.** They are
+  configured (`app.config.ts`: `icon`, `android.adaptiveIcon` with a
+  monochrome layer, the `expo-splash-screen` plugin, navy) and verified by an
+  Android prebuild, but NO build is run for them alone: by decision they go
+  out with the Phase 5 push build.
+- **The mobile intro** (`src/intro/`) is JavaScript: cold start only (a
+  per-runtime claim, taken synchronously), never when opened by a
+  `laqum://` link, at most 1.2 s of opacity and transform on the native
+  driver, gone by max(1.2 s, ready), a still frame for 300 ms under reduced
+  motion, one announcement after the stored language is restored. Built-in
+  `Animated` only: Reanimated is linked (through expo-router's peers) but
+  deliberately unused. The splash and the intro share the navy, so there is
+  no flash between them.
+- **The dashboard intro** is decided once per PAGE LOAD in `main.tsx`,
+  outside React, and remembered in sessionStorage; at most 800 ms of CSS
+  (`intro.test.ts` reads the stylesheet back); over the app, never before it.
+  The page title and `<html lang>` now follow the language.
+- **The development checkout page** (`GET /dev/checkout/:txRef`, Pay / Fail)
+  replaces the dead `checkout.test` link. Registered only when
+  `config.DEV_CHECKOUT_ENABLED` (the fake provider AND not production: one
+  derived gate, like `DEV_AUTH_ENABLED`); otherwise the generic 404. Pay and
+  Fail only decide what the fake PROVIDER reports; the app's verify still
+  moves the booking. **`FAKE_PAYMENT_DELAY_SECONDS` is now optional:** unset,
+  a fake payment never succeeds by itself; a number restores the automatic
+  success.
+- Observed, not changed: prebuild warns `userInterfaceStyle` needs
+  `expo-system-ui` on Android (pre-existing; the device pass saw dark mode
+  follow the phone regardless, step 10a), and both apps' button `accent` (`#1d4ed8`) is
+  exactly the light "occupied" blue. Both are questions for the product
+  owner, in docs/BRAND.md.
 
 ### Chapa integration — the facts that matter
 
@@ -1086,7 +1185,9 @@ an approved plan before work starts.**
 - [x] **P2 — Booking radius.** Done: 5 km default, 1 km floor, an approved
       deviation from the brief's 10 km. See "Booking radius — APPROVED
       DEVIATION" above.
-- [ ] **P2 — App icon.** Still Expo's default Android icon.
+- [x] **P2 — App icon.** Prepared with the branding (docs/BRAND.md): the
+      icon, adaptive icon, monochrome and splash are generated and
+      configured, and ship in the Phase 5 Firebase EAS build.
 - [x] **P2 — The flaky two-screen e2e test**, "taking a slot out of service
       reaches the other screen". Done, as the product owner specified: the
       limit is unchanged, and `realtimeLatency` (`e2e/fixtures.ts`) measures
@@ -1125,12 +1226,13 @@ an approved plan before work starts.**
       product owner reviewed all 210 keys (dashboard 68, driver app 140,
       return page 2, as of commit `a3b139f`) and found **no corrections**.
       APPROVED; the release blocker is cleared for them.
-- [ ] **Amharic added after Session 2: 24 items awaiting review**
+- [ ] **Amharic added after Session 2: 33 items awaiting review**
       (docs/AMHARIC-REVIEW.md, "Awaiting review"): the four Ethiopian
       time-of-day words and their hours, the three "overstay" sentences now
-      using ጊዜ አልፏል, one bill sentence adapted for the clock, and the
-      dashboard's 16 new error texts. **Blocks release for those strings
-      only.**
+      using ጊዜ አልፏል, one bill sentence adapted for the clock, the
+      dashboard's 16 new error texts, the intro's one announcement, and the
+      development checkout page's 8 strings. **Blocks release for those
+      strings only.**
 
 ### Phase 2 open items
 
