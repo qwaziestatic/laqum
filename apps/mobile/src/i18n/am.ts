@@ -15,6 +15,9 @@ export const am: Messages = {
     name: 'ላቁም?',
     tagline: 'በአዲስ አበባ የመኪና ማቆሚያ ቦታ ያግኙ እና ያስይዙ።',
   },
+  intro: {
+    loading: 'ላቁም?, በመጫን ላይ',
+  },
   language: {
     am: 'አማርኛ',
     en: 'English',

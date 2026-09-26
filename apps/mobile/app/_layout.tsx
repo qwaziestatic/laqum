@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { LanguageSwitch } from '../src/i18n/LanguageSwitch.js';
 import { useT } from '../src/i18n/react.js';
+import { Intro } from '../src/intro/Intro.js';
 import { AppProvider, useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
 
@@ -45,6 +46,8 @@ function Shell(): React.JSX.Element {
         <Stack.Screen name="booking/[id]" options={{ title: t('nav.booking') }} />
         <Stack.Screen name="checkout/[id]" options={{ title: t('nav.checkout') }} />
       </Stack>
+      {/* Over everything, on a cold start only, while the session restores. */}
+      <Intro ready={ready} />
     </>
   );
 }

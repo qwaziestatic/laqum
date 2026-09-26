@@ -46,14 +46,22 @@ void i18next.use(initReactI18next).init({
   lng: languageForLocale(deviceLocale()),
 });
 
-/** Apply a stored choice, if there is one. Called once at startup. */
-export async function restoreLanguage(): Promise<void> {
-  try {
-    const stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
-    if (isLocale(stored) && stored !== i18next.language) await i18next.changeLanguage(stored);
-  } catch {
-    // Unreadable storage: the phone's language stands.
-  }
+/**
+ * Apply a stored choice, if there is one. Once per start: every caller gets
+ * the same promise, so the opening animation can wait for the driver's
+ * language before it announces anything, without reading storage twice.
+ */
+let restoring: Promise<void> | null = null;
+export function restoreLanguage(): Promise<void> {
+  restoring ??= (async () => {
+    try {
+      const stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
+      if (isLocale(stored) && stored !== i18next.language) await i18next.changeLanguage(stored);
+    } catch {
+      // Unreadable storage: the phone's language stands.
+    }
+  })();
+  return restoring;
 }
 
 /** Switch now, and remember it over the phone's language from here on. */

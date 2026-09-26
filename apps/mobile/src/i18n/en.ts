@@ -11,6 +11,10 @@ export const en = {
     name: 'ላቁም?',
     tagline: 'Find and hold a parking slot in Addis Ababa.',
   },
+  intro: {
+    // The opening animation is decorative; this is all a screen reader hears.
+    loading: 'Laqum, loading',
+  },
   language: {
     // Each language is named in itself, in both bundles: the switch offers
     // the OTHER language, so it must be readable by someone who needs it.
