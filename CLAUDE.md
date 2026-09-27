@@ -674,7 +674,20 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       (push.test.ts). `JobDeps` now requires emitter, scheduler, push and
       redis. Not done: a sign-out in the app (it has none) should delete the
       device's token.
-- [ ] Deploy README, for AletCloud.
+- [x] **Deploy README** (docs/DEPLOY.md), for AletCloud: the one-hour
+      trial (DOMAIN = the server's IP, Caddy's self-signed certificate,
+      `--profile local-db`, curl timings over the phone's mobile data), the
+      server and its cost, DNS, settings, first deploy and its outside
+      checks, the first operator/admin/lots/attendants (SQL through the
+      backup image's psql, then the admin API), Chapa, **Push** (the
+      Firebase/EAS/Expo steps), the driver app, **Backups** (the second
+      location, the monthly restore check, a real restore), updates and
+      rollback under forward-only migrations, logs, and data protection
+      (Proclamation 1321/2024). **Two gaps it records rather than fixes,
+      for the product owner:** the EAS `production` profile builds a Play
+      Store bundle (Play needs a card) and sets no `EXPO_PUBLIC_API_URL`,
+      so `app.config.ts` silently falls back to localhost; and attendants
+      can only be added in SQL (there is no endpoint).
 
 ### Brand — docs/BRAND.md is the rulebook
 
