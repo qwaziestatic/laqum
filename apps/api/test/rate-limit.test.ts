@@ -1,14 +1,10 @@
-import { createServer, type Server as HttpServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { Redis } from 'ioredis';
-import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { RateLimiter } from '../src/auth/rateLimit.js';
 import { clientAddress } from '../src/clientAddress.js';
-import { createRealtimeServer, type RealtimeServer } from '../src/realtime/server.js';
 import { makeActor, staffLot, type Actor } from './helpers/auth.js';
 import { createTestContext, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
@@ -26,7 +22,6 @@ const LIMITS = {
   RATE_LIMIT_BOOKING_WRITES_PER_MINUTE: '2',
   RATE_LIMIT_STAFF_ACTIONS_PER_MINUTE: '3',
   RATE_LIMIT_OTP_VERIFY_PER_IP: '2',
-  RATE_LIMIT_SOCKET_CONNECTIONS_PER_MINUTE: '2',
 };
 
 let t: TestContext;
@@ -206,67 +201,7 @@ describe('when Redis cannot be reached', () => {
   });
 });
 
-describe('Socket.io connections: per client address', () => {
-  let http: HttpServer;
-  let realtime: RealtimeServer;
-  let port: number;
-  const sockets: ClientSocket[] = [];
-
-  beforeEach(async () => {
-    http = createServer();
-    realtime = createRealtimeServer(http, {
-      db: t.db.db,
-      config: t.ctx.config,
-      clock: t.ctx.clock,
-      logger: t.ctx.logger,
-      rateLimiter: t.ctx.rateLimiter,
-    });
-    await new Promise<void>((resolve) => {
-      http.listen(0, resolve);
-    });
-    port = (http.address() as AddressInfo).port;
-  });
-
-  afterEach(async () => {
-    for (const socket of sockets.splice(0)) socket.disconnect();
-    await realtime.close();
-    await new Promise<void>((resolve) => {
-      http.close(() => {
-        resolve();
-      });
-    });
-  });
-
-  /** The server's first answer: 'connected', or its refusal reason. */
-  function attempt(token: string): Promise<string> {
-    const socket = ioClient(`http://localhost:${String(port)}`, {
-      auth: { token },
-      transports: ['websocket'],
-      reconnection: false,
-    });
-    sockets.push(socket);
-    return new Promise((resolve) => {
-      socket.on('connect', () => {
-        resolve('connected');
-      });
-      socket.on('connect_error', (err: Error) => {
-        resolve(err.message);
-      });
-    });
-  }
-
-  it('refuses the connection over the limit, before looking at the token', async () => {
-    const driver = await makeActor(t, 'driver');
-    expect(await attempt(driver.token)).toBe('connected');
-    expect(await attempt(driver.token)).toBe('connected');
-    expect(await attempt(driver.token)).toBe('RATE_LIMITED');
-    // Even a bad token is counted and refused for rate first.
-    expect(await attempt('not-a-token')).toBe('RATE_LIMITED');
-
-    t.clock.advanceMinutes(1);
-    expect(await attempt(driver.token)).toBe('connected');
-  });
-});
+// The socket limits, and why they are what they are: socket-limits.test.ts.
 
 describe('the client address a socket is counted by', () => {
   /** What Express says req.ip is, for the same peer and header. */

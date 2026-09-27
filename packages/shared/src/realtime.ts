@@ -167,3 +167,40 @@ export function countSlots(
   }
   return counts;
 }
+
+// ─── A handshake refused for rate ──────────────────────────────────────────
+
+/**
+ * The server's reason when it refuses a socket handshake for rate. It is
+ * TERMINAL for socket.io-client (a middleware refusal destroys the socket
+ * and is never retried by itself, verified in 4.8.3), so both clients handle
+ * it themselves: they wait, and try again.
+ */
+export const SOCKET_RATE_LIMITED = 'RATE_LIMITED';
+
+/** What the refusal carries: how long until the window that refused it ends. */
+export interface SocketRefusalData {
+  retryAfterMs: number;
+}
+
+const MIN_SOCKET_RETRY_MS = 1_000;
+const MAX_SOCKET_RETRY_MS = 60_000;
+
+/**
+ * When to try a refused handshake again: after the server's `retryAfterMs`,
+ * plus a random share of it again. The jitter is the point: clients refused
+ * together (a reconnect storm after a deploy, many phones behind one carrier
+ * address) must not all come back at the same instant and be refused
+ * together again. Bounded, so a missing or absurd value cannot stall a client
+ * or hammer the server.
+ */
+export function socketRetryDelayMs(data: unknown, random: () => number = Math.random): number {
+  const offered =
+    typeof data === 'object' && data !== null && 'retryAfterMs' in data
+      ? Number(data.retryAfterMs)
+      : Number.NaN;
+  const base = Number.isFinite(offered)
+    ? Math.min(MAX_SOCKET_RETRY_MS, Math.max(MIN_SOCKET_RETRY_MS, offered))
+    : 5_000;
+  return Math.round(base + random() * base);
+}

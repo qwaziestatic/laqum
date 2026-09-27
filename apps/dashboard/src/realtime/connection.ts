@@ -1,5 +1,10 @@
 import type { StaffSlotEvent } from '@laqum/shared';
-import { SUBSCRIBE_EVENT, type SubscribedAck } from '@laqum/shared';
+import {
+  SOCKET_RATE_LIMITED,
+  SUBSCRIBE_EVENT,
+  type SubscribedAck,
+  socketRetryDelayMs,
+} from '@laqum/shared';
 import { type Socket, io } from 'socket.io-client';
 import type { ApiClient } from '../api/client.js';
 import type { RealtimeStore } from '@laqum/shared';
@@ -40,6 +45,7 @@ export class RealtimeConnection {
   readonly #url: string | undefined;
   #socket: Socket | null = null;
   #closed = false;
+  #retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Read through a method, never the field directly, after an await.
@@ -69,8 +75,25 @@ export class RealtimeConnection {
 
   close(): void {
     this.#closed = true;
+    if (this.#retryTimer !== null) clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
     this.#socket?.close();
     this.#socket = null;
+  }
+
+  /**
+   * The server refused the handshake for rate. socket.io-client never retries
+   * a middleware refusal by itself (the socket is destroyed), so without this
+   * the dashboard would sit on "reconnecting" for good. Wait what the server
+   * asked, plus a random share of it, so tablets refused together (after a
+   * deploy) do not come back together.
+   */
+  #retryLater(socket: Socket, data: unknown): void {
+    if (this.#retryTimer !== null) clearTimeout(this.#retryTimer);
+    this.#retryTimer = setTimeout(() => {
+      this.#retryTimer = null;
+      if (!this.#isClosed() && this.#socket === socket) socket.connect();
+    }, socketRetryDelayMs(data));
   }
 
   #open(): void {
@@ -89,6 +112,9 @@ export class RealtimeConnection {
       reconnection: true,
       reconnectionDelay: 500,
       reconnectionDelayMax: 5_000,
+      // Socket.io's default, written down because it matters: each delay is
+      // randomised by ±50%, so tablets dropped together (a deploy) spread out.
+      randomizationFactor: 0.5,
     });
     this.#socket = socket;
 
@@ -125,6 +151,11 @@ export class RealtimeConnection {
       // A refused handshake is an auth problem, not a flaky network.
       if (err.message === 'BAD_TOKEN' || err.message === 'EXPIRED') {
         void this.#reauthenticate();
+        return;
+      }
+      if (err.message === SOCKET_RATE_LIMITED) {
+        this.#store.setConnection('reconnecting');
+        this.#retryLater(socket, (err as Error & { data?: unknown }).data);
         return;
       }
       this.#store.setConnection('reconnecting');

@@ -81,8 +81,25 @@ const baseSchema = z.object({
   RATE_LIMIT_STAFF_ACTIONS_PER_MINUTE: z.coerce.number().int().positive().default(120),
   /** OTP verification attempts per IP, over OTP_RATE_LIMIT_WINDOW_MINUTES. */
   RATE_LIMIT_OTP_VERIFY_PER_IP: z.coerce.number().int().positive().default(30),
-  /** Socket.io connections per IP. The Chapa webhook has no per-IP limit at all. */
-  RATE_LIMIT_SOCKET_CONNECTIONS_PER_MINUTE: z.coerce.number().int().positive().default(30),
+  /*
+   * Socket.io connections, in two stages (realtime/server.ts). NOT a tight
+   * per-IP limit: Ethio telecom puts many phones behind one carrier (CGNAT)
+   * address, and after every deploy or restart EVERY client reconnects at
+   * once. The first design, 30 per IP per minute, locked most of them out
+   * (and the e2e suite, one address, showed exactly that; CI #23).
+   *
+   * A loose per-ADDRESS flood guard, checked before the token: a whole
+   * carrier address's reconnect storm fits under it; one host flooding does
+   * not.
+   */
+  RATE_LIMIT_SOCKET_CONNECTIONS_PER_IP_PER_MINUTE: z.coerce.number().int().positive().default(1200),
+  /**
+   * The real limit, per signed-in USER, checked after the token. No device
+   * opens a socket a second; a flapping network with backoff opens ~10 a
+   * minute; two tablets on one account, lot switches included, stay well
+   * under.
+   */
+  RATE_LIMIT_SOCKET_CONNECTIONS_PER_USER_PER_MINUTE: z.coerce.number().int().positive().default(60),
 
   /**
    * How many reverse proxies stand in front of this process: EXACTLY. 0 when

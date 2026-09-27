@@ -10,6 +10,8 @@ import {
   staffRoom,
   subscribeSchema,
   userRoom,
+  SOCKET_RATE_LIMITED,
+  type SocketRefusalData,
 } from '@laqum/shared';
 import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
@@ -49,9 +51,10 @@ export interface RealtimeDeps {
   /** Applied before any connection is accepted; used for the Redis adapter. */
   adapter?: Parameters<Server['adapter']>[0];
   /**
-   * Connections per client address per minute (RATE_LIMIT_SOCKET_CONNECTIONS_
-   * PER_MINUTE). The server passes it; unit tests of other behaviour omit it.
-   * Fails open, like the other broad limits: see middleware/rateLimit.ts.
+   * Connection limits: a loose flood guard per address, then the real limit
+   * per user (config.ts, RATE_LIMIT_SOCKET_CONNECTIONS_*). The server passes
+   * it; unit tests of other behaviour omit it. Fails open, like the other
+   * broad limits: see middleware/rateLimit.ts.
    */
   rateLimiter?: RateLimiter;
 }
@@ -92,30 +95,57 @@ export function createRealtimeServer(httpServer: HttpServer, deps: RealtimeDeps)
    * no window in which an unauthenticated socket exists and could subscribe.
    */
   /*
-   * Too many connections from one address: refused before the token is even
-   * looked at. The address is read the way Express reads req.ip, through
-   * exactly TRUST_PROXY_HOPS proxies (clientAddress.ts); the handshake's own
-   * peer address is the proxy's.
+   * CONNECTION LIMITS, IN TWO STAGES. Not a tight per-address limit: many
+   * phones share one carrier (CGNAT) address, and after a deploy every client
+   * reconnects at once (config.ts has the numbers and the story).
+   *
+   * 1. Before the token is looked at: a LOOSE flood guard per address, read
+   *    the way Express reads req.ip (clientAddress.ts; the handshake's own
+   *    peer is the proxy).
+   * 2. After it: the real limit, per USER.
+   *
+   * A refusal carries `retryAfterMs`. socket.io-client never retries a
+   * middleware refusal by itself, so both clients wait that long plus a
+   * random share of it and try again (socketRetryDelayMs, shared): a crowd
+   * refused together does not come back together.
    */
   const limiter = deps.rateLimiter;
-  if (limiter) {
-    io.use((socket, next) => {
-      const address = clientAddress(
-        socket.handshake.address,
-        socket.handshake.headers['x-forwarded-for'],
-        deps.config.TRUST_PROXY_HOPS,
-      );
-      limiter
-        .hit(`sockets:ip:${address}`, deps.config.RATE_LIMIT_SOCKET_CONNECTIONS_PER_MINUTE, 1)
-        .then((result) => {
-          next(result.allowed ? undefined : new Error('RATE_LIMITED'));
-        })
-        .catch((err: unknown) => {
-          deps.logger.warn({ err }, 'socket connection not counted: Redis unreachable');
+  const limit = (key: string, perMinute: number, next: (err?: Error) => void): void => {
+    if (!limiter) {
+      next();
+      return;
+    }
+    limiter
+      .hit(key, perMinute, 1)
+      .then((result) => {
+        if (result.allowed) {
           next();
-        });
-    });
-  }
+          return;
+        }
+        const refusal = new Error(SOCKET_RATE_LIMITED) as Error & { data: SocketRefusalData };
+        refusal.data = {
+          retryAfterMs: Math.max(0, result.resetAt.getTime() - deps.clock.now().getTime()),
+        };
+        next(refusal);
+      })
+      .catch((err: unknown) => {
+        deps.logger.warn({ err }, 'socket connection not counted: Redis unreachable');
+        next();
+      });
+  };
+
+  io.use((socket, next) => {
+    const address = clientAddress(
+      socket.handshake.address,
+      socket.handshake.headers['x-forwarded-for'],
+      deps.config.TRUST_PROXY_HOPS,
+    );
+    limit(
+      `sockets:ip:${address}`,
+      deps.config.RATE_LIMIT_SOCKET_CONNECTIONS_PER_IP_PER_MINUTE,
+      next,
+    );
+  });
 
   io.use((socket, next) => {
     void (async (): Promise<void> => {
@@ -137,7 +167,12 @@ export function createRealtimeServer(httpServer: HttpServer, deps: RealtimeDeps)
       data.userId = result.principal.userId;
       data.role = result.principal.role;
       data.expiresAt = result.principal.expiresAt;
-      next();
+      // Stage 2: the real limit, now that we know who it is.
+      limit(
+        `sockets:user:${result.principal.userId}`,
+        deps.config.RATE_LIMIT_SOCKET_CONNECTIONS_PER_USER_PER_MINUTE,
+        next,
+      );
     })().catch((err: unknown) => {
       deps.logger.error({ err }, 'socket handshake failed unexpectedly');
       next(new Error('BAD_TOKEN'));

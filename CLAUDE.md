@@ -30,7 +30,9 @@ invariants, conventions, and every decision that is not derivable from the code.
   and types. Do not write code against APIs you are unsure exist. This has
   already paid for itself repeatedly — see "Hard-won facts" below.
 - **Nothing is done until it is tested.** Run lint, typecheck and tests, and
-  report the actual results, including failures.
+  report the actual results, including failures. At the end of EVERY step the
+  full gates run: format, lint, typecheck, brand:check, every unit and API
+  suite, AND the full e2e suite once (product owner, after CI #23).
 - Commit in small logical steps with conventional commit messages.
 - Secrets live only in `.env` (gitignored). `.env.example` documents every
   variable.
@@ -429,7 +431,20 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
     does (a 288 dp box shown through a 192 dp circle). Adding the package is
     safe for a build that lacks it: expo-router loads its native module with
     `requireOptionalNativeModule`, and the app never imports it.
-28. **Expo's config loader cannot import `@laqum/shared`.** It resolves the
+28. **socket.io-client never retries a MIDDLEWARE refusal.** A
+    `CONNECT_ERROR` packet calls `socket.destroy()` (4.8.3 source), so a
+    handshake refused by `io.use` stays down for good; only network drops
+    are retried (with ±50% jitter). Both clients therefore handle
+    `RATE_LIMITED` themselves: wait the refusal's `retryAfterMs` plus a
+    random share of it (`socketRetryDelayMs`, shared), then `connect()`.
+    CI #23 was this: a 30-per-IP socket limit refused the e2e suite (one
+    address) and the dashboard sat on "reconnecting". In production the
+    same limit would strand every phone behind one Ethio telecom CGNAT
+    address after a deploy. Now: a loose per-address flood guard (1200/min)
+    before the token, the real limit per USER (60/min) after it.
+    `socket-limits.test.ts` reconnects 200 users from one address after a
+    cut, and shows the old rule refusing 170 of them.
+29. **Expo's config loader cannot import `@laqum/shared`.** It resolves the
     package to its built `dist`, so `app.config.ts` writes the brand navy
     literally and `brand-config.test.ts` asserts it equals `BRAND.navy`.
 
@@ -564,9 +579,9 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       can put many phones behind one address. The approved numbers, each an
       env setting: every /v1 request 300/min; book, cancel, extend, pay and
       deposit 10/min; staff actions 120/min (reads are not actions); OTP
-      verify 30 per IP per 15 min; Socket.io connections 30 per IP per
-      minute, the address read through `clientAddress` exactly as Express
-      reads `req.ip` (checked against Express). OTP requests unchanged. Not
+      verify 30 per IP per 15 min; Socket.io connections in TWO stages (revised after CI #23, below), the
+      address read through `clientAddress` exactly as Express reads
+      `req.ip` (checked against Express). OTP requests unchanged. Not
       limited: the probes and the Chapa webhook. Every 429 has
       `Retry-After`, set once in the error handler. **Redis down: the broad
       limits FAIL OPEN** (a blip must not stop the lot), **the OTP limits

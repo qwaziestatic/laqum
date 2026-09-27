@@ -1,4 +1,9 @@
-import { type BookingUpdated, bookingUpdatedSchema } from '@laqum/shared';
+import {
+  type BookingUpdated,
+  SOCKET_RATE_LIMITED,
+  bookingUpdatedSchema,
+  socketRetryDelayMs,
+} from '@laqum/shared';
 import type { ManagerOptions, Socket, SocketOptions } from 'socket.io-client';
 
 /**
@@ -58,6 +63,7 @@ export class DriverRealtime {
   #state: RealtimeState = 'offline';
   #closed = true;
   #reauthenticating: Promise<void> | null = null;
+  #retryTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #bookingListeners = new Set<Listener<BookingUpdated>>();
   readonly #resyncListeners = new Set<Listener<undefined>>();
   readonly #stateListeners = new Set<Listener<RealtimeState>>();
@@ -92,6 +98,10 @@ export class DriverRealtime {
       reconnection: true,
       reconnectionDelay: 1_000,
       reconnectionDelayMax: 10_000,
+      // Socket.io's default, written down because it matters: each delay is
+      // randomised by ±50%, so phones dropped together (a deploy, one carrier
+      // address) do not all come back in the same instant.
+      randomizationFactor: 0.5,
     });
     this.#socket = socket;
 
@@ -126,12 +136,21 @@ export class DriverRealtime {
         void this.#reauthenticate();
         return;
       }
+      if (err.message === SOCKET_RATE_LIMITED) {
+        // Also a middleware refusal, so also never retried by socket.io: wait
+        // what the server asked plus a random share of it, then try again.
+        this.#setState('reconnecting');
+        this.#retryLater((err as Error & { data?: unknown }).data);
+        return;
+      }
       this.#setState('reconnecting');
     });
   }
 
   close(): void {
     this.#closed = true;
+    if (this.#retryTimer !== null) clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
     const socket = this.#socket;
     this.#socket = null;
     if (socket) {
@@ -139,6 +158,18 @@ export class DriverRealtime {
       socket.disconnect();
     }
     this.#setState('offline');
+  }
+
+  /** After a refusal for rate: socketRetryDelayMs (shared) says when. */
+  #retryLater(data: unknown): void {
+    if (this.#retryTimer !== null) clearTimeout(this.#retryTimer);
+    const socket = this.#socket;
+    this.#retryTimer = setTimeout(() => {
+      this.#retryTimer = null;
+      if (!this.#isClosed() && socket && this.#socket === socket && !socket.connected) {
+        socket.connect();
+      }
+    }, socketRetryDelayMs(data));
   }
 
   /**
