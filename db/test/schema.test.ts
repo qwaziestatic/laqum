@@ -205,6 +205,7 @@ describe('tables and columns', () => {
       'push_tokens.user_id uuid NO',
       'push_tokens.expo_push_token text NO',
       'push_tokens.created_at timestamp with time zone NO',
+      'push_tokens.locale text NO',
 
       'refresh_tokens.id uuid NO',
       'refresh_tokens.user_id uuid NO',

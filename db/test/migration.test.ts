@@ -52,6 +52,7 @@ describe('migrator', () => {
       '003_lot_version',
       '004_payment_checkout_url',
       '005_booking_radius_default',
+      '006_push_token_locale',
     ]);
   });
 
@@ -67,6 +68,7 @@ describe('migrator', () => {
       '003_lot_version',
       '004_payment_checkout_url',
       '005_booking_radius_default',
+      '006_push_token_locale',
     ]);
   });
 
@@ -83,7 +85,7 @@ describe('migrator', () => {
       ctx.db,
       `SELECT count(*)::text AS count FROM kysely_migration`,
     );
-    expect(rows[0]?.count).toBe('5');
+    expect(rows[0]?.count).toBe('6');
   });
 
   /*
@@ -116,6 +118,7 @@ describe('migrator', () => {
       '003_lot_version',
       '004_payment_checkout_url',
       '005_booking_radius_default',
+      '006_push_token_locale',
     ]);
   });
 

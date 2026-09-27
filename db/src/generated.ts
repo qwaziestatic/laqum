@@ -129,6 +129,7 @@ export interface PushTokens {
   created_at: Generated<Timestamp>;
   expo_push_token: string;
   id: Generated<string>;
+  locale: Generated<string>;
   user_id: string;
 }
 
