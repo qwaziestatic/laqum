@@ -1,0 +1,162 @@
+# ላቁም? IN PRODUCTION: one server (docs/DEPLOY.md).
+#
+#   docker compose -f docker-compose.prod.yml --env-file deploy/.env.production up -d --build
+#
+# Caddy (web) is the only thing reachable from outside: HTTPS, the attendant
+# dashboard, and a proxy to the API. The API, Redis and the backups sit on the
+# compose network. PostgreSQL is the managed one (DATABASE_URL), or, with
+# `--profile local-db`, a container here (the trial, staging, a local run).
+#
+# Every setting and secret comes from deploy/.env.production, which is never
+# committed; deploy/.env.production.example lists them. (LAQUM_ENV_FILE,
+# HTTP_PORT and HTTPS_PORT exist for deploy/smoke.sh; production leaves them.)
+
+x-logging: &logging
+  # Docker keeps and rotates the logs, on this server: they carry request ids
+  # and masked phone numbers, and are shipped to no service abroad.
+  driver: local
+  options:
+    max-size: 10m
+    max-file: '10'
+
+x-api-build: &api-build
+  context: .
+  dockerfile: apps/api/Dockerfile
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+    image: laqum-web:${LAQUM_VERSION:-latest}
+    ports:
+      # Overridable only for a local run beside other services (deploy/smoke.sh).
+      - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+      - '${HTTPS_PORT:-443}:443/udp' # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env.production}
+    volumes:
+      # Certificates and their account: keep them, or Let's Encrypt's rate
+      # limits bite after a few rebuilds.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    build: *api-build
+    image: laqum-api:${LAQUM_VERSION:-latest}
+    env_file: ${LAQUM_ENV_FILE:-deploy/.env.production}
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      REDIS_URL: redis://redis:6379
+      # Exactly one proxy in front: Caddy, which replaces X-Forwarded-For.
+      TRUST_PROXY_HOPS: '1'
+      PUBLIC_BASE_URL: https://${DOMAIN}
+      SHUTDOWN_TIMEOUT_MS: '20000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # READY, not merely alive: Caddy starts only once the API can reach
+      # PostgreSQL and Redis, and a draining API reports 503.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Above SHUTDOWN_TIMEOUT_MS, so the API's own shutdown decides, not SIGKILL.
+    stop_grace_period: 30s
+    init: true
+    restart: unless-stopped
+    logging: *logging
+
+  # The migrations, from the same image, before the API starts. Forward-only
+  # (CLAUDE.md): a failure stops the deploy with the old API still running.
+  migrate:
+    build: *api-build
+    image: laqum-api:${LAQUM_VERSION:-latest}
+    command: ['node', 'node_modules/@laqum/db/dist/src/cli.js', 'up']
+    env_file: ${LAQUM_ENV_FILE:-deploy/.env.production}
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    restart: 'no'
+    logging: *logging
+
+  redis:
+    image: redis:7.4.11-alpine
+    # Append-only: the delayed jobs (hold expiry, overstay, reminders) live
+    # here, and survive a restart. The sweeper is the safety net if not.
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+  # Nightly dumps (deploy/backup.sh), kept here and copied to a second place
+  # in Ethiopia that does not depend on the hosting provider (BACKUP_REMOTE).
+  backup:
+    build:
+      context: .
+      dockerfile: deploy/backup.Dockerfile
+    image: laqum-backup:${LAQUM_VERSION:-latest}
+    env_file: ${LAQUM_ENV_FILE:-deploy/.env.production}
+    volumes:
+      - backups:/backups
+      - ./deploy/secrets:/run/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+    logging: *logging
+
+  # Only with `--profile local-db`. Production uses the managed PostgreSQL 16.
+  postgres:
+    profiles: ['local-db']
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_USER: laqum
+      POSTGRES_DB: laqum
+      # Not :? here: Compose checks every service's variables, profile or not,
+      # and the managed-database deploy has no such password. The image itself
+      # refuses to start without one.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U laqum -d laqum']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:
+  redis_data:
+  backups:
+  postgres_data:

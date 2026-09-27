@@ -93,8 +93,20 @@ jobs:
       - name: Test
         run: pnpm -r test
 
-      - name: Build API image
-        run: docker build -f apps/api/Dockerfile -t laqum-api:ci .
+  # The production stack, from the production images, up for real:
+  # docker-compose.prod.yml with a PostgreSQL container and DOMAIN=localhost.
+  # deploy/smoke.sh checks what a driver, an attendant and Chapa reach, takes
+  # a backup and restores it, and stops the API with a real SIGTERM.
+  production-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Smoke test the production stack
+        run: bash deploy/smoke.sh
 
   # A SEPARATE JOB. The e2e suite starts a real API, a real Vite server and a
   # browser; keeping it apart means a unit-test failure is reported in seconds

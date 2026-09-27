@@ -8,6 +8,13 @@ coverage/
 .env
 .env.*
 !.env.example
+!deploy/.env.production.example
+
+# The backup copy's SSH key and pinned host key (deploy/backup.sh).
+# deploy/smoke.sh's throwaway settings and dump.
+deploy/.smoke/
+deploy/secrets/*
+!deploy/secrets/README.md
 
 # Logs
 *.log

@@ -95,7 +95,7 @@ pnpm brand                      # regenerate every brand asset (docs/BRAND.md)
 pnpm brand:check                # CI: committed brand assets = what the source produces
 pnpm brand:previews             # icon, favicon, mobile-intro previews -> docs/brand-previews/
 pnpm test:infra:up              # test postgres + redis (55432 / 56379)
-docker compose up -d --build    # full stack incl. the api container
+bash deploy/smoke.sh            # the production stack, up, checked, torn down
 
 pnpm db:migrate                 # apply migrations  (also: migrate down | status)
 pnpm db:codegen                 # regenerate db/src/generated.ts
@@ -619,11 +619,30 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       real socket, request and job; the real-signal test in
       `server-startup.test.ts` is **Linux only** (Windows cannot deliver
       SIGTERM to a child) and runs in CI, not on the dev machine.
-- [ ] Production image, prod compose, migrate, Caddy. IN PROGRESS: paused for
-      the CI #23 fix and kept in the git stash `phase5-image-compose-wip`
-      (package `files` fields, the Dockerfile healthcheck, deploy/ with the
-      Caddyfile, web image, backups and smoke script, docker-compose.prod.yml),
-      popped back to finish this step.
+- [x] **Server packaging.** `docker-compose.prod.yml`: Caddy
+      (`deploy/web.Dockerfile`, caddy 2.11.4, the built dashboard, automatic
+      Let's Encrypt HTTPS, the only public service; it proxies only
+      `/v1`, `/socket.io` and `/payment-complete`, never the probes), the
+      API (`/ready` health, `TRUST_PROXY_HOPS=1`, 30 s stop grace, `init`),
+      a one-off `migrate` from the same image
+      (`node node_modules/@laqum/db/dist/src/cli.js up`) that must succeed
+      first, Redis 7.4.11 with AOF, nightly `backup` (pg_dump, 14 days,
+      rsync over SSH with a pinned host key to BACKUP_REMOTE, the second
+      location in Ethiopia), PostgreSQL 16.15 only under the `local-db` profile (production uses the managed one). Settings in
+      `deploy/.env.production` (never committed; the example is). Docker
+      `local` log rotation. The runtime image now carries only `dist`
+      (`files` in each package). `deploy/restore-check.sh` restores a dump
+      into a throwaway PostgreSQL 16 and checks it. **`bash deploy/smoke.sh`
+      (also a CI job) brings the whole stack up from the production images
+      with DOMAIN=localhost, checks every public path, proves /ready and the
+      dev checkout are not public, writes a row, backs up, restores it, and
+      stops the API with a real SIGTERM ("shut down cleanly").** The dev
+      compose is now infrastructure only: its old `api` service could not
+      start (production mode without secrets or migrations).
+      Found on the way: Caddy REPLACES `X-Forwarded-For` (its docs), so one
+      hop is exactly right; Compose checks `${VAR:?}` in inactive profiles
+      too; Git Bash's `MSYS_NO_PATHCONV` must be scoped to Docker commands
+      or `curl -o /dev/null` breaks.
 - [ ] Push: Firebase (the product owner's steps), delivery, D2, D3. **The
       icon and the native splash ship in this same EAS build.**
 - [ ] Deploy README, for AletCloud.

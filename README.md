@@ -35,13 +35,15 @@ No build step is needed for development: the tsx-based scripts above resolve
 export condition. `pnpm build` is only needed for the e2e suite, the Docker
 image, and production. See CLAUDE.md, "Module resolution".
 
-Or run the whole stack, API included:
+Or run the whole stack exactly as it ships (Caddy, the API, Redis and a
+PostgreSQL container, from the production images), check it end to end,
+and tear it down:
 
 ```bash
-docker compose up -d --build
-curl localhost:3000/health   # liveness
-curl localhost:3000/ready    # readiness: checks postgres and redis
+bash deploy/smoke.sh
 ```
+
+Deploying for real: docs/DEPLOY.md.
 
 ### Stopping the dev stack
 

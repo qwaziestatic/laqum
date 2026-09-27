@@ -1,0 +1,44 @@
+# ላቁም? in production: Caddy in front of everything (docs/DEPLOY.md).
+#
+# - HTTPS by itself: Let's Encrypt certificates for {$DOMAIN}, obtained and
+#   renewed automatically. Free, and no account or card is needed.
+# - One origin for the dashboard and the API, so there is no CORS, and the
+#   driver app, Chapa's webhook and its return page all use the same name.
+# - X-Forwarded-For: Caddy REPLACES whatever a client sent with the client's
+#   real address ("to prevent spoofing", per its reverse_proxy docs), so the
+#   API trusts exactly one hop: TRUST_PROXY_HOPS=1.
+# - WebSockets (/socket.io) are proxied as they are, with no setting.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The API's public surface. /health and /ready stay inside the compose
+	# network: /ready describes the database and Redis, which is nobody's
+	# business outside. /dev/* is never registered in production anyway.
+	@api path /v1/* /socket.io/* /payment-complete
+	handle @api {
+		reverse_proxy api:3000
+	}
+
+	# The attendant dashboard: a single-page app, built into /srv.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Vite names every asset by its content, so they never change: cache them
+	# for a year. index.html must always be fetched fresh, or a tablet keeps
+	# an old dashboard after a deploy.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@page path / /index.html
+	header @page Cache-Control "no-cache"
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
