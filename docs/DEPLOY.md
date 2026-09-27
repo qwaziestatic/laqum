@@ -53,8 +53,8 @@ deploy.
       If Chapa reports amounts net of its fee, every payment is rejected.
 - [ ] **Amharic strings awaiting review** (docs/AMHARIC-REVIEW.md,
       "Awaiting review"), the push notification texts among them.
-- [ ] **The production app build** (section 10): the EAS `production`
-      profile builds a Play Store bundle and has no API address.
+- [ ] **The production app build** (section 10), with the production
+      `EXPO_PUBLIC_API_URL` set on expo.dev.
 - [ ] **The brand illustration's licence**, to be confirmed by the product
       owner (docs/BRAND.md).
 - [ ] **Registration with the Ethiopian Communications Authority** before
@@ -343,18 +343,20 @@ Built by **Expo EAS** (free tier, no card), from `apps/mobile`:
 eas build --profile <profile> --platform android
 ```
 
-The app reaches the API at **`EXPO_PUBLIC_API_URL`**, read when the build is
-made: set it on expo.dev as an environment variable of the build's
-environment (for production, `https://<domain>/v1`).
+**The production build** is `eas build --profile production --platform
+android`. It is an **APK with internal distribution**: EAS gives a link to
+install it from, and drivers install it directly, because Google Play
+registration needs a card.
 
-**Two gaps in the `production` profile, not yet decided** (`eas.json`):
-
-- It builds an **app bundle** (`buildType: app-bundle`), which only Google
-  Play installs, and Play registration needs a card. A pilot distributing the
-  APK directly needs an APK build.
-- It sets **no `EXPO_PUBLIC_API_URL`**, and `app.config.ts` falls back to
-  `http://localhost:3000/v1`, so a production build without the variable
-  cannot reach any server and says nothing about why.
+Before it, on expo.dev, set **`EXPO_PUBLIC_API_URL`** to
+`https://<domain>/v1` in the **production** environment, with "Plain text"
+or "Sensitive" visibility (a "Secret" variable is not readable when the
+config is resolved). The profile names that environment explicitly: without
+it, EAS would use "preview" for an internal build. **A production build
+without the variable, or with an `http://` address, is refused** with a
+message saying so (`apiUrlFor` in `app.config.ts`): production allows no
+cleartext HTTP, and the development fallback, `localhost`, would reach
+nothing.
 
 The `development` profile is for device testing against a laptop
 (docs/DEVICE-TEST.md) and must not be distributed.

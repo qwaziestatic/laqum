@@ -26,7 +26,38 @@ const BRAND_NAVY = '#1f3f71';
  * phone. Passed through `extra` as well as the EXPO_PUBLIC_ variable so it is
  * visible in `expo config` when diagnosing a build.
  */
-const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/v1';
+/**
+ * A PRODUCTION build is refused unless it knows where the server is.
+ *
+ * The fallback to localhost is for development only. A production build that
+ * fell back to it would reach no server and say nothing about why, and one
+ * given an http:// address would fail every request too, because production
+ * disallows cleartext (usesCleartextTraffic below). Thrown here, the build
+ * fails at config time with this message. The variable must be "Plain text"
+ * or "Sensitive" on expo.dev, never "Secret": secret variables are not
+ * available when the config is resolved (Expo's docs).
+ */
+export function apiUrlFor(env: Record<string, string | undefined>): string {
+  // An empty value counts as unset: that is what an empty line in a .env gives.
+  const given = env.EXPO_PUBLIC_API_URL?.trim();
+  const url = given === '' ? undefined : given;
+  if (env.EAS_BUILD_PROFILE !== 'production') return url ?? 'http://localhost:3000/v1';
+  if (!url) {
+    throw new Error(
+      'Refusing a production build without EXPO_PUBLIC_API_URL: set it for the ' +
+        '"production" environment on expo.dev, e.g. https://<domain>/v1 (docs/DEPLOY.md).',
+    );
+  }
+  if (!url.startsWith('https://')) {
+    throw new Error(
+      `Refusing a production build with EXPO_PUBLIC_API_URL=${url}: production ` +
+        'allows no cleartext HTTP, so it must start with https://.',
+    );
+  }
+  return url;
+}
+
+const apiUrl = apiUrlFor(process.env);
 
 /** EAS injects this; it is 'development' | 'preview' | 'production'. */
 const profile = process.env.EAS_BUILD_PROFILE ?? 'development';

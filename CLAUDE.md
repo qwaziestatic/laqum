@@ -704,8 +704,17 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
 it ships in the Firebase build (done, "Brand" below); the button accent
 waits for a design pass. **Queued next, same rules:**
 
-- [ ] An **APK** `production` EAS profile, and a config check that refuses
-      a production build without `EXPO_PUBLIC_API_URL`.
+- [x] An **APK** `production` EAS profile, and a config check that refuses
+      a production build without `EXPO_PUBLIC_API_URL`. `eas.json`
+      production: `apk`, `distribution: internal`, and
+      `environment: production` **explicitly**: Expo's docs default a
+      non-store profile to the "preview" environment, which would not see
+      the production variable. `apiUrlFor` (app.config.ts) throws for a
+      production build with no address, an empty one, or an `http://` one
+      (production allows no cleartext); outside production it keeps the
+      localhost fallback. Verified through Expo's own config loader
+      (`expo config` with `EAS_BUILD_PROFILE=production`): both refusals
+      fire. The variable must be Plain text or Sensitive, not Secret.
 - [ ] **Sign out** in the app, which also deletes this device's push token
       on the server.
 - [ ] A minimal **admin endpoint to add and remove attendants** on a lot.
