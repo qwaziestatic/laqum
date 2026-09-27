@@ -38,6 +38,8 @@ RUN pnpm --filter @laqum/shared build \
 RUN pnpm --filter @laqum/api deploy --prod --legacy /deploy
 
 # ─── runtime ─────────────────────────────────────────────────────────────
+# Only compiled code and production dependencies: each workspace package's
+# `files` is ["dist"], so no source, test or tooling reaches this image.
 FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
@@ -48,4 +50,14 @@ COPY --from=build --chown=node:node /deploy /app
 USER node
 EXPOSE 3000
 
+# Liveness only: /ready (Postgres and Redis) is for whoever routes traffic.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+# SIGTERM starts a graceful shutdown (src/shutdown.ts), bounded by
+# SHUTDOWN_TIMEOUT_MS; give the container a longer stop grace period.
+STOPSIGNAL SIGTERM
+
+# The same image runs the migrations, before the API starts:
+#   node node_modules/@laqum/db/dist/src/cli.js up
 CMD ["node", "dist/server.js"]

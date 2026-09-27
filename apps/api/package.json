@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "dist/server.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch --conditions=development src/server.ts",
     "start": "node dist/server.js",
