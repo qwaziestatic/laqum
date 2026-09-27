@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import type { Api } from '../api/endpoints.js';
+import { currentLanguage } from '../i18n/react.js';
 import type { PermissionStatus, PushDeps } from './registration.js';
 
 /**
@@ -47,7 +48,8 @@ export function pushDeps(api: Api, hasBooked: boolean): PushDeps {
     },
 
     upload: async (token) => {
-      await api.registerPushToken({ expoPushToken: token });
+      // In the language on screen, which the notifications will be written in.
+      await api.registerPushToken({ expoPushToken: token, locale: currentLanguage() });
     },
 
     hasBooked: () => Promise.resolve(hasBooked),

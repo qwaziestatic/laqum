@@ -46,7 +46,7 @@ export interface CreateBookingDeps {
   clock: Clock;
   logger: Logger;
   scheduler: JobScheduler;
-  emitter?: RealtimeEmitter;
+  emitter: RealtimeEmitter;
 }
 
 export interface CreateBookingResult {
@@ -242,6 +242,10 @@ async function attemptOnce(
         lotVersion,
         bookingId: booking.id,
         userId: input.userId,
+        from: null,
+        to: booking.status,
+        at: booking.created_at,
+        holdExpiresAt: booking.hold_expires_at,
       });
 
       // INVARIANT 5: registered here, run only after the commit returns.
@@ -385,6 +389,10 @@ export async function createWalkIn(
         lotVersion,
         bookingId: booking.id,
         userId: null,
+        from: null,
+        to: booking.status,
+        at: booking.created_at,
+        holdExpiresAt: null,
       });
 
       return booking;

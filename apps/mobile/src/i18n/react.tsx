@@ -64,6 +64,11 @@ export function restoreLanguage(): Promise<void> {
   return restoring;
 }
 
+/** The language on screen now, outside React (the push registration). */
+export function currentLanguage(): Locale {
+  return isLocale(i18next.language) ? i18next.language : languageForLocale(i18next.language);
+}
+
 /** Switch now, and remember it over the phone's language from here on. */
 export async function chooseLanguage(locale: Locale): Promise<void> {
   await i18next.changeLanguage(locale);

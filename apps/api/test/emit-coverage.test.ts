@@ -96,16 +96,18 @@ describe('every TRANSITIONS entry emits to every audience', () => {
       emitter.reset();
       const now = t.clock.now();
 
-      const outcome = await inTransaction({ db: t.db.db, logger: t.ctx.logger, emitter }, (trx) =>
-        transition(trx, t.ctx.clock, {
-          bookingId,
-          from: def.from,
-          to: def.to,
-          actorId: null,
-          // Spread: exactOptionalPropertyTypes distinguishes an absent
-          // property from one explicitly set to undefined.
-          ...(patchFor(def.to, now) ? { patch: patchFor(def.to, now)! } : {}),
-        }),
+      const outcome = await inTransaction(
+        { db: t.db.db, logger: t.ctx.logger, emitter, scheduler: t.scheduler },
+        (trx) =>
+          transition(trx, t.ctx.clock, {
+            bookingId,
+            from: def.from,
+            to: def.to,
+            actorId: null,
+            // Spread: exactOptionalPropertyTypes distinguishes an absent
+            // property from one explicitly set to undefined.
+            ...(patchFor(def.to, now) ? { patch: patchFor(def.to, now)! } : {}),
+          }),
       );
 
       expect(outcome.ok, `${def.from} -> ${def.to} should succeed`).toBe(true);
@@ -267,16 +269,19 @@ describe('INVARIANT 5: a rolled-back transaction emits nothing', () => {
     emitter.reset();
 
     await expect(
-      inTransaction({ db: t.db.db, logger: t.ctx.logger, emitter }, async (trx) => {
-        const outcome = await transition(trx, t.ctx.clock, {
-          bookingId,
-          from: 'RESERVED',
-          to: 'CANCELLED',
-          actorId: null,
-        });
-        expect(outcome.ok).toBe(true);
-        throw new Error('caller failed after the transition');
-      }),
+      inTransaction(
+        { db: t.db.db, logger: t.ctx.logger, emitter, scheduler: t.scheduler },
+        async (trx) => {
+          const outcome = await transition(trx, t.ctx.clock, {
+            bookingId,
+            from: 'RESERVED',
+            to: 'CANCELLED',
+            actorId: null,
+          });
+          expect(outcome.ok).toBe(true);
+          throw new Error('caller failed after the transition');
+        },
+      ),
     ).rejects.toThrow('caller failed');
 
     // The transition happened, the emit was recorded — and then the
@@ -295,24 +300,28 @@ describe('INVARIANT 5: a rolled-back transaction emits nothing', () => {
 
   it('emits nothing when a transition is REFUSED', async () => {
     const bookingId = await bookingIn('RESERVED', 0, '+251911780002');
-    await inTransaction({ db: t.db.db, logger: t.ctx.logger, emitter }, (trx) =>
-      transition(trx, t.ctx.clock, {
-        bookingId,
-        from: 'RESERVED',
-        to: 'CANCELLED',
-        actorId: null,
-      }),
+    await inTransaction(
+      { db: t.db.db, logger: t.ctx.logger, emitter, scheduler: t.scheduler },
+      (trx) =>
+        transition(trx, t.ctx.clock, {
+          bookingId,
+          from: 'RESERVED',
+          to: 'CANCELLED',
+          actorId: null,
+        }),
     );
     emitter.reset();
 
     // Already cancelled: the compare-and-set matches nothing.
-    const refused = await inTransaction({ db: t.db.db, logger: t.ctx.logger, emitter }, (trx) =>
-      transition(trx, t.ctx.clock, {
-        bookingId,
-        from: 'RESERVED',
-        to: 'CANCELLED',
-        actorId: null,
-      }),
+    const refused = await inTransaction(
+      { db: t.db.db, logger: t.ctx.logger, emitter, scheduler: t.scheduler },
+      (trx) =>
+        transition(trx, t.ctx.clock, {
+          bookingId,
+          from: 'RESERVED',
+          to: 'CANCELLED',
+          actorId: null,
+        }),
     );
 
     expect(refused.ok).toBe(false);

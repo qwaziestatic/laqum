@@ -74,6 +74,14 @@ const config: ExpoConfig = {
     // because Android 16 makes edge-to-edge mandatory.
     //
     // No `config.googleMaps` either: MapLibre needs no key.
+    //
+    // Firebase, for push through FCM: the file comes from the EAS file
+    // variable GOOGLE_SERVICES_JSON (docs/DEPLOY.md, "Push"), never from the
+    // repository. Absent, the build has no FCM and registration reports the
+    // token as unavailable, as before.
+    ...(process.env.GOOGLE_SERVICES_JSON
+      ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON }
+      : {}),
     permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'CAMERA'],
   },
 
@@ -118,6 +126,9 @@ const config: ExpoConfig = {
         dark: { image: './assets/brand/splash-icon.png', backgroundColor: BRAND_NAVY },
       },
     ],
+    // The status-bar icon, white on transparent (Android draws only its
+    // alpha), tinted brand navy in the shade.
+    ['expo-notifications', { icon: './assets/brand/notification-icon.png', color: BRAND_NAVY }],
     // Required for a development build; MapLibre is native and is not part of
     // the Expo SDK, so it does not work in Expo Go.
     '@maplibre/maplibre-react-native',

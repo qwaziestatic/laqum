@@ -1,7 +1,9 @@
 import type { Database } from '@laqum/db';
 import type { Kysely, Transaction } from 'kysely';
 import type { Logger } from 'pino';
-import { type RealtimeEmitter, emitSlotChange, nullEmitter } from './realtime/emitter.js';
+import type { JobScheduler } from './jobs/scheduler.js';
+import { type StatusChange, notificationJobs } from './push/notify.js';
+import { type RealtimeEmitter, emitSlotChange } from './realtime/emitter.js';
 
 /**
  * INVARIANT 5: side effects happen after commit.
@@ -61,12 +63,10 @@ export class SideEffects {
  *
  * `userId` is the driver to notify in their own room, null for a walk-in.
  */
-export interface SlotChange {
+export interface SlotChange extends StatusChange {
   lotId: string;
   slotId: string;
   lotVersion: number;
-  bookingId: string | null;
-  userId: string | null;
 }
 
 /**
@@ -98,11 +98,18 @@ export function recordedChanges(trx: Transaction<Database>): readonly SlotChange
   return recorded.get(trx) ?? [];
 }
 
+/**
+ * REQUIRED, both. The emitter was once optional here, and the job workers
+ * never passed one: every hold expiry and overstay the jobs applied was
+ * emitted to nobody, so a dashboard's overstay tile did not turn red until
+ * its next resync. Required, a write path without them does not compile.
+ */
 export interface TxDeps {
   db: Kysely<Database>;
   logger: Logger;
-  /** Omitted in tests that do not care; defaults to emitting nothing. */
-  emitter?: RealtimeEmitter;
+  emitter: RealtimeEmitter;
+  /** For the notification jobs a status change calls for (push/notify.ts). */
+  scheduler: JobScheduler;
 }
 
 /**
@@ -119,7 +126,7 @@ export async function inTransaction<T>(
   fn: (trx: Transaction<Database>, effects: SideEffects) => Promise<T>,
 ): Promise<T> {
   const effects = new SideEffects();
-  const emitter = deps.emitter ?? nullEmitter;
+  const emitter = deps.emitter;
   let changes: readonly SlotChange[] = [];
 
   const result = await deps.db.transaction().execute(async (trx) => {
@@ -136,6 +143,10 @@ export async function inTransaction<T>(
     effects.add(`slot.updated:${change.slotId}@${String(change.lotVersion)}`, () =>
       emitSlotChange(deps.db, emitter, change),
     );
+    // The notifications this change calls for: queued, never sent inline.
+    for (const job of notificationJobs(change)) {
+      effects.add(`notify:${job.queue}:${job.bookingId}`, () => deps.scheduler.schedule(job));
+    }
   }
 
   await effects.run(deps.logger);

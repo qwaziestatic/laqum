@@ -39,17 +39,14 @@ export function bookingsRouter(ctx: AppContext): Router {
       // Validated by createBookingSchema above.
       const body = req.body as CreateBookingRequest;
 
-      const result = await createBooking(
-        { db: ctx.db, clock: ctx.clock, logger: ctx.logger, scheduler: ctx.scheduler },
-        {
-          lotId: body.lotId,
-          userId: user.userId,
-          plannedMinutes: body.plannedMinutes,
-          vehiclePlate: body.vehiclePlate ?? null,
-          latitude: body.lat,
-          longitude: body.lng,
-        },
-      );
+      const result = await createBooking(ctx, {
+        lotId: body.lotId,
+        userId: user.userId,
+        plannedMinutes: body.plannedMinutes,
+        vehiclePlate: body.vehiclePlate ?? null,
+        latitude: body.lat,
+        longitude: body.lng,
+      });
 
       /*
        * The deposit starts AFTER the booking commits (invariant 5: a provider

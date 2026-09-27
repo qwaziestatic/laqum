@@ -441,6 +441,10 @@ export async function setSlotService(
       // No booking changed, so there is no driver to notify.
       bookingId: null,
       userId: null,
+      from: null,
+      to: null,
+      at: ctx.clock.now(),
+      holdExpiresAt: null,
     });
 
     return { slotId, inService };

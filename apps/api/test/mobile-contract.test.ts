@@ -212,6 +212,7 @@ describe('the app drives a whole booking journey', () => {
     // Push registration answers 204 with no body.
     const push = await app.api.registerPushToken({
       expoPushToken: 'ExponentPushToken[contract-test]',
+      locale: 'en',
     });
     expect(push.ok).toBe(true);
     expect(app.raw.at(-1)?.status).toBe(204);

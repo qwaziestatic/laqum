@@ -6,7 +6,17 @@
  * that the after-commit rule is visible at the call site.
  */
 
-export const JOB_QUEUES = ['expire-hold', 'mark-overstay', 'time-reminder'] as const;
+export const JOB_QUEUES = [
+  'expire-hold',
+  'mark-overstay',
+  'time-reminder',
+  // Push notifications (push/notify.ts).
+  'hold-reminder',
+  'notify-hold-expired',
+  'notify-overstay',
+  'notify-amount-due',
+  'push-receipts',
+] as const;
 export type JobQueue = (typeof JOB_QUEUES)[number];
 
 export interface ScheduledJob {

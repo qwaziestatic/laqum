@@ -187,6 +187,10 @@ export async function transition(
     lotVersion,
     bookingId: updated.id,
     userId: updated.user_id,
+    from: current,
+    to: updated.status,
+    at: now,
+    holdExpiresAt: updated.hold_expires_at,
   });
 
   return { ok: true, booking: updated, from: current, lotVersion };

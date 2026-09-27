@@ -4,8 +4,10 @@ import { FakeClock } from '@laqum/shared';
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import pino, { type Logger } from 'pino';
+import type { TxDeps } from '../../src/afterCommit.js';
 import type { JobScheduler, JobQueue, ScheduledJob } from '../../src/jobs/scheduler.js';
 import { jobIdFor } from '../../src/jobs/scheduler.js';
+import { RecordingEmitter } from '../../src/realtime/emitter.js';
 
 export const TEST_DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ?? 'postgres://laqum:laqum@localhost:55432/laqum_test';
@@ -77,6 +79,14 @@ export async function truncateAll(db: Kysely<Database>): Promise<void> {
 /** A clock fixed at a readable instant, so failures are easy to reason about. */
 export function testClock(start = '2026-03-01T08:00:00.000Z'): FakeClock {
   return new FakeClock(start);
+}
+
+/**
+ * Transaction deps for a test that does not look at emits or notifications:
+ * both are recorded and dropped. A test that does passes its own.
+ */
+export function txDeps(db: Kysely<Database>, logger: Logger = testLogger()): TxDeps {
+  return { db, logger, emitter: new RecordingEmitter(), scheduler: new RecordingScheduler() };
 }
 
 /** Records what was scheduled instead of talking to Redis. */

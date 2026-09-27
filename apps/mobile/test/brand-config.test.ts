@@ -62,6 +62,25 @@ describe('the app icon', () => {
   });
 });
 
+describe('push notifications', () => {
+  it('have a white-on-transparent status-bar icon, tinted navy', () => {
+    const entry = config.plugins?.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-notifications',
+    );
+    expect(entry).toEqual([
+      'expo-notifications',
+      { icon: './assets/brand/notification-icon.png', color: BRAND.navy },
+    ]);
+    expect(pngSize('assets/brand/notification-icon.png')).toEqual({ width: 96, height: 96 });
+  });
+
+  it('take Firebase only from the EAS file variable, never from the repository', () => {
+    // This test runs without GOOGLE_SERVICES_JSON set.
+    expect(config.android?.googleServicesFile).toBeUndefined();
+    expect(existsSync(file('google-services.json'))).toBe(false);
+  });
+});
+
 describe('the native splash', () => {
   it('is the white mark on the brand navy, in both themes', () => {
     const splash = splashOptions();

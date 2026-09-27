@@ -7,7 +7,7 @@ import { initiatePayment } from '../src/payments/initiate.js';
 import { confirmPayment, refundQueue } from '../src/payments/service.js';
 import { signPayload } from '../src/payments/signature.js';
 import { makeActor, reissue, staffLot, type Actor } from './helpers/auth.js';
-import { createTestContext, type TestContext } from './helpers/context.js';
+import { createTestContext, jobDeps as testJobDeps, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
 import { createLot, seedBooking, type LotFixture } from './helpers/fixtures.js';
 
@@ -44,7 +44,7 @@ beforeEach(async () => {
   driver = await makeActor(t, 'driver');
   attendant = await makeActor(t, 'attendant');
   await staffLot(t, attendant, lot.lotId);
-  jobDeps = { db: t.db.db, clock: t.clock, logger: t.ctx.logger, payments: t.ctx };
+  jobDeps = { ...testJobDeps(t), payments: t.ctx };
 });
 
 /**

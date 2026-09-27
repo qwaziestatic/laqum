@@ -377,8 +377,8 @@ the strings as drafted. For the record:
 
 ## Awaiting review (added after Session 2)
 
-24 items from the product owner's decisions after Session 2, then 9 from the
-branding work (the last two sections).
+24 items from the product owner's decisions after Session 2, 9 from the
+branding work, and 10 push notifications (the last section).
 
 ### Clock times: the Ethiopian clock (4 words)
 
@@ -491,3 +491,29 @@ shown, Amharic first.
 
 A doubt: `fail` reads "make the payment not succeed"; it is a tester's button,
 so plain is better than elegant, but say if a shorter word fits.
+
+### Push notifications (10 new)
+
+What a driver reads on the lock screen (`apps/api/src/push/texts.ts`), in
+the language their phone registered with. `{{lot}}` is the lot's name,
+`{{time}}` a clock time (the Ethiopian clock in Amharic, as on screen),
+`{{minutes}}` a number, `{{amount}}` birr with two decimals. "Attendant" is
+the approved ለማቆሚያው ሠራተኛ.
+
+| Key                   | English                                                                                 | Amharic                                                          |
+| --------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `hold-reminder.title` | Your slot is released in {{minutes}} min                                                | ቦታዎ ሊለቀቅ {{minutes}} ደቂቃ ቀርቷል                                    |
+| `hold-reminder.body`  | Your slot at {{lot}} is held until {{time}}. After that it is released to someone else. | በ{{lot}} ያስያዙት ቦታ እስከ {{time}} ድረስ ተይዟል። ከዚያ በኋላ ለሌላ ሰው ይለቀቃል።   |
+| `hold-expired.title`  | Your slot has been released                                                             | ያስያዙት ቦታ ተለቋል                                                    |
+| `hold-expired.body`   | Your slot at {{lot}} was released at {{time}}. Book again if you still need one.        | በ{{lot}} ያስያዙት ቦታ {{time}} ላይ ተለቋል። አሁንም ቦታ ካስፈለገዎት እንደገና ያስይዙ።  |
+| `time-reminder.title` | Your parking ends in {{minutes}} min                                                    | የማቆሚያ ጊዜዎ ሊያበቃ {{minutes}} ደቂቃ ቀርቷል                              |
+| `time-reminder.body`  | Your parking at {{lot}} ends at {{time}}. Extend it in the app if you need more time.   | በ{{lot}} የማቆሚያ ጊዜዎ {{time}} ላይ ያበቃል። ተጨማሪ ጊዜ ከፈለጉ በመተግበሪያው ያራዝሙ። |
+| `overstay.title`      | Your time is up                                                                         | ጊዜ አልፏል                                                          |
+| `overstay.body`       | Parking at {{lot}} is now charged at the overstay rate.                                 | በ{{lot}} ከአሁን በኋላ ያለው ጊዜ በከፍተኛ ዋጋ ይከፈላል።                         |
+| `amount-due.title`    | Payment due: {{amount}} ETB                                                             | የሚከፈል፦ {{amount}} ብር                                             |
+| `amount-due.body`     | Your parking at {{lot}} has ended. Pay in the app, or in cash to the attendant.         | በ{{lot}} ማቆሚያዎ አብቅቷል። በመተግበሪያው ወይም ለማቆሚያው ሠራተኛ በጥሬ ገንዘብ ይክፈሉ።    |
+
+Two doubts: በ{{lot}} joins the preposition straight onto a lot name, which
+reads oddly when the name is in Latin letters ("በBole Lot"); and whether
+`overstay.body` needs "the overstay rate" named, as the app's ጊዜ አልፏል
+sentence does not.

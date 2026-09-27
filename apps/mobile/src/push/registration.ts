@@ -12,9 +12,9 @@
  * obvious reason to want to be told before it expires. One line of
  * explanation, then the system prompt.
  *
- * PHASE 4 REGISTERS THE TOKEN ONLY. Delivery — expiry warnings, time
- * reminders, overstay, amount due — is Phase 5. The token is stored so Phase 5
- * has something to send to.
+ * The API sends the hold warnings, time reminders, overstay and amount-due
+ * notices (apps/api/src/push/notify.ts), in the language registered with the
+ * token. usePush.ts registers again, never prompting, when that changes.
  */
 
 import { type BookingStatus, isLiveStatus } from '@laqum/shared';

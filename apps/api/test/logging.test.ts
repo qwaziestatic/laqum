@@ -6,7 +6,7 @@ import { ConsoleSmsProvider } from '../src/auth/sms.js';
 import { runJob } from '../src/jobs/bullmq.js';
 import { withLogContext } from '../src/logContext.js';
 import { createLogger, maskPhone } from '../src/logger.js';
-import { createTestContext, testConfig, type TestContext } from './helpers/context.js';
+import { createTestContext, jobDeps, testConfig, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
 
 /**
@@ -198,7 +198,7 @@ describe('credentials and phone numbers', () => {
 describe('jobs', () => {
   it("carry the scheduling request's id and their own onto every line", async () => {
     const logger = capturingLogger();
-    await runJob({ db: t.db.db, clock: t.clock, logger, payments: t.ctx }, 'expire-hold', {
+    await runJob({ ...jobDeps(t), logger, payments: t.ctx }, 'expire-hold', {
       id: 'expire-hold.x',
       data: { bookingId: '00000000-0000-4000-8000-000000000000', reqId: 'req-abc' },
     });

@@ -6,6 +6,8 @@ import { RateLimiter } from '../../src/auth/rateLimit.js';
 import { RecordingSmsProvider } from '../../src/auth/sms.js';
 import { FakePaymentProvider, type FakePaymentOptions } from '../../src/payments/fake.js';
 import { loadConfig, type Config } from '../../src/config.js';
+import type { JobDeps } from '../../src/jobs/handlers.js';
+import { FakePushProvider } from '../../src/push/provider.js';
 import type { AppContext } from '../../src/context.js';
 import { RecordingEmitter } from '../../src/realtime/emitter.js';
 import { RecordingScheduler, connect, testClock, testLogger, type TestDb } from './db.js';
@@ -21,8 +23,25 @@ export interface TestContext {
   scheduler: RecordingScheduler;
   provider: FakePaymentProvider;
   emitter: RecordingEmitter;
+  push: FakePushProvider;
   redis: Redis;
   close: () => Promise<void>;
+}
+
+/**
+ * What the job workers get in the running application, from this context.
+ * Without the payment pre-check unless a test adds `payments: t.ctx`.
+ */
+export function jobDeps(t: TestContext): JobDeps {
+  return {
+    db: t.db.db,
+    clock: t.clock,
+    logger: t.ctx.logger,
+    emitter: t.emitter,
+    scheduler: t.scheduler,
+    push: t.push,
+    redis: t.redis,
+  };
 }
 
 export function testConfig(overrides: Record<string, string> = {}): Config {
@@ -89,6 +108,7 @@ export async function createTestContext(
     scheduler,
     provider,
     emitter,
+    push: new FakePushProvider(),
     redis,
     close: async () => {
       await db.close();

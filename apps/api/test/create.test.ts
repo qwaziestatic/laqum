@@ -8,6 +8,7 @@ import {
   migrateFresh,
   testClock,
   testLogger,
+  txDeps,
   truncateAll,
   type TestDb,
 } from './helpers/db.js';
@@ -34,7 +35,7 @@ beforeEach(async () => {
 });
 
 function deps(clock = testClock()) {
-  return { db, clock, logger, scheduler };
+  return { ...txDeps(db, logger), clock, scheduler };
 }
 
 describe('slot assignment', () => {
@@ -378,12 +379,10 @@ describe('the two birth states', () => {
       longitude: lot.longitude,
     });
 
-    expect(scheduler.scheduled).toHaveLength(1);
-    expect(scheduler.scheduled[0]).toMatchObject({
-      queue: 'expire-hold',
-      bookingId: result.booking.id,
-      jobId: `expire-hold.${result.booking.id}`,
-    });
-    expect(scheduler.scheduled[0]?.runAt.toISOString()).toBe('2026-03-01T08:15:00.000Z');
+    // The expiry, and the push warning five minutes before it.
+    expect(scheduler.scheduled.map((j) => [j.queue, j.jobId, j.runAt.toISOString()])).toEqual([
+      ['expire-hold', `expire-hold.${result.booking.id}`, '2026-03-01T08:15:00.000Z'],
+      ['hold-reminder', `hold-reminder.${result.booking.id}`, '2026-03-01T08:10:00.000Z'],
+    ]);
   });
 });

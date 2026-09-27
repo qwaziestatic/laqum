@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { DEFAULT_BOOKING_RADIUS_M, MIN_BOOKING_RADIUS_M, SHORT_CODE_PATTERN } from './constants.js';
+import {
+  DEFAULT_BOOKING_RADIUS_M,
+  LOCALES,
+  MIN_BOOKING_RADIUS_M,
+  SHORT_CODE_PATTERN,
+} from './constants.js';
 import { bookingSourceSchema, bookingStatusSchema, userRoleSchema } from './enums.js';
 import { PAYMENT_NOTICES } from './payments.js';
 
@@ -288,8 +293,17 @@ export const expoPushTokenSchema = z
     'must be an Expo push token, for example ExponentPushToken[xxxxxxxx]',
   );
 
-/** POST /v1/push/tokens — answered 204, no body. */
-export const registerPushTokenSchema = z.object({ expoPushToken: expoPushTokenSchema });
+/**
+ * POST /v1/push/tokens — answered 204, no body.
+ *
+ * `locale` is the language the app is showing, stored with the token so a
+ * notification arrives in it (migration 006). The app registers again when
+ * the driver switches language.
+ */
+export const registerPushTokenSchema = z.object({
+  expoPushToken: expoPushTokenSchema,
+  locale: z.enum(LOCALES),
+});
 export type RegisterPushTokenInput = z.input<typeof registerPushTokenSchema>;
 
 // ─── Staff ────────────────────────────────────────────────────────────────

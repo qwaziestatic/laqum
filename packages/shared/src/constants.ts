@@ -9,6 +9,10 @@ export const LOCALES = ['am', 'en'] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = 'am';
 
+export function isLocale(value: unknown): value is Locale {
+  return LOCALES.some((locale) => locale === value);
+}
+
 /**
  * Short codes are the manual fallback when a QR scan fails. The alphabet
  * excludes 0/O and 1/I because attendants read these aloud across a lot.

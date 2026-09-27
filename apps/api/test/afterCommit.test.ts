@@ -9,6 +9,7 @@ import {
   migrateFresh,
   testClock,
   testLogger,
+  txDeps,
   truncateAll,
   type TestDb,
 } from './helpers/db.js';
@@ -92,7 +93,7 @@ describe('SideEffects', () => {
 describe('inTransaction', () => {
   it('runs effects only after the commit', async () => {
     const order: string[] = [];
-    await inTransaction({ db, logger }, async (trx, effects) => {
+    await inTransaction(txDeps(db, logger), async (trx, effects) => {
       await trx
         .insertInto('operators')
         .values({ name: 'Ordering Co', phone: '+251911000300' })
@@ -111,7 +112,7 @@ describe('inTransaction', () => {
     const ran: string[] = [];
 
     await expect(
-      inTransaction({ db, logger }, async (trx, effects) => {
+      inTransaction(txDeps(db, logger), async (trx, effects) => {
         await trx
           .insertInto('operators')
           .values({ name: 'Doomed Co', phone: '+251911000301' })
@@ -146,7 +147,7 @@ describe('booking creation honours the after-commit rule', () => {
 
     await expect(
       createBooking(
-        { db, clock: testClock(), logger, scheduler },
+        { ...txDeps(db, logger), clock: testClock(), scheduler },
         {
           lotId: lot.lotId,
           userId,

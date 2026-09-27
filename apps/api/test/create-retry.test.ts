@@ -8,6 +8,7 @@ import {
   migrateFresh,
   testClock,
   testLogger,
+  txDeps,
   truncateAll,
   type TestDb,
 } from './helpers/db.js';
@@ -84,7 +85,7 @@ describe('slot retry on a real unique violation', () => {
     const holder = await holdSlotUncommitted(lot.lotId, lot.slotIds[0]!);
 
     const pending = createBooking(
-      { db, clock: testClock(), logger, scheduler },
+      { ...txDeps(db, logger), clock: testClock(), scheduler },
       {
         lotId: lot.lotId,
         userId,
@@ -121,8 +122,8 @@ describe('slot retry on a real unique violation', () => {
     expect(mine).toHaveLength(1);
 
     // And exactly one expiry job, for the booking that actually committed.
-    expect(scheduler.scheduled).toHaveLength(1);
-    expect(scheduler.scheduled[0]?.bookingId).toBe(result.booking.id);
+    expect(scheduler.forQueue('expire-hold')).toHaveLength(1);
+    expect(scheduler.forQueue('expire-hold')[0]?.bookingId).toBe(result.booking.id);
   }, 30_000);
 
   it('never returns LOT_FULL while a slot is still free', async () => {
@@ -140,7 +141,7 @@ describe('slot retry on a real unique violation', () => {
     }
 
     const pending = createBooking(
-      { db, clock: testClock(), logger, scheduler },
+      { ...txDeps(db, logger), clock: testClock(), scheduler },
       {
         lotId: lot.lotId,
         userId,
@@ -162,7 +163,7 @@ describe('slot retry on a real unique violation', () => {
     expect([lot.slotIds[MAX_SLOT_ATTEMPTS], lot.slotIds[MAX_SLOT_ATTEMPTS + 1]]).toContain(
       result.booking.slot_id,
     );
-    expect(scheduler.scheduled).toHaveLength(1);
+    expect(scheduler.forQueue('expire-hold')).toHaveLength(1);
   }, 30_000);
 
   it('returns LOT_FULL only when every slot really is occupied', async () => {
@@ -178,7 +179,7 @@ describe('slot retry on a real unique violation', () => {
 
     await expect(
       createBooking(
-        { db, clock: testClock(), logger, scheduler },
+        { ...txDeps(db, logger), clock: testClock(), scheduler },
         {
           lotId: lot.lotId,
           userId,
@@ -203,7 +204,7 @@ describe('slot retry on a real unique violation', () => {
     const second = await holdSlotUncommitted(lot.lotId, lot.slotIds[1]!);
 
     const pending = createBooking(
-      { db, clock: testClock(), logger, scheduler: new RecordingScheduler() },
+      { ...txDeps(db, logger), clock: testClock() },
       {
         lotId: lot.lotId,
         userId,

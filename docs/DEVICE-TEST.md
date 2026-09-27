@@ -858,8 +858,8 @@ nothing is shown (verified in both sources). What this step CAN still verify
 is the prompt timing above. If a row does appear, my reading is wrong: tell
 me.
 
-**Phase 4 only registers the token. No notification is ever sent.** Delivery
-is Phase 5.
+**This build only registers the token.** Delivery needs the Firebase build:
+step 23.
 
 > With the test lot the hold is **3 minutes**, so you can watch it run out.
 > Let it expire and check the slot is released on the dashboard.
@@ -1308,6 +1308,62 @@ without `FAKE_PAYMENT_DELAY_SECONDS` nothing succeeds by itself any more.
 - the native splash on a cold start: navy with the white wordmark in the
   middle, in light and dark, handing over to the navy animation without a
   flash.
+
+### 23. Push notifications (after the Firebase build — NOT NOW)
+
+Needs the EAS build that carries Firebase (docs/DEPLOY.md, "Push": the
+product owner's Firebase and Expo steps come first). That build also
+carries the icon and splash in 22 i. Until then step 12 stands: no token, no
+notification.
+
+**a. The token, and its language.** Sign in, book on the test lot, allow
+notifications when asked. **Git Bash**:
+
+```bash
+docker exec laqum-postgres-1 psql -U laqum -d laqum \
+  -c "select user_id, locale, expo_push_token from push_tokens;"
+```
+
+_Should:_ ONE row, `locale` = the language on screen. Switch the language
+with the header switch and run it again. _Should:_ the same row, the other
+`locale`, with no prompt of any kind.
+
+**b. Released while you wait.** The test lot's hold is 3 minutes. Let it run
+out with the app in the background (home button). _Should:_ within about a
+minute of the countdown ending, a notification: **"ያስያዙት ቦታ ተለቋል"** in
+Amharic, or "Your slot has been released", naming the lot and the time on
+the clock the language uses. Tap it. _Should:_ the app opens on that booking,
+showing it expired.
+
+**c. The warning five minutes before.** A 3-minute hold gets no warning ("5
+minutes left" would be false the moment it starts), so lengthen the test
+lot's hold first:
+
+```bash
+docker exec laqum-postgres-1 psql -U laqum -d laqum \
+  -c "update lots set hold_minutes = 7 where name = 'TEST LOT (device testing)';"
+```
+
+Book, put the app in the background. _Should:_ about 2 minutes in, **"ቦታዎ
+ሊለቀቅ 5 ደቂቃ ቀርቷል"** / "Your slot is released in 5 min", then the
+release notice at 7 minutes. Book again and **check in before the 2 minutes
+are up** (step 16). _Should:_ NO warning: it is no longer true. Set the hold
+back to 3 afterwards.
+
+**d. Time up, and the bill.** Check in for one block (5 minutes on the test
+lot) and leave the app in the background. _Should:_ a reminder that parking
+ends soon, then **"ጊዜ አልፏል"** / "Your time is up" once it passes. Check out
+on the dashboard. _Should:_ **"የሚከፈል፦ … ብር"** / "Payment due: … ETB" with the
+amount the bill shows.
+
+**e. With the app open.** Repeat b with the app in front, on another screen.
+_Should:_ the notification still appears as a banner.
+
+**f. The icon.** _Should:_ in the status bar, the white **ላቁም?** mark, not a
+white square; navy in the notification shade.
+
+Report each notification's exact text, in both languages if you can: they
+are the strings awaiting review in AMHARIC-REVIEW.md.
 
 ---
 

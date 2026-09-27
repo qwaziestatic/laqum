@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { expireHold, markOverstay, timeReminder, type JobDeps } from '../src/jobs/handlers.js';
 import { sweep } from '../src/jobs/sweeper.js';
 import { makeActor, reissue, type Actor } from './helpers/auth.js';
-import { createTestContext, type TestContext } from './helpers/context.js';
+import { createTestContext, jobDeps, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
 import { createLot, createUser, seedBooking, type LotFixture } from './helpers/fixtures.js';
 
@@ -15,7 +15,7 @@ let deps: JobDeps;
 beforeAll(async () => {
   await migrateFresh();
   t = await createTestContext();
-  deps = { db: t.db.db, clock: t.ctx.clock, logger: t.ctx.logger };
+  deps = jobDeps(t);
 }, 60_000);
 
 afterAll(async () => {

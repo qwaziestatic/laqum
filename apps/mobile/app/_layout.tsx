@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LanguageSwitch } from '../src/i18n/LanguageSwitch.js';
 import { useT } from '../src/i18n/react.js';
 import { Intro } from '../src/intro/Intro.js';
+import { usePush } from '../src/push/usePush.js';
 import { AppProvider, useApp } from '../src/state/app.js';
 import { useTheme } from '../src/theme.js';
 
@@ -21,7 +22,9 @@ export default function RootLayout(): React.JSX.Element {
 function Shell(): React.JSX.Element {
   const theme = useTheme();
   const t = useT();
-  const { ready } = useApp();
+  const { ready, api, session } = useApp();
+  // Only once the stored session is known: a tap must not route before it.
+  usePush(api, ready ? session?.user.id : undefined, t.language);
 
   return (
     <>

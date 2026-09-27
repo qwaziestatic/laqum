@@ -65,9 +65,7 @@ export function languageForLocale(locale: string | null | undefined): Locale {
   return match ?? DEFAULT_LOCALE;
 }
 
-export function isLocale(value: unknown): value is Locale {
-  return LOCALES.some((locale) => locale === value);
-}
+export { isLocale } from '@laqum/shared';
 
 export const I18N_OPTIONS = {
   resources,

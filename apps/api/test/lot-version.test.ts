@@ -7,6 +7,7 @@ import {
   migrateFresh,
   testClock,
   testLogger,
+  txDeps,
   truncateAll,
   type TestDb,
 } from './helpers/db.js';
@@ -55,7 +56,7 @@ describe('lots.version', () => {
     expect(await currentLotVersion(ctx.db, lot.lotId)).toBe(0);
 
     const bookingId = await reservedBooking(0, '+251911800001');
-    const first = await inTransaction({ db: ctx.db, logger }, (trx) =>
+    const first = await inTransaction(txDeps(ctx.db, logger), (trx) =>
       transition(trx, clock, {
         bookingId,
         from: 'RESERVED',
@@ -69,7 +70,7 @@ describe('lots.version', () => {
     if (first.ok) expect(first.lotVersion).toBe(1);
     expect(await currentLotVersion(ctx.db, lot.lotId)).toBe(1);
 
-    const second = await inTransaction({ db: ctx.db, logger }, (trx) =>
+    const second = await inTransaction(txDeps(ctx.db, logger), (trx) =>
       transition(trx, clock, {
         bookingId,
         from: 'CHECKED_IN',
@@ -83,14 +84,14 @@ describe('lots.version', () => {
 
   it('does not advance when a transition is refused', async () => {
     const bookingId = await reservedBooking(0, '+251911800002');
-    await inTransaction({ db: ctx.db, logger }, (trx) =>
+    await inTransaction(txDeps(ctx.db, logger), (trx) =>
       transition(trx, clock, { bookingId, from: 'RESERVED', to: 'CANCELLED', actorId: null }),
     );
     const afterFirst = await currentLotVersion(ctx.db, lot.lotId);
 
     // Already cancelled: the CAS matches nothing, so nothing is emitted and
     // the version must not move.
-    const refused = await inTransaction({ db: ctx.db, logger }, (trx) =>
+    const refused = await inTransaction(txDeps(ctx.db, logger), (trx) =>
       transition(trx, clock, { bookingId, from: 'RESERVED', to: 'CANCELLED', actorId: null }),
     );
     expect(refused.ok).toBe(false);
@@ -101,7 +102,7 @@ describe('lots.version', () => {
     const other = await createLot(ctx.db, { name: 'Other', slots: 1, depositSantim: 0 });
     const bookingId = await reservedBooking(0, '+251911800003');
 
-    await inTransaction({ db: ctx.db, logger }, (trx) =>
+    await inTransaction(txDeps(ctx.db, logger), (trx) =>
       transition(trx, clock, { bookingId, from: 'RESERVED', to: 'CANCELLED', actorId: null }),
     );
 
@@ -170,7 +171,7 @@ describe('concurrent transitions on the same lot', () => {
 
     const results = await Promise.all(
       bookings.map((bookingId) =>
-        inTransaction({ db: ctx.db, logger }, (trx) =>
+        inTransaction(txDeps(ctx.db, logger), (trx) =>
           transition(trx, clock, {
             bookingId,
             from: 'RESERVED',
@@ -193,7 +194,7 @@ describe('concurrent transitions on the same lot', () => {
     const bookingId = await reservedBooking(0, '+251911800030');
 
     await expect(
-      inTransaction({ db: ctx.db, logger }, async (trx) => {
+      inTransaction(txDeps(ctx.db, logger), async (trx) => {
         await transition(trx, clock, {
           bookingId,
           from: 'RESERVED',

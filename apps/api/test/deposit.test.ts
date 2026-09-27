@@ -9,7 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { expireHold, type JobDeps } from '../src/jobs/handlers.js';
 import { sweep } from '../src/jobs/sweeper.js';
 import { makeActor, type Actor } from './helpers/auth.js';
-import { createTestContext, type TestContext } from './helpers/context.js';
+import { createTestContext, jobDeps as testJobDeps, type TestContext } from './helpers/context.js';
 import { migrateFresh, truncateAll } from './helpers/db.js';
 import { createLot, type LotFixture } from './helpers/fixtures.js';
 
@@ -55,7 +55,7 @@ beforeEach(async () => {
     holdMinutes: 15,
   });
   driver = await makeActor(t, 'driver');
-  jobDeps = { db: t.db.db, clock: t.clock, logger: t.ctx.logger, payments: t.ctx };
+  jobDeps = { ...testJobDeps(t), payments: t.ctx };
 });
 
 function errorCode(res: { body: unknown }): string | undefined {

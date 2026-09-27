@@ -1,16 +1,12 @@
-import { registerPushTokenSchema } from '@laqum/shared';
+import { type RegisterPushTokenInput, registerPushTokenSchema } from '@laqum/shared';
 import { Router } from 'express';
 import type { AppContext } from '../context.js';
 import { currentUser, requireAuth } from '../middleware/auth.js';
 import { handle, validateBody } from '../middleware/validate.js';
 
 /**
- * Push token registration.
- *
- * PHASE 4 STORES THE TOKEN; PHASE 5 SENDS TO IT. The brief puts "push
- * notifications end to end" in Phase 5, so there is deliberately no sending
- * here — this exists so that when Phase 5 arrives there is already a populated
- * push_tokens table rather than an empty one and a migration of behaviour.
+ * Push token registration: the device, and the language to write to it in.
+ * Sending is push/notify.ts, from jobs.
  */
 
 /*
@@ -29,7 +25,7 @@ export function pushRouter(ctx: AppContext): Router {
     validateBody(registerPushTokenSchema),
     handle(async (req, res) => {
       const user = currentUser(res);
-      const { expoPushToken } = req.body as { expoPushToken: string };
+      const { expoPushToken, locale } = req.body as RegisterPushTokenInput;
 
       /*
        * The token is UNIQUE across users, and it genuinely can move between
@@ -44,11 +40,13 @@ export function pushRouter(ctx: AppContext): Router {
         .values({
           user_id: user.userId,
           expo_push_token: expoPushToken,
+          locale,
           created_at: ctx.clock.now(),
         })
         .onConflict((oc) =>
           oc.column('expo_push_token').doUpdateSet({
             user_id: user.userId,
+            locale,
             created_at: ctx.clock.now(),
           }),
         )

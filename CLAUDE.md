@@ -643,8 +643,37 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       hop is exactly right; Compose checks `${VAR:?}` in inactive profiles
       too; Git Bash's `MSYS_NO_PATHCONV` must be scoped to Docker commands
       or `curl -o /dev/null` breaks.
-- [ ] Push: Firebase (the product owner's steps), delivery, D2, D3. **The
-      icon and the native splash ship in this same EAS build.**
+- [x] **Push: the code.** Delivery waits only for Firebase (the product
+      owner's steps, docs/DEPLOY.md "Push"); **the icon, the splash and the
+      new notification icon ship in that same EAS build.** A status change
+      recorded by `transition()`/`create.ts` now carries `from`, `to`,
+      `at` and `holdExpiresAt`, and `inTransaction` turns it into its
+      notification jobs after the commit, as it does its emit
+      (`notificationJobs`, push/notify.ts): nothing to remember at a call
+      site. **D2:** `hold-reminder` 5 minutes before a hold ends (none for a
+      shorter hold) and `notify-hold-expired` when it has; also
+      `time-reminder` (now sends), `notify-overstay`, `notify-amount-due`.
+      **Every job re-reads the booking and sends only what is still true**
+      (checked in before the warning, extended, nothing to pay: nothing
+      sent). **D3:** migration 006 adds `push_tokens.locale` ('am'/'en',
+      default 'am'); the app sends the language on screen and registers again
+      on sign-in and on every switch, never prompting (`usePush`); texts in
+      the polite register, the Ethiopian clock in Amharic. Expo's push API by
+      plain fetch (`ExpoPushProvider`, chunks of 100), `EXPO_ACCESS_TOKEN`
+      for enhanced security; a token Expo or, 15 minutes later, its receipt
+      reports `DeviceNotRegistered` is deleted. **Nothing that identifies
+      the driver leaves the country**: a sentence, the lot, a time or
+      amount, and `{bookingId, kind}` (Art. 20; tested). A tap opens the
+      booking; the id must be a UUID. `google-services.json` only through
+      the EAS file variable `GOOGLE_SERVICES_JSON`, gitignored.
+      **Two Phase 3 bugs found by making `TxDeps.emitter` and `scheduler`
+      REQUIRED:** the job workers had no emitter, so every expiry, overstay
+      and sweep reached no dashboard until its next resync; and
+      `POST /v1/bookings` passed none either, so a booking made in the app
+      did not appear on an open dashboard. Both fixed and tested
+      (push.test.ts). `JobDeps` now requires emitter, scheduler, push and
+      redis. Not done: a sign-out in the app (it has none) should delete the
+      device's token.
 - [ ] Deploy README, for AletCloud.
 
 ### Brand — docs/BRAND.md is the rulebook
@@ -1312,13 +1341,13 @@ an approved plan before work starts.**
       product owner reviewed all 210 keys (dashboard 68, driver app 140,
       return page 2, as of commit `a3b139f`) and found **no corrections**.
       APPROVED; the release blocker is cleared for them.
-- [ ] **Amharic added after Session 2: 33 items awaiting review**
+- [ ] **Amharic added after Session 2: 43 items awaiting review**
       (docs/AMHARIC-REVIEW.md, "Awaiting review"): the four Ethiopian
       time-of-day words and their hours, the three "overstay" sentences now
       using ጊዜ አልፏል, one bill sentence adapted for the clock, the
       dashboard's 16 new error texts, the intro's one announcement, and the
-      development checkout page's 8 strings. **Blocks release for those
-      strings only.**
+      development checkout page's 8 strings, and the 10 push notification
+      texts. **Blocks release for those strings only.**
 
 ### Phase 2 open items
 

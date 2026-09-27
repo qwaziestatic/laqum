@@ -1,5 +1,6 @@
 import type { Database } from '@laqum/db';
 import type { Clock } from '@laqum/shared';
+import type { Redis } from 'ioredis';
 import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import { inTransaction } from '../afterCommit.js';
@@ -7,7 +8,11 @@ import { transition } from '../bookings/transition.js';
 import { isAppError } from '@laqum/shared';
 import { checkDeposits } from '../payments/deposit.js';
 import type { PaymentsContext } from '../payments/service.js';
-import type { JobQueue } from './scheduler.js';
+import { checkReceipts, notify } from '../push/notify.js';
+import type { PushProvider } from '../push/provider.js';
+import type { NotificationKind } from '../push/texts.js';
+import type { RealtimeEmitter } from '../realtime/emitter.js';
+import type { JobQueue, JobScheduler } from './scheduler.js';
 
 /**
  * Job handlers are PURE FUNCTIONS of their dependencies and a booking id.
@@ -26,6 +31,16 @@ export interface JobDeps {
   clock: Clock;
   logger: Logger;
   /**
+   * REQUIRED. A job's transition is a status change like any other: it is
+   * emitted and it schedules its notifications. The workers were once started
+   * without an emitter, so every expiry and overstay reached no dashboard.
+   */
+  emitter: RealtimeEmitter;
+  scheduler: JobScheduler;
+  push: PushProvider;
+  /** Holds sent push tickets until their receipts are checked. */
+  redis: Redis;
+  /**
    * Present in the running application; omitted by tests that exercise the
    * handlers in isolation. Without it the payment pre-check is skipped, which
    * is the pre-Phase-2 behaviour.
@@ -42,7 +57,10 @@ export interface JobResult {
     | 'NOT_FOUND'
     | 'WRONG_STATUS'
     | 'NOT_DUE'
-    | 'NOT_IMPLEMENTED'
+    /** A notification whose news is stale: checked in, extended, paid. */
+    | 'NO_LONGER_TRUE'
+    /** The driver has no device registered for push. */
+    | 'NO_DEVICE'
     /** The provider confirmed the deposit; the booking was reserved instead. */
     | 'PAYMENT_CONFIRMED'
     /**
@@ -136,25 +154,36 @@ export async function markOverstay(deps: JobDeps, bookingId: string): Promise<Jo
 }
 
 /**
- * Ten minutes before the planned end.
- *
- * Push notification only — no state change. Sending is Phase 5, so this is a
- * deliberate no-op that records the intent rather than a silently missing job.
+ * A push notification: no state change. notify() re-reads the booking and
+ * sends nothing if what the notification says is no longer true.
  */
-export function timeReminder(deps: JobDeps, bookingId: string): Promise<JobResult> {
-  deps.logger.debug({ bookingId }, 'time-reminder: push notifications arrive in Phase 5');
-  return Promise.resolve({
-    queue: 'time-reminder',
-    bookingId,
-    applied: false,
-    reason: 'NOT_IMPLEMENTED',
-  });
+function notifier(queue: JobQueue, kind: NotificationKind) {
+  return async (deps: JobDeps, bookingId: string): Promise<JobResult> => {
+    const outcome = await notify(deps, kind, bookingId);
+    return outcome.reason === undefined
+      ? { queue, bookingId, applied: true }
+      : { queue, bookingId, applied: false, reason: outcome.reason };
+  };
+}
+
+/** Ten minutes before the planned end. */
+export const timeReminder = notifier('time-reminder', 'time-reminder');
+
+/** Receipts for the tickets sent for this booking: prune dead devices. */
+export async function pushReceipts(deps: JobDeps, bookingId: string): Promise<JobResult> {
+  await checkReceipts(deps, bookingId);
+  return { queue: 'push-receipts', bookingId, applied: true };
 }
 
 export const JOB_HANDLERS = {
   'expire-hold': expireHold,
   'mark-overstay': markOverstay,
   'time-reminder': timeReminder,
+  'hold-reminder': notifier('hold-reminder', 'hold-reminder'),
+  'notify-hold-expired': notifier('notify-hold-expired', 'hold-expired'),
+  'notify-overstay': notifier('notify-overstay', 'overstay'),
+  'notify-amount-due': notifier('notify-amount-due', 'amount-due'),
+  'push-receipts': pushReceipts,
 } as const satisfies Record<JobQueue, (deps: JobDeps, bookingId: string) => Promise<JobResult>>;
 
 /**

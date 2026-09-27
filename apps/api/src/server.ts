@@ -11,6 +11,7 @@ import { listen } from './listen.js';
 import { gracefulShutdown } from './shutdown.js';
 import { createLogger } from './logger.js';
 import { paymentProviderFor } from './payments/providerFor.js';
+import { ExpoPushProvider } from './push/provider.js';
 import { SocketEmitter, nullEmitter } from './realtime/emitter.js';
 import { createRealtimeServer } from './realtime/server.js';
 import { createAdapterRedis, createQueueRedis, createRedis } from './redis.js';
@@ -97,7 +98,16 @@ async function main(): Promise<void> {
   // second instance with RUN_WORKER=false here and true there.
   const workers = config.RUN_WORKER
     ? startWorkers(
-        { db, clock: systemClock, logger, payments: ctx },
+        {
+          db,
+          clock: systemClock,
+          logger,
+          payments: ctx,
+          emitter: ctx.emitter,
+          scheduler,
+          push: new ExpoPushProvider({ logger, accessToken: config.EXPO_ACCESS_TOKEN }),
+          redis,
+        },
         { connection: queueRedis, clock: systemClock, logger },
       )
     : null;

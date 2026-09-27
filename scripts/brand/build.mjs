@@ -563,6 +563,15 @@ const splashIcon = await png(
 // Android shows a 192 dp circle of it: the whole inscribed circle.
 await assertInkInside(splashIcon, (1024 * (SPLASH_IMAGE_DP / 192)) / 2, 'splash icon');
 await emit(`${MOBILE}/splash-icon.png`, splashIcon);
+// Android's status-bar notification icon: white on transparent, 96 px, the
+// mark across the 20 of 24 dp Google's guidelines leave live. Android uses
+// only its alpha; without it, it draws the launcher icon's, a white square.
+const notificationDiameter =
+  ((20 / 24) * (2 * mark.enclosing.r)) / (mark.bounds.x1 - mark.bounds.x0);
+await emit(
+  `${MOBILE}/notification-icon.png`,
+  await png(markOnSquare(mark, { size: 96, diameter: notificationDiameter, fill: WHITE }), 96),
+);
 
 // ── Mobile intro: the illustration and the wordmark, per density ──
 const MOBILE_INTRO_WIDTH = 360;

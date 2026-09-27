@@ -9,6 +9,7 @@ import {
   migrateFresh,
   testClock,
   testLogger,
+  txDeps,
   truncateAll,
   type TestDb,
 } from './helpers/db.js';
@@ -64,7 +65,7 @@ describe('20 parallel bookings for a lot with one free slot', () => {
 
     const scheduler = new RecordingScheduler();
     const clock = testClock();
-    const deps = { db, clock, logger, scheduler };
+    const deps = { ...txDeps(db, logger), clock, scheduler };
 
     const settled = await Promise.allSettled(
       driverIds.map((userId) =>
@@ -133,7 +134,7 @@ describe('20 parallel bookings for a lot with one free slot', () => {
       ),
     );
 
-    const deps = { db, clock: testClock(), logger, scheduler: new RecordingScheduler() };
+    const deps = { ...txDeps(db, logger), clock: testClock() };
 
     const settled = await Promise.allSettled(
       driverIds.map((userId) =>
@@ -186,7 +187,7 @@ describe('20 parallel bookings for a lot with one free slot', () => {
   it('refuses a second live booking from the same driver', async () => {
     const lot = await createLot(db, { slots: 10, depositSantim: 0 });
     const userId = await createUser(db, 'driver', '+251911000050');
-    const deps = { db, clock: testClock(), logger, scheduler: new RecordingScheduler() };
+    const deps = { ...txDeps(db, logger), clock: testClock() };
 
     const input = {
       lotId: lot.lotId,

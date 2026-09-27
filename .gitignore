@@ -44,3 +44,7 @@ apps/mobile/.expo/
 apps/mobile/dist/
 apps/mobile/android/
 apps/mobile/ios/
+
+# Firebase's Android config reaches EAS as the file variable
+# GOOGLE_SERVICES_JSON (docs/DEPLOY.md, "Push"), never through git.
+google-services.json

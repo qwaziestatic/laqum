@@ -153,6 +153,17 @@ const baseSchema = z.object({
    */
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 
+  /**
+   * Expo push access token. Needed once "enhanced push security" is turned
+   * on for the project, which production should (docs/DEPLOY.md, "Push"):
+   * without it anyone holding a driver's push token could message them.
+   * Empty means none, as the example file leaves it.
+   */
+  EXPO_ACCESS_TOKEN: z
+    .string()
+    .optional()
+    .transform((value) => (value === '' ? undefined : value)),
+
   /** Run the BullMQ worker in this process. Split out in Phase 5 if needed. */
   RUN_WORKER: z
     .enum(['true', 'false'])
