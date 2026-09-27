@@ -306,6 +306,19 @@ export const registerPushTokenSchema = z.object({
 });
 export type RegisterPushTokenInput = z.input<typeof registerPushTokenSchema>;
 
+/**
+ * POST /v1/auth/logout — answered 204, whatever the token.
+ *
+ * `expoPushToken`: the signing-out device's push token, when it has one. It
+ * is deleted with the session, and only if it belongs to the refresh token's
+ * owner, so the next person on this phone gets nothing meant for the last.
+ */
+export const logoutSchema = z.object({
+  refreshToken: z.string().min(1),
+  expoPushToken: expoPushTokenSchema.optional(),
+});
+export type LogoutInput = z.input<typeof logoutSchema>;
+
 // ─── Staff ────────────────────────────────────────────────────────────────
 
 export const walkInSchema = z.object({

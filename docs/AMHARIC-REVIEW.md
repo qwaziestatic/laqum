@@ -378,7 +378,8 @@ the strings as drafted. For the record:
 ## Awaiting review (added after Session 2)
 
 24 items from the product owner's decisions after Session 2, 9 from the
-branding work, and 10 push notifications (the last section).
+branding work, 10 push notifications and 4 for Sign out (the last two
+sections).
 
 ### Clock times: the Ethiopian clock (4 words)
 
@@ -517,3 +518,17 @@ Two doubts: በ{{lot}} joins the preposition straight onto a lot name, which
 reads oddly when the name is in Latin letters ("በBole Lot"); and whether
 `overstay.body` needs "the overstay rate" named, as the app's ጊዜ አልፏል
 sentence does not.
+
+### Sign out in the driver app (4 new)
+
+The home screen's Sign out button and its confirmation dialog.
+
+| Key                 | English                                                                                          | Amharic                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `common.cancel`     | Cancel                                                                                           | ይቅር                                                                   |
+| `home.signOut`      | Sign out                                                                                         | ይውጡ                                                                   |
+| `home.signOutTitle` | Sign out?                                                                                        | መውጣት ይፈልጋሉ?                                                           |
+| `home.signOutBody`  | To sign in again you will need a new code by SMS. This phone stops receiving your notifications. | እንደገና ለመግባት በኤስኤምኤስ የሚላክ አዲስ ኮድ ያስፈልግዎታል። ይህ ስልክ ማሳወቂያዎችዎን መቀበል ያቆማል። |
+
+A doubt: ይቅር for a dialog's Cancel. It is impersonal, so it needs no
+polite form, but say if the app should use another word.

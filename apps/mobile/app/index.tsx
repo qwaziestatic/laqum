@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, Map, Marker, UserLocation } from '@maplibre/maplibre-react-native';
 import type { ApiError } from '../src/api/client.js';
 import type { NearbyLot } from '../src/api/endpoints.js';
@@ -29,7 +29,27 @@ import { Body, Button, Card, Loading, Notice, Title, useBottomInset } from '../s
 export default function Home(): React.JSX.Element {
   const theme = useTheme();
   const t = useT();
-  const { api, session, ready, foregroundEpoch } = useApp();
+  const { api, session, ready, foregroundEpoch, signOut } = useApp();
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Confirmed first: signing back in costs the driver a new SMS code.
+  const confirmSignOut = (): void => {
+    Alert.alert(t('home.signOutTitle'), t('home.signOutBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('home.signOut'),
+        style: 'destructive',
+        onPress: () => {
+          setSigningOut(true);
+          // The session clears whatever happens, and the effect below then
+          // goes to sign-in.
+          void signOut().finally(() => {
+            setSigningOut(false);
+          });
+        },
+      },
+    ]);
+  };
   // The Refresh bar is the last thing on screen; without this it sat under
   // Android's navigation bar.
   const bottomInset = useBottomInset(16);
@@ -268,6 +288,13 @@ export default function Home(): React.JSX.Element {
           onPress={() => void refresh()}
           testID="refresh"
         />
+        <Button
+          label={t('home.signOut')}
+          tone="plain"
+          busy={signingOut}
+          onPress={confirmSignOut}
+          testID="sign-out"
+        />
       </View>
     </View>
   );
@@ -288,5 +315,5 @@ const styles = StyleSheet.create({
   pinText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
   sheet: { flex: 1.2, borderTopWidth: 2, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   sheetContent: { padding: 16, gap: 12 },
-  actions: { padding: 16 },
+  actions: { padding: 16, gap: 8 },
 });

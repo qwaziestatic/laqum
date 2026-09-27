@@ -26,6 +26,7 @@ export const en = {
     retry: 'Retry',
     tryAgain: 'Try again',
     openSettings: 'Open settings',
+    cancel: 'Cancel',
   },
   money: {
     birr: '{{amount}} ETB',
@@ -64,6 +65,10 @@ export const en = {
     updated: 'Updated {{time}}',
     refresh: 'Refresh',
     refreshing: 'Refreshing…',
+    signOut: 'Sign out',
+    signOutTitle: 'Sign out?',
+    signOutBody:
+      'To sign in again you will need a new code by SMS. This phone stops receiving your notifications.',
   },
   lot: {
     loading: 'Loading lot…',

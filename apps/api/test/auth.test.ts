@@ -313,4 +313,71 @@ describe('POST /v1/auth/logout', () => {
     const res = await request(t.app).post('/v1/auth/logout').send({ refreshToken: 'never-issued' });
     expect(res.status).toBe(204);
   });
+
+  describe("with the device's push token (Sign out in the app)", () => {
+    const DEVICE = 'ExponentPushToken[signingOut]';
+    const OTHER_DEVICE = 'ExponentPushToken[stillSignedIn]';
+
+    async function register(session: SessionBody, token: string): Promise<void> {
+      const res = await request(t.app)
+        .post('/v1/push/tokens')
+        .set('Authorization', `Bearer ${session.accessToken}`)
+        .send({ expoPushToken: token, locale: 'am' });
+      expect(res.status).toBe(204);
+    }
+
+    async function devices(): Promise<string[]> {
+      const rows = await t.db.db
+        .selectFrom('push_tokens')
+        .select('expo_push_token')
+        .orderBy('expo_push_token')
+        .execute();
+      return rows.map((r) => r.expo_push_token);
+    }
+
+    function logout(refreshToken: string, expoPushToken: string) {
+      return request(t.app).post('/v1/auth/logout').send({ refreshToken, expoPushToken });
+    }
+
+    it("deletes this device's token with the session, and only this device's", async () => {
+      const session = await signIn();
+      await register(session, DEVICE);
+      await register(session, OTHER_DEVICE);
+
+      expect((await logout(session.refreshToken, DEVICE)).status).toBe(204);
+
+      expect(await devices()).toEqual([OTHER_DEVICE]);
+      expect(
+        (await request(t.app).post('/v1/auth/refresh').send({ refreshToken: session.refreshToken }))
+          .status,
+      ).toBe(401);
+    });
+
+    it('deletes NOTHING for a refresh token that is unknown or already revoked', async () => {
+      const session = await signIn();
+      await logout(session.refreshToken, DEVICE); // revoked; no device yet
+      await register(session, DEVICE); // the access token still works
+
+      // Same 204 as a real logout: logout never says which tokens are valid.
+      expect((await logout(session.refreshToken, DEVICE)).status).toBe(204);
+      expect((await logout('never-issued', DEVICE)).status).toBe(204);
+
+      expect(await devices()).toEqual([DEVICE]);
+    });
+
+    it("cannot switch off ANOTHER user's device", async () => {
+      const owner = await signIn();
+      await register(owner, DEVICE);
+      const someoneElse = await signIn('+251911234568');
+
+      expect((await logout(someoneElse.refreshToken, DEVICE)).status).toBe(204);
+
+      expect(await devices()).toEqual([DEVICE]);
+    });
+
+    it('rejects a malformed push token', async () => {
+      const session = await signIn();
+      expect((await logout(session.refreshToken, 'not-a-token')).status).toBe(400);
+    });
+  });
 });

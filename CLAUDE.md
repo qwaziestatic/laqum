@@ -683,8 +683,7 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       `POST /v1/bookings` passed none either, so a booking made in the app
       did not appear on an open dashboard. Both fixed and tested
       (push.test.ts). `JobDeps` now requires emitter, scheduler, push and
-      redis. Not done: a sign-out in the app (it has none) should delete the
-      device's token.
+      redis. (Sign out, which deletes the device's token, came after: below.)
 - [x] **Deploy README** (docs/DEPLOY.md), for AletCloud: the one-hour
       trial (DOMAIN = the server's IP, Caddy's self-signed certificate,
       `--profile local-db`, curl timings over the phone's mobile data), the
@@ -715,8 +714,19 @@ waits for a design pass. **Queued next, same rules:**
       localhost fallback. Verified through Expo's own config loader
       (`expo config` with `EAS_BUILD_PROFILE=production`): both refusals
       fire. The variable must be Plain text or Sensitive, not Secret.
-- [ ] **Sign out** in the app, which also deletes this device's push token
-      on the server.
+- [x] **Sign out** in the app, which also deletes this device's push token
+      on the server. ONE request: `POST /v1/auth/logout` takes an optional
+      `expoPushToken` (shared `logoutSchema`) and, in the same transaction
+      as the revocation, deletes that token ONLY when a live session was
+      really revoked and ONLY if it is that session's user's: a stale or
+      stolen refresh token deletes nothing, nobody can switch off another's
+      device, and the answer is 204 either way (negative-tested: removing
+      the owner check fails 1 test, the live-session check 2). The app
+      (`state/signOut.ts`): the token only if notifications are already
+      allowed (checked, never requested), the server first, then the local
+      session is cleared WHATEVER happens, offline included. A confirmation
+      dialog first; not the "session ended" notice. The contract test signs
+      out with the app's own code against the real API. DEVICE-TEST step 24.
 - [ ] A minimal **admin endpoint to add and remove attendants** on a lot.
 
 ### Brand — docs/BRAND.md is the rulebook
@@ -1388,13 +1398,13 @@ an approved plan before work starts.**
       product owner reviewed all 210 keys (dashboard 68, driver app 140,
       return page 2, as of commit `a3b139f`) and found **no corrections**.
       APPROVED; the release blocker is cleared for them.
-- [ ] **Amharic added after Session 2: 43 items awaiting review**
+- [ ] **Amharic added after Session 2: 47 items awaiting review**
       (docs/AMHARIC-REVIEW.md, "Awaiting review"): the four Ethiopian
       time-of-day words and their hours, the three "overstay" sentences now
       using ጊዜ አልፏል, one bill sentence adapted for the clock, the
       dashboard's 16 new error texts, the intro's one announcement, and the
-      development checkout page's 8 strings, and the 10 push notification
-      texts. **Blocks release for those strings only.**
+      development checkout page's 8 strings, the 10 push notification
+      texts and 4 for Sign out. **Blocks release for those strings only.**
 
 ### Phase 2 open items
 

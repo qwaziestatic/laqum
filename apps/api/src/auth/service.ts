@@ -305,14 +305,34 @@ export async function refreshSession(deps: AuthDeps, refreshToken: string): Prom
   };
 }
 
-/** Revoking an unknown token is a no-op: logout must never leak token validity. */
-export async function logout(deps: AuthDeps, refreshToken: string): Promise<void> {
-  await deps.db
-    .updateTable('refresh_tokens')
-    .set({ revoked_at: deps.clock.now() })
-    .where('token_hash', '=', hashRefreshToken(deps.config, refreshToken))
-    .where('revoked_at', 'is', null)
-    .execute();
+/**
+ * Revoking an unknown token is a no-op: logout must never leak token validity.
+ *
+ * With `expoPushToken`, the signing-out device stops receiving notifications.
+ * It is deleted ONLY when this call really revoked a live session, and only
+ * if the token belongs to that session's user: a stale or stolen refresh
+ * token deletes nothing, and nobody can switch off another user's device.
+ */
+export async function logout(
+  deps: AuthDeps,
+  refreshToken: string,
+  expoPushToken?: string,
+): Promise<void> {
+  await deps.db.transaction().execute(async (trx) => {
+    const revoked = await trx
+      .updateTable('refresh_tokens')
+      .set({ revoked_at: deps.clock.now() })
+      .where('token_hash', '=', hashRefreshToken(deps.config, refreshToken))
+      .where('revoked_at', 'is', null)
+      .returning('user_id')
+      .executeTakeFirst();
+    if (!revoked || expoPushToken === undefined) return;
+    await trx
+      .deleteFrom('push_tokens')
+      .where('expo_push_token', '=', expoPushToken)
+      .where('user_id', '=', revoked.user_id)
+      .execute();
+  });
 }
 
 /**

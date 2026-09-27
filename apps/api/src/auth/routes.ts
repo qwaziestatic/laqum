@@ -1,7 +1,9 @@
 import {
+  type LogoutInput,
   type OtpRequest,
   type OtpVerify,
   devLoginSchema,
+  logoutSchema,
   otpRequestSchema,
   otpVerifySchema,
   refreshSchema,
@@ -79,10 +81,10 @@ export function authRouter(ctx: AppContext): Router {
 
   router.post(
     '/logout',
-    validateBody(refreshSchema),
+    validateBody(logoutSchema),
     handle(async (req, res) => {
-      const { refreshToken } = req.body as { refreshToken: string };
-      await logout(deps, refreshToken);
+      const { refreshToken, expoPushToken } = req.body as LogoutInput;
+      await logout(deps, refreshToken, expoPushToken);
       res.status(204).end();
     }),
   );

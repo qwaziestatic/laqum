@@ -1365,6 +1365,28 @@ white square; navy in the notification shade.
 Report each notification's exact text, in both languages if you can: they
 are the strings awaiting review in AMHARIC-REVIEW.md.
 
+### 24. Sign out
+
+JavaScript only: a reload shows it. The push part needs the Firebase build.
+
+1. On the home screen, tap **Sign out** (ይውጡ). _Should:_ a dialog asks
+   first, in the app's language. Tap **Cancel** (ይቅር). _Should:_ still
+   signed in.
+2. Tap **Sign out** again and confirm. _Should:_ the sign-in screen, WITHOUT
+   the "your session has ended" notice: that is for sessions that expire,
+   not for one the driver ended.
+3. **With the Firebase build**, before step 2 check the device has a
+   `push_tokens` row (step 23 a), and after it:
+
+   ```bash
+   docker exec laqum-postgres-1 psql -U laqum -d laqum      -c "select count(*) from push_tokens;"
+   ```
+
+   _Should:_ this phone's row is gone. Sign in again: it comes back.
+
+4. Airplane mode on, sign in first if needed, then Sign out. _Should:_
+   signed out on the phone all the same.
+
 ---
 
 ## Part 5 — Report back

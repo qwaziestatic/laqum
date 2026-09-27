@@ -6,7 +6,9 @@ import { ApiClient, type Session } from '../api/client.js';
 import { Api } from '../api/endpoints.js';
 import { secureTokenStore } from '../api/secureTokens.js';
 import { restoreLanguage } from '../i18n/react.js';
+import { currentPushToken } from '../push/expoDeps.js';
 import { DriverRealtime, type RealtimeState, socketOriginFor } from '../realtime/connection.js';
+import { signOut } from './signOut.js';
 
 /**
  * One ApiClient for the whole app, so the single-flight refresh actually is
@@ -35,6 +37,8 @@ export interface AppContextValue {
   /** The session ended for good (revoked, expired): sign-in says so. */
   signedOut: boolean;
   setSession: (session: Session | null) => Promise<void>;
+  /** The driver's own Sign out (signOut.ts); not the "session ended" path. */
+  signOut: () => Promise<void>;
   ready: boolean;
   /** Increments whenever the app returns to the foreground. */
   foregroundEpoch: number;
@@ -139,6 +143,17 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     [client],
   );
 
+  const signOutNow = useCallback(
+    () =>
+      signOut({
+        refreshToken: client.session?.refreshToken ?? null,
+        pushToken: currentPushToken,
+        logout: (input) => api.logout(input),
+        clearSession: () => setSession(null),
+      }),
+    [api, client, setSession],
+  );
+
   const value = useMemo<AppContextValue>(
     () => ({
       api,
@@ -146,13 +161,25 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       session,
       signedOut,
       setSession,
+      signOut: signOutNow,
       ready,
       foregroundEpoch,
       realtime,
       realtimeState,
       apiUrl: API_URL,
     }),
-    [api, client, session, signedOut, setSession, ready, foregroundEpoch, realtime, realtimeState],
+    [
+      api,
+      client,
+      session,
+      signedOut,
+      setSession,
+      signOutNow,
+      ready,
+      foregroundEpoch,
+      realtime,
+      realtimeState,
+    ],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

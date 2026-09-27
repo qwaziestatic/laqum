@@ -27,6 +27,7 @@ export const am: Messages = {
     retry: 'እንደገና ይሞክሩ',
     tryAgain: 'እንደገና ይሞክሩ',
     openSettings: 'ቅንብሮችን ይክፈቱ',
+    cancel: 'ይቅር',
   },
   money: {
     birr: '{{amount}} ብር',
@@ -64,6 +65,9 @@ export const am: Messages = {
     updated: 'የተዘመነው {{time}}',
     refresh: 'ያድሱ',
     refreshing: 'በማደስ ላይ…',
+    signOut: 'ይውጡ',
+    signOutTitle: 'መውጣት ይፈልጋሉ?',
+    signOutBody: 'እንደገና ለመግባት በኤስኤምኤስ የሚላክ አዲስ ኮድ ያስፈልግዎታል። ይህ ስልክ ማሳወቂያዎችዎን መቀበል ያቆማል።',
   },
   lot: {
     loading: 'ማቆሚያው በመጫን ላይ…',

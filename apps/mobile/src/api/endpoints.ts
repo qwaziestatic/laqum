@@ -14,6 +14,7 @@ import {
   type PayBookingResponse,
   type PayDepositResponse,
   type PublicSnapshot,
+  type LogoutInput,
   type RegisterPushTokenInput,
   bookingResponseSchema,
   cancelBookingResponseSchema,
@@ -159,6 +160,11 @@ export class Api {
   /** Ask the provider now, on return from the checkout. Never starts a payment. */
   async verifyDeposit(id: string): Promise<ApiResult<BookingResponse>> {
     return parsed(await this.#post(`/bookings/${id}/deposit/verify`), bookingResponseSchema);
+  }
+
+  /** Ends the session; with expoPushToken, also this device's notifications. 204. */
+  logout(input: LogoutInput): Promise<ApiResult<void>> {
+    return this.#client.request('/auth/logout', { method: 'POST', body: JSON.stringify(input) });
   }
 
   /** Answered 204 with no body. */

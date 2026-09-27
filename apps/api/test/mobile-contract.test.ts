@@ -12,6 +12,7 @@ import {
 } from '../../mobile/src/booking/deposit.js';
 import { bookingRequest } from '../../mobile/src/booking/request.js';
 import { bookingView } from '../../mobile/src/booking/view.js';
+import { signOut } from '../../mobile/src/state/signOut.js';
 import { translator } from '../../mobile/src/i18n/core.js';
 import { makeActor, staffLot } from './helpers/auth.js';
 import { createTestContext, type TestContext } from './helpers/context.js';
@@ -224,6 +225,26 @@ describe('the app drives a whole booking journey', () => {
     expect(afterRefresh.ok).toBe(true);
     const refresh = app.raw.find((r) => r.path === '/auth/refresh');
     expect(refresh?.status).toBe(200);
+
+    // Sign out, exactly as the app does it: the session ends on the server,
+    // and this phone's push token goes with it.
+    const refreshToken = app.client.session?.refreshToken ?? null;
+    await signOut({
+      refreshToken,
+      pushToken: () => Promise.resolve('ExponentPushToken[contract-test]'),
+      logout: (input) => app.api.logout(input),
+      clearSession: () => app.client.setSession(null),
+    });
+    expect(app.raw.at(-1)).toMatchObject({ path: '/auth/logout', status: 204 });
+    expect(app.client.session).toBeNull();
+    const device = await t.db.db
+      .selectFrom('push_tokens')
+      .select('id')
+      .where('expo_push_token', '=', 'ExponentPushToken[contract-test]')
+      .executeTakeFirst();
+    expect(device, "the phone's push token is deleted").toBeUndefined();
+    const reuse = await request(t.app).post('/v1/auth/refresh').send({ refreshToken });
+    expect(reuse.status, 'the session ended on the server').toBe(401);
   });
 });
 
