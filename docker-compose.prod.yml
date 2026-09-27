@@ -147,7 +147,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U laqum -d laqum']
+      # Over TCP: the image's init server is socket-only and restarts, and a
+      # socket probe passing against it would start migrate too early (CI #25).
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U laqum -d laqum']
       interval: 5s
       timeout: 5s
       retries: 10

@@ -14,8 +14,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       # -U and -d are required: without them pg_isready probes the `root` role
-      # and reports the container healthy only by accident.
-      test: ['CMD-SHELL', 'pg_isready -U laqum -d laqum']
+      # and reports the container healthy only by accident. -h 127.0.0.1: only
+      # the REAL server listens on TCP; the image's init server is socket-only,
+      # and a socket probe can pass just before it restarts (CI #25).
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U laqum -d laqum']
       interval: 5s
       timeout: 5s
       retries: 10

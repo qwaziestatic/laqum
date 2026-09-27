@@ -21,10 +21,20 @@ name="laqum-restore-check-$$"
 docker run -d --name "$name" -e POSTGRES_PASSWORD=restore-check postgres:16.15-alpine >/dev/null
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 
+# Wait for the REAL server, over TCP. The image's init first runs a temporary
+# server on the Unix socket only (listen_addresses=''), stops it, then starts
+# the real one: a socket probe can succeed against the temporary server and
+# the next command land in the restart ("connection to server on socket ...
+# failed", CI #25). Only the real server listens on TCP.
+ready=
 for _ in $(seq 1 60); do
-  docker exec "$name" pg_isready -U postgres >/dev/null 2>&1 && break
+  if docker exec "$name" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
   sleep 1
 done
+[ -n "$ready" ] || { echo "restore-check: FAILED: PostgreSQL did not start within 60 s" >&2; exit 1; }
 
 psql() {
   docker exec "$name" psql -U postgres -d laqum -v ON_ERROR_STOP=1 -At -c "$1"
