@@ -271,13 +271,25 @@ curl -s -X POST https://<domain>/v1/admin/lots/<lot id>/slots/bulk \
   -d '{"zone":"main","rows":3,"cols":8,"labelPrefix":"A"}'
 ```
 
-**Attendants** have no endpoint yet: add each in SQL, then they sign in to
-the dashboard with their number.
+**Attendants**, added by the lot's admin (then they sign in to the dashboard
+with their number):
 
-```sql
-INSERT INTO users (phone, role, full_name) VALUES ('+2519XXXXXXXX', 'attendant', '<name>') RETURNING id;
-INSERT INTO lot_staff (lot_id, user_id) VALUES ('<lot id>', '<users.id>');
+```bash
+# add (201; 200 if already there). A new number becomes an attendant.
+curl -s -X POST https://<domain>/v1/admin/lots/<lot id>/attendants \
+  -H "Authorization: Bearer <accessToken>" -H 'Content-Type: application/json' \
+  -d '{"phone":"+2519XXXXXXXX","fullName":"<name>"}'
+# list them, with their ids
+curl -s https://<domain>/v1/admin/lots/<lot id>/attendants -H "Authorization: Bearer <accessToken>"
+# remove one from this lot (204), by id
+curl -s -X DELETE https://<domain>/v1/admin/lots/<lot id>/attendants/<userId> \
+  -H "Authorization: Bearer <accessToken>"
 ```
+
+A driver's or an admin's number is refused (409): the account is not
+changed into an attendant. Removal is immediate: the attendant's next action
+on the lot is refused, and an open dashboard stops receiving the lot's
+changes. Only an admin who staffs the lot can do either.
 
 ## 8. Chapa
 

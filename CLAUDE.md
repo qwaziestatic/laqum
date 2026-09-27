@@ -727,7 +727,22 @@ waits for a design pass. **Queued next, same rules:**
       session is cleared WHATEVER happens, offline included. A confirmation
       dialog first; not the "session ended" notice. The contract test signs
       out with the app's own code against the real API. DEVICE-TEST step 24.
-- [ ] A minimal **admin endpoint to add and remove attendants** on a lot.
+- [x] A minimal **admin endpoint to add and remove attendants** on a lot
+      (`admin/attendants.ts`): `GET`/`POST /v1/admin/lots/:id/attendants`,
+      `DELETE …/attendants/:userId`, for an `operator_admin` who STAFFS the
+      lot (another operator's admin gets 403). The list exists because
+      removal is by id: a phone number in a path would be logged unmasked.
+      Adding a new number creates an attendant; an attendant of another lot
+      is added too; **a driver's or an admin's number is refused** (409
+      `STATE_CONFLICT`, reused rather than a new code both apps would need
+      text for), the account unchanged. Removal takes only attendants, and
+      is **immediate everywhere**: HTTP re-checks lot_staff per request, and
+      the new `RealtimeEmitter.staffRemoved` makes the user's sockets leave
+      the lot's staff room (`io.in(userRoom).socketsLeave`, cluster-wide
+      through the Redis adapter), where an open socket otherwise stayed until
+      its token expired. `realtime-auth.test.ts` proves it on a real socket,
+      with an ordering barrier so a late probe cannot pass unseen; removing
+      the `socketsLeave` fails it.
 
 ### Brand — docs/BRAND.md is the rulebook
 

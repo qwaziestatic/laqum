@@ -1,5 +1,7 @@
 import {
+  type AddAttendantInput,
   AppError,
+  addAttendantSchema,
   bulkSlotsSchema,
   createLotSchema,
   updateLotSchema,
@@ -8,6 +10,7 @@ import {
 import { Router } from 'express';
 import { inTransaction } from '../afterCommit.js';
 import type { AppContext } from '../context.js';
+import { addAttendant, listAttendants, removeAttendant } from './attendants.js';
 import { CONSTRAINTS, isUniqueViolation } from '../db/pgError.js';
 import { currentUser, requireAuth, requireLotStaff, requireRole } from '../middleware/auth.js';
 import { handle, validateBody } from '../middleware/validate.js';
@@ -172,6 +175,41 @@ export function adminRouter(ctx: AppContext): Router {
         }
         throw err;
       }
+    }),
+  );
+
+  /*
+   * Attendants (admin/attendants.ts). The admin must staff the lot, like
+   * every lot-scoped route: another operator's admin cannot touch it.
+   */
+  router.get(
+    '/lots/:id/attendants',
+    requireLotStaff(ctx, 'id'),
+    handle(async (req, res) => {
+      const lotId = uuidSchema.parse(req.params['id']);
+      res.json({ attendants: await listAttendants(ctx, lotId) });
+    }),
+  );
+
+  router.post(
+    '/lots/:id/attendants',
+    requireLotStaff(ctx, 'id'),
+    validateBody(addAttendantSchema),
+    handle(async (req, res) => {
+      const lotId = uuidSchema.parse(req.params['id']);
+      const { attendant, added } = await addAttendant(ctx, lotId, req.body as AddAttendantInput);
+      res.status(added ? 201 : 200).json({ attendant });
+    }),
+  );
+
+  router.delete(
+    '/lots/:id/attendants/:userId',
+    requireLotStaff(ctx, 'id'),
+    handle(async (req, res) => {
+      const lotId = uuidSchema.parse(req.params['id']);
+      const userId = uuidSchema.parse(req.params['userId']);
+      await removeAttendant(ctx, lotId, userId);
+      res.status(204).end();
     }),
   );
 

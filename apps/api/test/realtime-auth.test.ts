@@ -2,6 +2,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { SUBSCRIBE_EVENT, type SubscribedAck } from '@laqum/shared';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
+import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { signAccessToken } from '../src/auth/tokens.js';
 import {
@@ -9,6 +10,7 @@ import {
   createRealtimeServer,
   type RealtimeServer,
 } from '../src/realtime/server.js';
+import { SocketEmitter } from '../src/realtime/emitter.js';
 import { ManualTimers } from '../src/realtime/timers.js';
 import { makeActor, staffLot } from './helpers/auth.js';
 import { createTestContext, type TestContext } from './helpers/context.js';
@@ -303,5 +305,64 @@ describe('room membership is corrected, not merely added to', () => {
     const sockets = await realtime.io.in(`lot:${lot.lotId}:staff`).fetchSockets();
     expect(sockets, 'a downgraded socket must not stay in the staff room').toHaveLength(0);
     expect(await realtime.io.in(`lot:${lot.lotId}:public`).fetchSockets()).toHaveLength(1);
+  });
+});
+
+describe('removing an attendant from a lot', () => {
+  it("takes their OPEN sockets out of the lot's staff room at once", async () => {
+    /*
+     * The HTTP staff endpoints re-check lot_staff on every request; a socket
+     * subscribed before the removal would otherwise keep receiving the lot's
+     * staff events until its token expired. The admin endpoint goes through
+     * the real SocketEmitter here, pointed at this test's Socket.io server.
+     */
+    const recording = t.ctx.emitter;
+    t.ctx.emitter = new SocketEmitter(realtime.io);
+    try {
+      const admin = await makeActor(t, 'operator_admin');
+      await staffLot(t, admin, lot.lotId);
+      const removed = await makeActor(t, 'attendant');
+      const kept = await makeActor(t, 'attendant');
+      await staffLot(t, removed, lot.lotId);
+      await staffLot(t, kept, lot.lotId);
+
+      const removedSocket = await connect(removed.token);
+      const keptSocket = await connect(kept.token);
+      expect(await subscribe(removedSocket, lot.lotId, 'staff')).toMatchObject({ ok: true });
+      expect(await subscribe(keptSocket, lot.lotId, 'staff')).toMatchObject({ ok: true });
+
+      const res = await request(t.app)
+        .delete(`/v1/admin/lots/${lot.lotId}/attendants/${removed.userId}`)
+        .set(admin.header);
+      expect(res.status).toBe(204);
+
+      // Asked of the server: only the kept attendant is still in the room.
+      await expect
+        .poll(async () =>
+          (await realtime.io.in(`lot:${lot.lotId}:staff`).fetchSockets()).map((s) => s.id),
+        )
+        .toEqual([keptSocket.id]);
+
+      // And a staff event reaches the kept socket, never the removed one.
+      let leaked = false;
+      removedSocket.on('probe', () => {
+        leaked = true;
+      });
+      const reached = nextEvent(keptSocket, 'probe');
+      realtime.io.to(`lot:${lot.lotId}:staff`).emit('probe', {});
+      await reached;
+      // A barrier sent to the removed socket AFTER the probe: one connection
+      // delivers in order, so had the probe been sent to it, it would have
+      // arrived before this.
+      const barrier = nextEvent(removedSocket, 'barrier');
+      realtime.io.to(removedSocket.id ?? '').emit('barrier', {});
+      await barrier;
+      expect(leaked).toBe(false);
+
+      // Nor can it simply subscribe again: lot_staff is re-read.
+      expect(await subscribe(removedSocket, lot.lotId, 'staff')).toMatchObject({ ok: false });
+    } finally {
+      t.ctx.emitter = recording;
+    }
   });
 });

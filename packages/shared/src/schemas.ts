@@ -485,3 +485,22 @@ export const bulkSlotsSchema = z.object({
   appBookable: z.boolean().default(true),
 });
 export type BulkSlotsRequest = z.infer<typeof bulkSlotsSchema>;
+
+/** POST /v1/admin/lots/:id/attendants — 201 when added, 200 when already there. */
+export const addAttendantSchema = z.object({
+  phone: phoneSchema,
+  /** Used only when the number is new. */
+  fullName: z.string().trim().min(1).max(200).optional(),
+});
+export type AddAttendantInput = z.input<typeof addAttendantSchema>;
+
+export const attendantSchema = z.object({
+  userId: uuidSchema,
+  phone: z.string(),
+  fullName: z.string().nullable(),
+});
+export type Attendant = z.infer<typeof attendantSchema>;
+
+export const attendantResponseSchema = z.object({ attendant: attendantSchema });
+/** GET /v1/admin/lots/:id/attendants. Removal is by userId, never by phone in the path. */
+export const attendantListResponseSchema = z.object({ attendants: z.array(attendantSchema) });

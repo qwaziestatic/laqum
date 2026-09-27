@@ -34,6 +34,8 @@ export const BOOKING_UPDATED = 'booking.updated';
 export interface RealtimeEmitter {
   slotChanged(lotId: string, staff: StaffSlotEvent, pub: PublicSlotEvent): void;
   bookingChanged(userId: string, payload: unknown): void;
+  /** An attendant was taken off a lot: their open sockets leave its staff room. */
+  staffRemoved(lotId: string, userId: string): void;
 }
 
 /** The real one. */
@@ -52,12 +54,19 @@ export class SocketEmitter implements RealtimeEmitter {
   bookingChanged(userId: string, payload: unknown): void {
     this.#io.to(userRoom(userId)).emit(BOOKING_UPDATED, payload);
   }
+
+  staffRemoved(lotId: string, userId: string): void {
+    // Every socket joins its user's room at connection, so this reaches all
+    // of that user's sockets, on every instance through the Redis adapter.
+    this.#io.in(userRoom(userId)).socketsLeave(staffRoom(lotId));
+  }
 }
 
 /** Records instead of emitting, so tests can assert on rooms and payloads. */
 export class RecordingEmitter implements RealtimeEmitter {
   readonly slotEvents: { lotId: string; staff: StaffSlotEvent; pub: PublicSlotEvent }[] = [];
   readonly bookingEvents: { userId: string; payload: unknown }[] = [];
+  readonly staffRemovals: { lotId: string; userId: string }[] = [];
 
   slotChanged(lotId: string, staff: StaffSlotEvent, pub: PublicSlotEvent): void {
     this.slotEvents.push({ lotId, staff, pub });
@@ -67,9 +76,14 @@ export class RecordingEmitter implements RealtimeEmitter {
     this.bookingEvents.push({ userId, payload });
   }
 
+  staffRemoved(lotId: string, userId: string): void {
+    this.staffRemovals.push({ lotId, userId });
+  }
+
   reset(): void {
     this.slotEvents.length = 0;
     this.bookingEvents.length = 0;
+    this.staffRemovals.length = 0;
   }
 }
 
@@ -77,6 +91,7 @@ export class RecordingEmitter implements RealtimeEmitter {
 export const nullEmitter: RealtimeEmitter = {
   slotChanged: () => undefined,
   bookingChanged: () => undefined,
+  staffRemoved: () => undefined,
 };
 
 /**
