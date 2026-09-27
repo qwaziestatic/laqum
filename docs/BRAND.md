@@ -163,5 +163,5 @@ dependencies only.
 - **ላ alone** for the icon, if the full wordmark at 48 px is too small for you.
 - **Not a brand colour, but the same concern:** both apps' button colour
   (`accent` light, `#1d4ed8`) is exactly the light "occupied" tile blue. It
-  predates this work and was left alone; say if buttons should move away from
-  it.
+  predates this work. **Deferred by the product owner to a later design
+  pass**; unchanged until then.

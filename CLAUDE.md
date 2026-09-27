@@ -447,6 +447,17 @@ instead">`, so a wrong import fails at _runtime_ with a confusing
 29. **Expo's config loader cannot import `@laqum/shared`.** It resolves the
     package to its built `dist`, so `app.config.ts` writes the brand navy
     literally and `brand-config.test.ts` asserts it equals `BRAND.navy`.
+30. **`pg_isready` over the socket can pass against a server about to
+    restart.** The postgres image's init runs a TEMPORARY server with
+    `listen_addresses=''` (socket only; entrypoint line 297), stops it, then
+    starts the real one. Observed directly: socket up and TCP down, then
+    both down, then both up. A socket probe passing in the first window let
+    the next command land in the restart: CI #25, `restore-check.sh`,
+    "connection to server on socket ... failed". **Every readiness probe
+    uses `pg_isready -h 127.0.0.1`**, since only the real server listens on
+    TCP: restore-check (which also fails loudly after 60 s now), all three
+    Compose files and both CI services. Proved with 10 consecutive
+    restore-check runs on a real dump.
 
 ---
 
@@ -689,6 +700,16 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       so `app.config.ts` silently falls back to localhost; and attendants
       can only be added in SQL (there is no endpoint).
 
+**Decided after the Phase 5 report** (2026-09-27): `expo-system-ui` now, so
+it ships in the Firebase build (done, "Brand" below); the button accent
+waits for a design pass. **Queued next, same rules:**
+
+- [ ] An **APK** `production` EAS profile, and a config check that refuses
+      a production build without `EXPO_PUBLIC_API_URL`.
+- [ ] **Sign out** in the app, which also deletes this device's push token
+      on the server.
+- [ ] A minimal **admin endpoint to add and remove attendants** on a lot.
+
 ### Brand — docs/BRAND.md is the rulebook
 
 - **The source is never edited.** `assets/brand/source/laqum-illustration.jpg`
@@ -733,11 +754,15 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
   moves the booking. **`FAKE_PAYMENT_DELAY_SECONDS` is now optional:** unset,
   a fake payment never succeeds by itself; a number restores the automatic
   success.
-- Observed, not changed: prebuild warns `userInterfaceStyle` needs
-  `expo-system-ui` on Android (pre-existing; the device pass saw dark mode
-  follow the phone regardless, step 10a), and both apps' button `accent` (`#1d4ed8`) is
-  exactly the light "occupied" blue. Both are questions for the product
-  owner, in docs/BRAND.md.
+- **`expo-system-ui` 57.0.4 added** (product owner's decision), so it ships
+  in the Firebase EAS build: without it prebuild warned that
+  `userInterfaceStyle` needs it on Android and dropped the setting. Verified
+  with a prebuild: no warning, and `strings.xml` gains
+  `expo_system_ui_user_interface_style=automatic`. `expo install` writes a
+  range (`~57.0.4`); it is pinned exactly, and `brand-config.test.ts`
+  checks both.
+- Both apps' button `accent` (`#1d4ed8`) is exactly the light "occupied"
+  blue: **deferred by the product owner to a later design pass.**
 
 ### Chapa integration — the facts that matter
 

@@ -99,6 +99,23 @@ describe('the native splash', () => {
   });
 });
 
+describe('the light and dark themes', () => {
+  it('follow the phone, through expo-system-ui on Android', () => {
+    /*
+     * Prebuild applies `userInterfaceStyle` on Android only through
+     * expo-system-ui's plugin; without the package it warns and drops the
+     * setting. Verified with a prebuild: the package writes
+     * expo_system_ui_user_interface_style=automatic into strings.xml.
+     */
+    expect(config.userInterfaceStyle).toBe('automatic');
+    const manifest = JSON.parse(readFileSync(file('package.json'), 'utf8')) as {
+      dependencies: Record<string, string>;
+    };
+    // Pinned exactly, like every dependency: Expo's installer writes a range.
+    expect(manifest.dependencies['expo-system-ui']).toMatch(/^\d+\.\d+\.\d+$/u);
+  });
+});
+
 /** Source files under a directory, as paths relative to the app. */
 function sources(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(file(dir), { withFileTypes: true })) {
