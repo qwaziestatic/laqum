@@ -619,7 +619,11 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       real socket, request and job; the real-signal test in
       `server-startup.test.ts` is **Linux only** (Windows cannot deliver
       SIGTERM to a child) and runs in CI, not on the dev machine.
-- [ ] Production image, prod compose, migrate, Caddy.
+- [ ] Production image, prod compose, migrate, Caddy. IN PROGRESS: paused for
+      the CI #23 fix and kept in the git stash `phase5-image-compose-wip`
+      (package `files` fields, the Dockerfile healthcheck, deploy/ with the
+      Caddyfile, web image, backups and smoke script, docker-compose.prod.yml),
+      popped back to finish this step.
 - [ ] Push: Firebase (the product owner's steps), delivery, D2, D3. **The
       icon and the native splash ship in this same EAS build.**
 - [ ] Deploy README, for AletCloud.
