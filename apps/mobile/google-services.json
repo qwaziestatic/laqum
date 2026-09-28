@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "555028653387",
+    "project_id": "laqum-ebf7e",
+    "storage_bucket": "laqum-ebf7e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:555028653387:android:145c544f54388c5fa234ce",
+        "android_client_info": {
+          "package_name": "et.laqum.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBs1cZ95yt5So27gVT_klT2kAQRaMlwMI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

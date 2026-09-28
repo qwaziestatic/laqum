@@ -675,8 +675,17 @@ only for the work-queue reasons; one 🛑 report after the deploy README:
       reports `DeviceNotRegistered` is deleted. **Nothing that identifies
       the driver leaves the country**: a sentence, the lot, a time or
       amount, and `{bookingId, kind}` (Art. 20; tested). A tap opens the
-      booking; the id must be a UUID. `google-services.json` only through
-      the EAS file variable `GOOGLE_SERVICES_JSON`, gitignored.
+      booking; the id must be a UUID. `apps/mobile/google-services.json` is
+      COMMITTED (product owner's decision; Expo: public identifiers only).
+      The EAS file variable `GOOGLE_SERVICES_JSON` was tried first and
+      dropped: **eas-cli 24.8.0 never fetches a file variable's content when
+      `eas build` resolves the config locally** (it queries without
+      `includeFileContent`, then keeps only variables with a value; only
+      `env:get`/`env:pull` fetch file content), so it reported "No
+      environment variables … found". The service account key never enters
+      git; `.gitignore` refuses `*firebase-adminsdk*.json`, and
+      `brand-config.test.ts` checks the committed file is for
+      `et.laqum.driver` and is not a key.
       **Two Phase 3 bugs found by making `TxDeps.emitter` and `scheduler`
       REQUIRED:** the job workers had no emitter, so every expiry, overstay
       and sweep reached no dashboard until its next resync; and

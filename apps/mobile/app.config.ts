@@ -106,13 +106,13 @@ const config: ExpoConfig = {
     //
     // No `config.googleMaps` either: MapLibre needs no key.
     //
-    // Firebase, for push through FCM: the file comes from the EAS file
-    // variable GOOGLE_SERVICES_JSON (docs/DEPLOY.md, "Push"), never from the
-    // repository. Absent, the build has no FCM and registration reports the
-    // token as unavailable, as before.
-    ...(process.env.GOOGLE_SERVICES_JSON
-      ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON }
-      : {}),
+    // Firebase, for push through FCM (docs/DEPLOY.md, "Push"). COMMITTED:
+    // Expo documents that this file holds only public identifiers. (An EAS
+    // file variable was tried first: eas-cli 24.8.0 never fetches a file
+    // variable's content when it resolves this config on the laptop.) The
+    // Firebase SERVICE ACCOUNT KEY is a different file, a real secret, and is
+    // never in the repository: it is uploaded to Expo only.
+    googleServicesFile: './google-services.json',
     permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'CAMERA'],
   },
 

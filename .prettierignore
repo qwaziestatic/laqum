@@ -27,3 +27,7 @@ apps/mobile/expo-env.d.ts
 assets/brand/generated/
 apps/dashboard/public/favicon.svg
 apps/dashboard/src/brand/intro-wordmark.svg
+
+# Firebase's Android config, committed exactly as Firebase issues it
+# (docs/DEPLOY.md, "Push"): replaced by a fresh download, never edited.
+apps/mobile/google-services.json

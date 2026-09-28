@@ -74,10 +74,22 @@ describe('push notifications', () => {
     expect(pngSize('assets/brand/notification-icon.png')).toEqual({ width: 96, height: 96 });
   });
 
-  it('take Firebase only from the EAS file variable, never from the repository', () => {
-    // This test runs without GOOGLE_SERVICES_JSON set.
-    expect(config.android?.googleServicesFile).toBeUndefined();
-    expect(existsSync(file('google-services.json'))).toBe(false);
+  it("take Firebase from the committed google-services.json, for this app's package", () => {
+    expect(config.android?.googleServicesFile).toBe('./google-services.json');
+    const firebase = JSON.parse(readFileSync(file('google-services.json'), 'utf8')) as {
+      client?: { client_info?: { android_client_info?: { package_name?: string } } }[];
+    };
+    const packages = (firebase.client ?? []).map(
+      (c) => c.client_info?.android_client_info?.package_name,
+    );
+    expect(packages).toContain(config.android?.package);
+  });
+
+  it('never commit a Firebase SERVICE ACCOUNT key in its place', () => {
+    // The key is a real secret (it can send as the project); it goes to Expo
+    // only. It is recognisable without reading any value from it.
+    const text = readFileSync(file('google-services.json'), 'utf8');
+    expect(text).not.toMatch(/"private_key"|"type":\s*"service_account"/u);
   });
 });
 

@@ -310,30 +310,29 @@ changes. Only an admin who staffs the lot can do either.
 
 Push goes from the API to **Expo's push service**, which hands it to
 **Firebase Cloud Messaging** for Android. Firebase's free Spark plan needs no
-card. No `google-services.json` is ever committed: EAS gets it as a file
-variable.
+card. The app's `google-services.json` is committed (Expo: it holds only
+public identifiers); the service account key never is.
 
 1. **Firebase project.** At console.firebase.google.com, create a project
    (Analytics can be off). It stays on the Spark plan.
 2. **Android app.** Add an Android app with package name exactly
-   **`et.laqum.driver`** and download its `google-services.json`. Keep it
-   out of the repository (`.gitignore` excludes it).
+   **`et.laqum.driver`** and download its `google-services.json`. It goes in
+   **`apps/mobile/google-services.json`**, committed; `app.config.ts` points
+   at it, and a test checks it is for `et.laqum.driver`.
 3. **Service account key.** Firebase → Project settings → Service accounts →
-   Generate New Private Key → Generate Key. This file is a real secret.
+   Generate New Private Key → Generate Key. This file is a real secret:
+   never put it in the repository (`.gitignore` refuses Firebase's
+   `*firebase-adminsdk*.json` names). It goes to Expo only, in step 4.
 4. **Give the key to Expo.** On expo.dev: Project settings → Credentials →
    Android → `et.laqum.driver` (or Add Application Identifier) → Service
    Credentials → FCM V1 service account key → Add a service account key →
    Save. Or `eas credentials` → Android → Google Service Account → "Manage
    your Google Service Account Key for Push Notifications (FCM V1)" →
    upload.
-5. **`google-services.json` for the build.** On expo.dev, add a **File**
-   environment variable named exactly **`GOOGLE_SERVICES_JSON`** holding the
-   file from step 2, in the **development** environment, and in
-   **production** when that build is made. Use "Sensitive" visibility, not
-   "Secret" (Expo: secret variables are not readable during some config
-   resolution). During the build Expo writes the file outside the project
-   and puts its path in the variable; `app.config.ts` reads it. Without it a
-   build has no FCM, and the app reports push as unavailable.
+5. **Nothing more for the build.** An EAS file variable was tried first and
+   dropped: eas-cli 24.8.0 never fetches a file variable's content when it
+   resolves the config on your machine, so `eas build` reported it as
+   missing. The committed file needs no variable.
 6. **Push security.** On expo.dev/settings/access-tokens, turn on enhanced
    push security and create an access token. Put it in
    `deploy/.env.production` as `EXPO_ACCESS_TOKEN` (and in a developer's
