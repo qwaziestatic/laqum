@@ -1514,3 +1514,48 @@ needs a reload, not a build.
 
 Still not device-tested: the camera QR scan, the Chapa sandbox, iOS, push
 delivery (Phase 5), and Navigate's fallbacks without Google Maps.
+
+### Session 3 results
+
+2026-09-28, the same Samsung Galaxy A15 5G, with the **Firebase EAS build**
+(`b670eb73`: Firebase, the icon, the native splash, the notification icon,
+`expo-system-ui`). API on 18000 with the fake provider, the development
+checkout on the LAN address and no automatic payment; Metro on 18081. The
+session was ended by the product owner before steps 23 and 24 were run in
+full.
+
+| Step                 | Result  | What was seen                                                                                                                                                                                                           |
+| -------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 22a Cold start       | Pass    | The navy native splash with the white ላቁም?, then the navy animation once (about a second, no loop), no white flash between them, then the app. The home-screen icon: the navy ላቁም? on white, not cut off by the mask.   |
+| 22b From background  | Pass    | Home then Recents: the app at once, no splash, no animation. Back then reopen: as expected.                                                                                                                             |
+| 22c Reload           | Pass    | Developer menu → Reload (Metro ran without a terminal): the animation once, then the app.                                                                                                                               |
+| 22d Reduced motion   | Pass    | Remove animations on: the still picture on navy, briefly, nothing moving. Off again: the normal animation.                                                                                                              |
+| 22e Dark mode        | Pass    | The navy splash and card, no white rectangle on dark, then the app in its dark theme.                                                                                                                                   |
+| 22f TalkBack         | Pass    | One announcement, as specified.                                                                                                                                                                                         |
+| 22g Opened by a link | Skipped | By decision: no phone on adb. The rule is covered by `apps/mobile/test/intro.test.ts`.                                                                                                                                  |
+| 22h part 1 Pay       | Pass    | The Test payment page as specified; Pay; the return page; back in the app the slot held with its QR and a countdown of about 3 minutes. The server shows both bookings `PENDING_PAYMENT → RESERVED`, deposit `success`. |
+| 23b Released notice  | Pass    | Booking at 15:03:34, held 15:03:48, released 15:06:48; the API sent the notice at 15:06:49 in English (the token's language) and Expo accepted it. Received on the phone; tapping it opened the booking, expired.       |
+
+**NOT device-tested yet, to be run before launch:** 22h part 2 (Fail, and
+leaving the checkout without pressing), 22i (themed icons; the icon and the
+splash were seen in 22a and 22e), 23a (the token row and its language, and
+re-registering on a switch), 23c (the warning 5 minutes before a hold ends),
+23d (time up, and the bill), 23e (a notification with the app open), 23f
+(the status-bar icon), and 24 (Sign out).
+
+**One defect found, not yet fixed:** notifications were allowed at the
+prompt when booking 1's slot was held (14:58:28), but the phone's push token
+reached the server only at **15:03:36**, when the next booking's screen
+opened. Booking 1's release at 15:01:29 was therefore **not sent**
+(`NO_DEVICE` in the API log). The cause is not established: fetching the
+token after permission was granted must have failed or returned nothing (the
+app deliberately does not show that), and nothing retried until another
+screen asked. A fix plan is in CLAUDE.md ("Push token registration can lag
+the permission"); reproducing it with `adb logcat` would confirm the cause.
+
+Found on the way, fixed during the session: the repo-root `.env` had a space
+after `EXPO_ACCESS_TOKEN=`, so the token never loaded, and sourcing the file
+printed it as a failed command. The space was removed; the token must be
+**rotated** because it was printed. The API left running since the first
+pass (2026-09-24) held port 18000; `pnpm dev:stop` stopped it but not its
+`tsx watch` parent, which had to be stopped by hand.

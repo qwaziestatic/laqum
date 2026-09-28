@@ -753,6 +753,46 @@ waits for a design pass. **Queued next, same rules:**
       with an ordering barrier so a late probe cannot pass unseen; removing
       the `socketsLeave` fails it.
 
+**Session 3 on the phone** (2026-09-28, the Firebase EAS build `b670eb73`;
+details in DEVICE-TEST.md, Part 6, "Session 3 results"). **Passed on the
+device:** 22a–22f (the splash, the animation once, background, reload,
+reduced motion, dark mode, TalkBack; the new icon seen whole), 22h part 1
+(the development checkout: Pay, the return page, the slot held), and 23b (a
+real push notification: the release notice, in the token's language,
+received, and opening the booking when tapped). 22g skipped (no adb; covered
+by `intro.test.ts`). **NOT device-tested yet, to be run before launch:** 22h
+part 2, 22i, 23a, 23c–23f, and 24.
+
+- [ ] **Push token registration can lag the permission** (found in Session
+      3, cause NOT yet established). Notifications were allowed at the
+      prompt when booking 1's slot was held (14:58:28), but the token
+      reached the server only at 15:03:36, when another booking's screen
+      opened, so booking 1's release notice was not sent (`NO_DEVICE`).
+      From the code: after `requestPermissions` returned granted,
+      `getToken` returned null (`getExpoPushTokenAsync` threw, swallowed in
+      `expoDeps.ts`), `maybeRegisterForPush` reported `unavailable` and
+      uploaded nothing, and that screen never asks again. **Proposed fix,
+      NOT implemented, needs approval:** 1. **Confirm the cause first:** clear the app's data, connect by USB,
+      run `adb logcat` while allowing the prompt, and read the error
+      `getExpoPushTokenAsync` throws. Until then, log it (a `console.warn`,
+      which shows in Metro) instead of discarding it. 2. **Retry the token, bounded,** once permission is granted: a pure
+      `registerWithRetry` in `push/registration.ts` with injected delays
+      (for example 2, 5, 15 and 30 s), which never prompts on a retry. 3. **Re-register on every return to the foreground** while signed in
+      (`usePush` on `foregroundEpoch`): a permission CHECK, never a
+      request (CLAUDE.md, the Android permission-activity loop), then an
+      idempotent upsert. It also heals a token Firebase rotated. 4. **Tests:** a retry succeeding on its second attempt, giving up after
+      the last delay, and no retry or foreground path ever calling
+      `requestPermissions`. 5. **On the phone:** clear the app's data, book, allow the prompt; the
+      `push_tokens` row within seconds, and the FIRST booking's release
+      notice arrives.
+- [ ] **`pnpm dev:stop` leaves `tsx watch` running.** It stops the process
+      listening on a port, and the tree under it, but the API's listener is
+      tsx's CHILD: the watcher survived (Session 3) and would restart the old
+      API on the next file change. Small; stop the watcher parent too.
+- [ ] **Rotate the Expo access token.** It was printed in a tool's output
+      in Session 3 (a space after `EXPO_ACCESS_TOKEN=` in `.env` made the
+      shell run it as a command; the space is fixed).
+
 ### Brand — docs/BRAND.md is the rulebook
 
 - **The source is never edited.** `assets/brand/source/laqum-illustration.jpg`
@@ -1408,11 +1448,10 @@ an approved plan before work starts.**
       EAS worker and Metro separately. The ID is not a secret — it ships in
       every APK. Never let eas-cli create a project: with no ID in the config
       it prints "EAS project not configured." and fetches-or-creates.
-- [ ] **FCM credentials for Android push.** `getExpoPushTokenAsync` needs
-      Firebase (`googleServicesFile`), which the app does not have; the call
-      rejects and `src/push/expoDeps.ts` swallows it by design, so
-      DEVICE-TEST step 12 expects NO `push_tokens` row. Needed before Phase 5
-      can deliver anything. Firebase Spark is card-free.
+- [x] **FCM credentials for Android push.** Done in Phase 5: Firebase
+      (Spark, card-free), the FCM V1 key in Expo's credentials, the committed
+      `google-services.json`, and the EAS build `b670eb73`. A real push was
+      received on the phone in Session 3 (step 23b).
 - [ ] **iOS is untested.** Configuration is present and valid; no build has
       ever been produced. Device testing is Android-only by decision.
 
