@@ -783,9 +783,11 @@ part 2, 22i, 23a, 23c–23f, and 24.
       listening on a port, and the tree under it, but the API's listener is
       tsx's CHILD: the watcher survived (Session 3) and would restart the old
       API on the next file change. Small; stop the watcher parent too.
-- [ ] **Rotate the Expo access token.** It was printed in a tool's output
+- [x] **Rotate the Expo access token.** It was printed in a tool's output
       in Session 3 (a space after `EXPO_ACCESS_TOKEN=` in `.env` made the
-      shell run it as a command; the space is fixed).
+      shell run it as a command; the space is fixed). **Rotated 2026-09-29**
+      by the product owner: a new token in `.env`, the old one deleted on
+      expo.dev. The new line has no space after `=` and loads cleanly.
 - [x] **`CHAPA_WEBHOOK_SECRET` is required in production**, like the JWT
       secrets (from the history audit before the repository goes public):
       its development default is in the repository. A webhook alone could
