@@ -66,7 +66,8 @@ beforeEach(async () => {
 
 /** TEST LOT's values from the device test. */
 const TEST_LOT = { blockMinutes: 5, ratePerBlockSantim: 500, depositSantim: 0 };
-const AT = { latitude: 9.040093, longitude: 38.762541 };
+// Meskel Square, Addis Ababa: a neutral public place.
+const AT = { latitude: 9.0108, longitude: 38.7613 };
 
 /** What the driver reads, as the app words it (the API's message is never shown). */
 const english = translator('en');

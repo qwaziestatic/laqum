@@ -41,7 +41,8 @@ let lot: LotFixture;
 let attendant: Actor;
 const open: DriverRealtime[] = [];
 
-const AT = { latitude: 9.040093, longitude: 38.762541 };
+// Meskel Square, Addis Ababa: a neutral public place.
+const AT = { latitude: 9.0108, longitude: 38.7613 };
 
 beforeAll(async () => {
   await migrateFresh();

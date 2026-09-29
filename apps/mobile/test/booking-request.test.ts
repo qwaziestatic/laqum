@@ -11,7 +11,7 @@ const BASE = {
   lotId: 'c0911390-4d9f-446d-a29f-3cdd5f6caa5a',
   blocks: 2,
   blockMinutes: 5,
-  position: { latitude: 9.040093, longitude: 38.762541 },
+  position: { latitude: 9.0108, longitude: 38.7613 },
 };
 
 describe('bookingRequest', () => {
@@ -21,8 +21,8 @@ describe('bookingRequest', () => {
     expect(body).toEqual({
       lotId: BASE.lotId,
       plannedMinutes: 10,
-      lat: 9.040093,
-      lng: 38.762541,
+      lat: 9.0108,
+      lng: 38.7613,
       vehiclePlate: 'AA-12345',
     });
     expect(createBookingSchema.safeParse(body).success).toBe(true);
