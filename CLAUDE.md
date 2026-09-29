@@ -764,27 +764,21 @@ by `intro.test.ts`). **NOT device-tested yet, to be run before launch:** 22h
 part 2, 22i, 23a, 23c–23f, and 24.
 
 - [ ] **Push token registration can lag the permission** (found in Session
-      3, cause NOT yet established). Notifications were allowed at the
-      prompt when booking 1's slot was held (14:58:28), but the token
-      reached the server only at 15:03:36, when another booking's screen
-      opened, so booking 1's release notice was not sent (`NO_DEVICE`).
-      From the code: after `requestPermissions` returned granted,
-      `getToken` returned null (`getExpoPushTokenAsync` threw, swallowed in
-      `expoDeps.ts`), `maybeRegisterForPush` reported `unavailable` and
-      uploaded nothing, and that screen never asks again. **Proposed fix,
-      NOT implemented, needs approval:** 1. **Confirm the cause first:** clear the app's data, connect by USB,
-      run `adb logcat` while allowing the prompt, and read the error
-      `getExpoPushTokenAsync` throws. Until then, log it (a `console.warn`,
-      which shows in Metro) instead of discarding it. 2. **Retry the token, bounded,** once permission is granted: a pure
-      `registerWithRetry` in `push/registration.ts` with injected delays
-      (for example 2, 5, 15 and 30 s), which never prompts on a retry. 3. **Re-register on every return to the foreground** while signed in
-      (`usePush` on `foregroundEpoch`): a permission CHECK, never a
-      request (CLAUDE.md, the Android permission-activity loop), then an
-      idempotent upsert. It also heals a token Firebase rotated. 4. **Tests:** a retry succeeding on its second attempt, giving up after
-      the last delay, and no retry or foreground path ever calling
-      `requestPermissions`. 5. **On the phone:** clear the app's data, book, allow the prompt; the
-      `push_tokens` row within seconds, and the FIRST booking's release
-      notice arrives.
+      3). Notifications were allowed when booking 1's slot was held
+      (14:58:28), but the token reached the server only at 15:03:36, when
+      another booking's screen opened, so booking 1's release notice was
+      not sent (`NO_DEVICE`). From the code: after the grant, `getToken`
+      returned null (`getExpoPushTokenAsync` threw, and the error was
+      discarded), nothing was uploaded, and that screen never asked again.
+      **Fix implemented** (product owner's decision, without a logcat
+      capture first): the error is now LOGGED, as a warning starting
+      `push:` in Metro and `adb logcat`; the token is RETRIED after the grant at 2, 5, 15 and 30 s
+      (`TOKEN_RETRY_DELAYS_MS`, never prompting); and `usePush`
+      re-registers on every return to the FOREGROUND (a permission check,
+      never a request). Tests in `registration.test.ts`. **Still open, for
+      the next phone session:** read the logged error for the root cause,
+      and confirm the FIRST booking's notice arrives (DEVICE-TEST step 23
+      a).
 - [ ] **`pnpm dev:stop` leaves `tsx watch` running.** It stops the process
       listening on a port, and the tree under it, but the API's listener is
       tsx's CHILD: the watcher survived (Session 3) and would restart the old

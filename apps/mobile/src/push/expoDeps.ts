@@ -30,13 +30,18 @@ async function expoPushToken(): Promise<string | null> {
    */
   const eas = Constants.expoConfig?.extra?.eas as { projectId?: string } | undefined;
   const projectId = eas?.projectId;
-  if (!projectId) return null;
+  if (!projectId) {
+    console.warn('push: no EAS projectId in the app config, so no push token');
+    return null;
+  }
   try {
     const token = await Notifications.getExpoPushTokenAsync({ projectId });
     return token.data;
-  } catch {
-    // No Play Services, an emulator, or Expo Go: not an error worth
-    // showing the driver, who did not ask for any of this.
+  } catch (err) {
+    // Not shown to the driver, who did not ask for any of this. LOGGED, so
+    // the cause can be read in Metro or `adb logcat` (Session 3's late token
+    // was never explained because this used to be discarded).
+    console.warn('push: getExpoPushTokenAsync failed', err);
     return null;
   }
 }
@@ -58,6 +63,10 @@ export function pushDeps(api: Api, hasBooked: boolean): PushDeps {
       toStatus((await Notifications.requestPermissionsAsync()).status),
 
     getToken: expoPushToken,
+    sleep: (ms) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      }),
 
     upload: async (token) => {
       // In the language on screen, which the notifications will be written in.

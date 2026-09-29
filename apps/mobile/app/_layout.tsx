@@ -22,9 +22,9 @@ export default function RootLayout(): React.JSX.Element {
 function Shell(): React.JSX.Element {
   const theme = useTheme();
   const t = useT();
-  const { ready, api, session } = useApp();
+  const { ready, api, session, foregroundEpoch } = useApp();
   // Only once the stored session is known: a tap must not route before it.
-  usePush(api, ready ? session?.user.id : undefined, t.language);
+  usePush(api, ready ? session?.user.id : undefined, t.language, foregroundEpoch);
 
   return (
     <>

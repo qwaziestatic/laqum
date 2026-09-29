@@ -25,19 +25,28 @@ Notifications.setNotificationHandler({
 /**
  * Push, for the signed-in driver, from the root layout.
  *
- * - The token is registered again whenever the driver signs in or the
- *   language on screen changes, so notifications arrive in it (D3). Never a
+ * - The token is registered again whenever the driver signs in, the language
+ *   on screen changes (so notifications arrive in it, D3), and the app
+ *   RETURNS TO THE FOREGROUND: that heals a token that failed after the
+ *   permission was granted (Session 3) and one Firebase has rotated. Never a
  *   prompt: `hasBooked` is false, so an undecided permission stays undecided
- *   and the ask keeps its moment (registration.ts). Only a permission already
- *   granted uploads.
+ *   and the ask keeps its moment (registration.ts), and only a permission
+ *   already granted uploads. It CHECKS the permission and never requests it:
+ *   on Android a request launches an activity, which is itself a return to
+ *   the foreground (the loop in CLAUDE.md).
  * - A tapped notification opens its booking, including the tap that started
  *   the app. Not before the session is known, and not when signed out.
  */
-export function usePush(api: Api, userId: string | undefined, language: Locale): void {
+export function usePush(
+  api: Api,
+  userId: string | undefined,
+  language: Locale,
+  foregroundEpoch: number,
+): void {
   useEffect(() => {
     if (!userId) return;
     void maybeRegisterForPush(pushDeps(api, false));
-  }, [api, userId, language]);
+  }, [api, userId, language, foregroundEpoch]);
 
   useEffect(() => {
     if (!userId) return;

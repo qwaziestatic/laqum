@@ -36,10 +36,24 @@ export function bookingEarnsPushAsk(status: BookingStatus): boolean {
   return isLiveStatus(status) && status !== 'PENDING_PAYMENT';
 }
 
+/**
+ * Waits between token attempts once permission is granted: 2, 5, 15, 30 s.
+ *
+ * Session 3 on the phone: notifications were allowed, but the token reached
+ * the server five minutes later, when another screen asked again, so the
+ * first booking's notice was lost. The first token fetch after the grant had
+ * failed and nothing retried. Bounded: about a minute, then the next return
+ * to the foreground tries again (usePush.ts).
+ */
+export const TOKEN_RETRY_DELAYS_MS: readonly number[] = [2_000, 5_000, 15_000, 30_000];
+
 export interface PushDeps {
   getPermissions: () => Promise<PermissionStatus>;
   requestPermissions: () => Promise<PermissionStatus>;
+  /** null when no token could be had; the reason is logged there. */
   getToken: () => Promise<string | null>;
+  /** Injected so the retry is tested without waiting. */
+  sleep: (ms: number) => Promise<void>;
   /** POSTs the token to the API, which stores it in push_tokens. */
   upload: (token: string) => Promise<void>;
   /** Whether the driver holds a booked slot now: see bookingEarnsPushAsk. */
@@ -59,12 +73,23 @@ export type RegistrationOutcome =
  * who declines notifications still gets a working app, and the UI must not
  * treat that as an error.
  */
+/** The token, retried after each delay while none comes. Never prompts. */
+async function tokenWithRetry(deps: PushDeps): Promise<string | null> {
+  let token = await deps.getToken();
+  for (const delay of TOKEN_RETRY_DELAYS_MS) {
+    if (token) break;
+    await deps.sleep(delay);
+    token = await deps.getToken();
+  }
+  return token;
+}
+
 export async function maybeRegisterForPush(deps: PushDeps): Promise<RegistrationOutcome> {
   // Already granted on a previous run: refresh the token silently. Tokens
   // rotate, so this is not a no-op.
   const existing = await deps.getPermissions();
   if (existing === 'granted') {
-    const token = await deps.getToken();
+    const token = await tokenWithRetry(deps);
     if (!token) return { kind: 'unavailable' };
     await deps.upload(token);
     return { kind: 'registered', token };
@@ -80,7 +105,7 @@ export async function maybeRegisterForPush(deps: PushDeps): Promise<Registration
   const status = await deps.requestPermissions();
   if (status !== 'granted') return { kind: 'denied' };
 
-  const token = await deps.getToken();
+  const token = await tokenWithRetry(deps);
   if (!token) return { kind: 'unavailable' };
   await deps.upload(token);
   return { kind: 'registered', token };

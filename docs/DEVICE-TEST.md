@@ -1328,6 +1328,13 @@ _Should:_ ONE row, `locale` = the language on screen. Switch the language
 with the header switch and run it again. _Should:_ the same row, the other
 `locale`, with no prompt of any kind.
 
+**Since Session 3** (the token once lagged the permission by five minutes):
+clear the app's data first (Settings → Apps → ላቁም? → Storage → Clear
+data), so the prompt is fresh. _Should:_ the row exists within seconds of
+**Allow**, and the FIRST booking's notices arrive. In Metro, look for any
+line starting `push:`: it is the reason a token could not be had (it used to
+be discarded). Copy it to me.
+
 **b. Released while you wait.** The test lot's hold is 3 minutes. Let it run
 out with the app in the background (home button). _Should:_ within about a
 minute of the countdown ending, a notification: **"ያስያዙት ቦታ ተለቋል"** in
