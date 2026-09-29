@@ -92,6 +92,7 @@ describe('the setting', () => {
     NODE_ENV: 'production',
     JWT_ACCESS_SECRET: 'a'.repeat(32),
     JWT_REFRESH_SECRET: 'b'.repeat(32),
+    CHAPA_WEBHOOK_SECRET: 'c'.repeat(32),
   };
 
   it('is required in production: the operator must say what stands in front', () => {

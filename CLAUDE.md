@@ -786,6 +786,12 @@ part 2, 22i, 23a, 23c–23f, and 24.
 - [ ] **Rotate the Expo access token.** It was printed in a tool's output
       in Session 3 (a space after `EXPO_ACCESS_TOKEN=` in `.env` made the
       shell run it as a command; the space is fixed).
+- [x] **`CHAPA_WEBHOOK_SECRET` is required in production**, like the JWT
+      secrets (from the history audit before the repository goes public):
+      its development default is in the repository. A webhook alone could
+      never mark a payment paid (`confirmPayment` asks the provider), but
+      it must still be the provider's. `config.test.ts` checks it; the
+      smoke test's production settings now carry one.
 
 ### Brand — docs/BRAND.md is the rulebook
 

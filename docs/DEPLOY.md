@@ -295,7 +295,9 @@ changes. Only an admin who staffs the lot can do either.
 
 - **Run the sandbox check first** (section 1).
 - In `deploy/.env.production`: `PAYMENT_PROVIDER=chapa`, the **live** secret
-  key as `CHAPA_SECRET_KEY`, and a webhook secret as `CHAPA_WEBHOOK_SECRET`.
+  key as `CHAPA_SECRET_KEY`, and a webhook secret as `CHAPA_WEBHOOK_SECRET`
+  (random, like the JWT secrets in section 5). The API refuses to start in
+  production without it: the development default is public.
 - In Chapa's dashboard, set the webhook URL to
   **`https://<domain>/v1/webhooks/chapa`** and its secret to the same value
   as `CHAPA_WEBHOOK_SECRET`. The API also sends that URL with every payment.

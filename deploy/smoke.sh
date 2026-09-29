@@ -28,6 +28,7 @@ POSTGRES_PASSWORD=$pg_password
 DATABASE_URL=postgres://laqum:$pg_password@postgres:5432/laqum
 JWT_ACCESS_SECRET=$(random)
 JWT_REFRESH_SECRET=$(random)
+CHAPA_WEBHOOK_SECRET=$(random)
 PAYMENT_PROVIDER=fake
 LOG_LEVEL=info
 EOF

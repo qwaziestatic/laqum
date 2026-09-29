@@ -50,3 +50,32 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...VALID, NODE_ENV: 'staging' })).toThrow(/NODE_ENV/u);
   });
 });
+
+describe('the Chapa webhook secret', () => {
+  const production = {
+    ...VALID,
+    NODE_ENV: 'production',
+    JWT_ACCESS_SECRET: 'a'.repeat(32),
+    JWT_REFRESH_SECRET: 'b'.repeat(32),
+    TRUST_PROXY_HOPS: '1',
+  };
+
+  it('is REQUIRED in production: the development default is public', () => {
+    expect(() => loadConfig(production)).toThrow(/CHAPA_WEBHOOK_SECRET: is required/u);
+    // An empty value is not a secret either (an empty line in the env file).
+    expect(() => loadConfig({ ...production, CHAPA_WEBHOOK_SECRET: '' })).toThrow(
+      /CHAPA_WEBHOOK_SECRET/u,
+    );
+  });
+
+  it('is used as given in production', () => {
+    const secret = 'c'.repeat(32);
+    expect(loadConfig({ ...production, CHAPA_WEBHOOK_SECRET: secret }).CHAPA_WEBHOOK_SECRET).toBe(
+      secret,
+    );
+  });
+
+  it('keeps its development default outside production', () => {
+    expect(loadConfig(VALID).CHAPA_WEBHOOK_SECRET).toBe('dev-only-webhook-secret');
+  });
+});

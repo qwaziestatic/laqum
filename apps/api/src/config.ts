@@ -35,6 +35,7 @@ const redisUrl = z
  */
 const DEV_ACCESS_SECRET = 'dev-only-access-secret-not-for-production-use';
 const DEV_REFRESH_SECRET = 'dev-only-refresh-secret-not-for-production-use';
+const DEV_WEBHOOK_SECRET = 'dev-only-webhook-secret';
 
 const secret = z.string().min(32, 'must be at least 32 characters');
 
@@ -127,8 +128,14 @@ const baseSchema = z.object({
   PAYMENT_PROVIDER: z.enum(['fake', 'chapa']).default('fake'),
   /** Chapa secret key. Test keys are prefixed CHASECK_TEST-. */
   CHAPA_SECRET_KEY: z.string().min(1).optional(),
-  /** Secret the webhook signature is verified against. */
-  CHAPA_WEBHOOK_SECRET: z.string().min(1).default('dev-only-webhook-secret'),
+  /**
+   * Secret the webhook signature is verified against. Required in
+   * production, like the JWT secrets: the development default is in this
+   * (public) repository, so a production running on it would accept webhooks
+   * signed by anyone. (A webhook alone cannot mark a payment paid, since the
+   * provider is asked, but it must still be the provider's.)
+   */
+  CHAPA_WEBHOOK_SECRET: z.string().min(1).optional(),
   CHAPA_BASE_URL: z.string().min(1).default('https://api.chapa.co'),
   /** Public base URL Chapa calls back to, and returns the driver to. */
   PUBLIC_BASE_URL: z.string().min(1).default('http://localhost:3000'),
@@ -200,7 +207,12 @@ export const configSchema = baseSchema
       });
     }
     if (cfg.NODE_ENV !== 'production') return;
-    for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'TRUST_PROXY_HOPS'] as const) {
+    for (const key of [
+      'JWT_ACCESS_SECRET',
+      'JWT_REFRESH_SECRET',
+      'CHAPA_WEBHOOK_SECRET',
+      'TRUST_PROXY_HOPS',
+    ] as const) {
       if (cfg[key] === undefined) {
         ctx.addIssue({
           code: 'custom',
@@ -214,6 +226,8 @@ export const configSchema = baseSchema
     ...cfg,
     JWT_ACCESS_SECRET: cfg.JWT_ACCESS_SECRET ?? DEV_ACCESS_SECRET,
     JWT_REFRESH_SECRET: cfg.JWT_REFRESH_SECRET ?? DEV_REFRESH_SECRET,
+    // Required in production (above): the default is for development only.
+    CHAPA_WEBHOOK_SECRET: cfg.CHAPA_WEBHOOK_SECRET ?? DEV_WEBHOOK_SECRET,
     // Required in production (above); nothing in front of it otherwise.
     TRUST_PROXY_HOPS: cfg.TRUST_PROXY_HOPS ?? 0,
     /*
