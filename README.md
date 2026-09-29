@@ -39,9 +39,16 @@ timing, not captured on a phone.
 
 **Driver app.**
 
-<!-- PHONE SCREENSHOTS: add them to docs/screenshots/ and link them here. -->
+These device screenshots show the driver flow from navigation and nearby-lot
+discovery through booking and the active booking QR code.
 
-> _Phone screenshots coming soon (docs/screenshots/)._
+| Navigation hand-off | Nearby lots |
+| --- | --- |
+| ![Navigation route to a parking lot](docs/screenshots/mobile-navigation.png) | ![Nearby parking lots on the map](docs/screenshots/mobile-nearby-lots.png) |
+
+| Book a slot | Active booking and gate QR code |
+| --- | --- |
+| ![Book a parking slot](docs/screenshots/mobile-book-slot.png) | ![Active booking with gate QR code](docs/screenshots/mobile-booking.png) |
 
 ## Features
 
