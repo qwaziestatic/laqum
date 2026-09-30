@@ -914,7 +914,7 @@ the LOT, so it exists whether or not a slot has a booking.
   `RealtimeStore.reset()` goes to **-1, not 0** — zero is a real version (a lot
   that has never had a booking).
 
-Verified: `apps/dashboard/src/realtime/store.test.ts` **fails 6 of 11** against
+Verified: `packages/shared/src/realtimeStore.test.ts` **fails 6 of 11** against
 a simulated `updated_at` rule, including the named free-slot test.
 
 **The driver app applies the same rule to its own booking**
